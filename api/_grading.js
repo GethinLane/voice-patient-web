@@ -229,12 +229,71 @@ export async function gradeTranscriptWithIndicators({ openaiKey, model, transcri
   }
 
   const data = raw ? JSON.parse(raw) : null;
-  const outText = extractResponseText(data);
-  const parsed = safeJsonParse(outText);
 
-  if (!parsed) {
-    throw new Error(`OpenAI returned non-JSON output_text preview: ${String(outText).slice(0, 200)}`);
+  const outText = collectAllAssistantText(data);
+let parsed = safeJsonParseAny(outText);
+
+// If still not parseable, retry once with a smaller output request
+if (!parsed) {
+  const retryPayload = {
+    model,
+    input: [
+      {
+        role: "system",
+        content:
+          "Return ONLY valid JSON. No markdown. No commentary. " +
+          "Keep evidence strings very short (<= 80 chars).",
+      },
+      {
+        role: "user",
+        content: JSON.stringify(
+          {
+            transcript: transcriptText,
+            indicators: {
+              dg_positive: marking.dg.positive,
+              dg_negative: marking.dg.negative,
+              cm_positive: marking.cm.positive,
+              cm_negative: marking.cm.negative,
+              rto_positive: marking.rto.positive,
+              rto_negative: marking.rto.negative,
+              application: marking.application,
+            },
+          },
+          null,
+          2
+        ),
+      },
+    ],
+    text: { format: { type: "json_object" } },
+    temperature: 0,
+    max_output_tokens: 2500, // give it headroom so it doesn't truncate
+  };
+
+  const retryResp = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openaiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(retryPayload),
+  });
+
+  const retryRaw = await retryResp.text();
+  if (!retryResp.ok) {
+    throw new Error(`OpenAI retry error ${retryResp.status}: ${retryRaw.slice(0, 400)}`);
   }
+
+  const retryData = retryRaw ? JSON.parse(retryRaw) : null;
+  const retryText = collectAllAssistantText(retryData);
+  parsed = safeJsonParseAny(retryText);
+}
+
+if (!parsed) {
+  throw new Error(
+    `OpenAI returned non-JSON. Preview: ${String(outText).slice(0, 240)}`
+  );
+}
+
 
   // Normalize arrays to match original indicator ordering
   function zipPos(indicators, arr) {
