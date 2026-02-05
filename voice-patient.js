@@ -180,13 +180,15 @@
     container.appendChild(callIframe);
   }
 
-  function unmountDailyIframe() {
-    log("[DAILY] unmount iframe");
-    if (callIframe) {
-      try { callIframe.remove(); } catch {}
-      callIframe = null;
-    }
+function unmountDailyIframe() {
+  log("[DAILY] unmount iframe");
+  if (callIframe) {
+    try { callIframe.src = "about:blank"; } catch {}
+    try { callIframe.remove(); } catch {}
+    callIframe = null;
   }
+}
+
 
   // ---------- Cases ----------
   async function populateCaseDropdown() {
