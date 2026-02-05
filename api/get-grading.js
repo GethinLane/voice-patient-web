@@ -1,7 +1,7 @@
 // api/get-grading.js
 import { getStore } from "./_gradingStore.js";
 
-export default async function handler(req, res) {
+export default function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "https://www.scarevision.co.uk");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
