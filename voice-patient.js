@@ -1,400 +1,366 @@
-#
-# Copyright (c) 2024-2026, Daily
-#
-# SPDX-License-Identifier: BSD 2-Clause License
-#
-
-import os
-import re
-import json
-import threading
-import requests
-
-from dotenv import load_dotenv
-from loguru import logger
-
-print("🚀 Starting Pipecat bot...")
-print("⏳ Loading models and imports (20 seconds, first run only)\n")
-
-logger.info("Loading Local Smart Turn Analyzer V3...")
-from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-logger.info("✅ Local Smart Turn Analyzer V3 loaded")
-
-logger.info("Loading Silero VAD model...")
-from pipecat.audio.vad.silero import SileroVADAnalyzer
-logger.info("✅ Silero VAD model loaded")
-
-from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import LLMRunFrame
-from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response_universal import (
-    LLMContextAggregatorPair,
-    LLMUserAggregatorParams,
-)
-from pipecat.runner.types import RunnerArguments
-from pipecat.runner.utils import create_transport
-from pipecat.services.cartesia.tts import CartesiaTTSService
-from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.transports.base_transport import BaseTransport, TransportParams
-from pipecat.transports.daily.transport import DailyParams
-from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import (
-    TurnAnalyzerUserTurnStopStrategy,
-)
-from pipecat.turns.user_turn_strategies import UserTurnStrategies
-
-logger.info("✅ All components loaded successfully!")
-
-load_dotenv(override=True)
-
-BOT_VERSION = "2026-02-05-transcript-submit-v2"
-logger.info(f"✅ BOT_VERSION={BOT_VERSION}")
-
-# Where to submit transcript for grading (ONLY on disconnect)
-# Recommended: set in Pipecat secret set to avoid accidental defaults.
-GRADING_SUBMIT_URL = os.getenv("GRADING_SUBMIT_URL", "").strip() or "https://voice-patient-web.vercel.app/api/submit-transcript"
-logger.info(f"✅ GRADING_SUBMIT_URL={GRADING_SUBMIT_URL}")
-
-
-# ----------------------- AIRTABLE HELPERS -----------------------
-
-def _assert_env(name: str) -> str:
-    val = os.getenv(name)
-    if not val:
-        raise RuntimeError(f"Missing required env var: {name}")
-    return val
-
-
-def _combine_field_across_rows(records, field_name: str) -> str:
-    parts = []
-    for r in records:
-        fields = r.get("fields") or {}
-        v = fields.get(field_name)
-        if v is None:
-            continue
-        t = v.strip() if isinstance(v, str) else str(v).strip()
-        if t:
-            parts.append(t)
-    return "\n\n".join(parts)
-
-
-def _build_system_text_from_case(records) -> str:
-    opening = _combine_field_across_rows(records, "Opening Sentence")
-    divulge_freely = _combine_field_across_rows(records, "Divulge freely")
-    divulge_asked = _combine_field_across_rows(records, "Divulge Asked")
-    pmhx = _combine_field_across_rows(records, "PMHx RP")
-    social = _combine_field_across_rows(records, "Social History")
-
-    family = (
-        _combine_field_across_rows(records, "Family Hiostory")
-        or _combine_field_across_rows(records, "Family History")
-    )
-
-    ice = _combine_field_across_rows(records, "ICE")
-    reaction = _combine_field_across_rows(records, "Reaction")
-
-    rules = """
-CRITICAL:
-- You MUST NOT invent details.
-- Only use information explicitly present in the CASE DETAILS below.
-- If something is not stated, say: "I'm not sure" / "I don't remember" / "I haven't been told".
-- NEVER substitute another symptom.
-- NEVER create symptoms.
-- Do Not Hallucinate.
-- NEVER swap relatives. If relationship is not explicit, say you're not sure.
-- Answer only what the clinician asks.
-""".strip()
-
-    case = f"""
-CASE DETAILS (THIS IS YOUR ENTIRE MEMORY):
-
-OPENING SENTENCE:
-{opening or "[Not provided]"}
-
-DIVULGE FREELY:
-{divulge_freely or "[Not provided]"}
-
-DIVULGE ONLY IF ASKED:
-{divulge_asked or "[Not provided]"}
-
-PAST MEDICAL HISTORY:
-{pmhx or "[Not provided]"}
-
-SOCIAL HISTORY:
-{social or "[Not provided]"}
-
-FAMILY HISTORY:
-{family or "[Not provided]"}
-
-ICE (Ideas / Concerns / Expectations):
-{ice or "[Not provided]"}
-
-REACTION / AFFECT:
-{reaction or "[Not provided]"}
-""".strip()
-
-    return f"{case}\n\n{rules}"
-
-
-def fetch_case_system_text(case_id: int) -> str:
-    api_key = _assert_env("AIRTABLE_API_KEY")
-    base_id = _assert_env("AIRTABLE_BASE_ID")
-
-    table_name = f"Case {case_id}"
-    offset = None
-    records = []
-
-    while True:
-        params = {"pageSize": "100"}
-        if offset:
-            params["offset"] = offset
-
-        url = f"https://api.airtable.com/v0/{base_id}/{requests.utils.quote(table_name)}"
-        resp = requests.get(
-            url,
-            headers={"Authorization": f"Bearer {api_key}"},
-            params=params,
-            timeout=30,
-        )
-        if not resp.ok:
-            raise RuntimeError(f"Airtable error {resp.status_code}: {resp.text[:400]}")
-
-        data = resp.json()
-        records.extend(data.get("records", []))
-        offset = data.get("offset")
-        if not offset:
-            break
-
-    if not records:
-        raise RuntimeError(f"No records found in Airtable table '{table_name}'")
-
-    return _build_system_text_from_case(records)
-
-
-def extract_opening_sentence(system_text: str) -> str:
-    m = re.search(
-        r"OPENING SENTENCE:\s*(.*?)(?:\n\s*\n|DIVULGE FREELY:)",
-        system_text,
-        flags=re.S | re.I,
-    )
-    if not m:
-        return ""
-    opening = m.group(1).strip()
-    opening = re.sub(r"\s+\n\s+", " ", opening).strip()
-    return opening
-
-
-def build_transcript_from_context(context: LLMContext):
-    """
-    Build transcript (user+assistant only) from the LLM context.
-    Called ONLY on disconnect to avoid any runtime overhead.
-    """
-    out = []
-    for m in context.messages:
-        role = m.get("role")
-        if role not in ("user", "assistant"):
-            continue
-        text = (m.get("content") or "").strip()
-        if not text:
-            continue
-        out.append({"role": role, "text": text})
-    return out
-
-
-def _submit_grading_in_background(url: str, payload: dict):
-    """
-    Fire-and-forget transcript submit so we do NOT block Pipecat shutdown.
-    Uses requests in a background thread.
-    """
-    try:
-        logger.info(f"📤 [BG] POST {url}")
-        logger.info(f"📤 [BG] payload preview: {json.dumps({k: payload[k] for k in payload if k != 'transcript'}, ensure_ascii=False)[:400]}")
-        r = requests.post(url, json=payload, timeout=60)
-        logger.info(f"📤 [BG] response: {r.status_code} {r.text[:400]}")
-    except Exception as e:
-        logger.error(f"❌ [BG] submit failed: {e}")
-
-
-async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
-    logger.info("Starting bot")
-
-    stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
-
-    tts = CartesiaTTSService(
-        api_key=os.getenv("CARTESIA_API_KEY"),
-        voice_id="71a7ad14-091c-4e8e-a314-022ece01c121",
-    )
-
-    llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"))
-
-    # --- Case selection from session body (fast, no network) ---
-    body = getattr(runner_args, "body", None) or {}
-    logger.info(f"📥 runner_args.body={body}")
-
-    case_id = int(body.get("caseId") or os.getenv("CASE_ID", "1"))
-    user_id = body.get("userId")  # optional for later
-    logger.info(f"📘 Using case_id={case_id} (userId={user_id})")
-
-    # Fetch case prompt from Airtable once at startup
-    try:
-        system_text = fetch_case_system_text(case_id)
-        logger.info(f"✅ Loaded Airtable system prompt for Case {case_id}")
-    except Exception as e:
-        logger.error(f"❌ Failed to load Airtable case {case_id}: {e}")
-        system_text = (
-            "CRITICAL: Airtable case failed to load. "
-            "Tell the clinician you haven't been given the case details."
-        )
-
-    opening_sentence = extract_opening_sentence(system_text)
-
-    disclosure_policy = """
-DISCLOSURE POLICY (follow exactly):
-
-Definitions:
-- "Direct question" = clinician asks specifically about a topic (e.g. chest pain, smoking, meds, allergies, family history, mood, ICE, etc.)
-- "Vague/open question" = clinician asks broad prompts (e.g. "general health?", "anything else?", "how have you been?")
-
-Rules:
-1) Default reply length is 1–2 sentences. No lists. No multi-part dumping.
-2) For vague/open questions AFTER the opening question:
-   - Give a brief general answer (1 short sentence)
-   - Then ask: "What would you like to know about specifically?"
-   - Do NOT volunteer detailed PMHx / social / family / ICE / extra symptoms.
-3) Only reveal information from "DIVULGE ONLY IF ASKED" when a direct question matches it.
-4) "DIVULGE FREELY" must still be relevant to the specific question. Do not dump the whole section.
-5) If the clinician reassures you about something, do not re-introduce that worry unless asked again.
-""".strip()
-
-    messages = [
-        {
-            "role": "system",
-            "content": f"""
-You are simulating a real patient in a clinical consultation.
-
-Behaviour rules:
-- Respond naturally, conversationally, and realistically.
-- Do NOT lecture or explain unless explicitly asked.
-- Do NOT give medical advice unless the clinician asks for your understanding.
-- Answer briefly by default; expand only if prompted.
-- Avoid long monologues.
-- Show mild anxiety when discussing serious symptoms.
-- Express guilt or worry only when relevant to the case.
-- If unsure, say so plainly (e.g. "I'm not sure", "I don't remember").
-- Stay emotionally consistent with the case.
-- Never mention you are an AI, model, or simulation.
-
-{disclosure_policy}
-""".strip(),
-        },
-        {"role": "system", "content": system_text},
-    ]
-
-    context = LLMContext(messages)
-
-    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
-        context,
-        user_params=LLMUserAggregatorParams(
-            user_turn_strategies=UserTurnStrategies(
-                stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=LocalSmartTurnAnalyzerV3())]
-            ),
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
-        ),
-    )
-
-    pipeline = Pipeline(
-        [
-            transport.input(),
-            stt,
-            user_aggregator,
-            llm,
-            tts,
-            transport.output(),
-            assistant_aggregator,
-        ]
-    )
-
-    task = PipelineTask(
-        pipeline,
-        params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
-    )
-
-    @transport.event_handler("on_client_connected")
-    async def on_client_connected(transport, client):
-        logger.info("Client connected")
-        if opening_sentence:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": (
-                        "Start the consultation now by saying ONLY the OPENING SENTENCE exactly as written, "
-                        "as ONE short line. Do not add anything else."
-                    ),
-                }
-            )
-        else:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": (
-                        "Start the consultation now with a brief greeting as the patient in ONE short line, "
-                        "then stop and wait."
-                    ),
-                }
-            )
-        await task.queue_frames([LLMRunFrame()])
-
-    @transport.event_handler("on_client_disconnected")
-    async def on_client_disconnected(transport, client):
-        logger.info("Client disconnected")
-
-        # Build transcript ONLY now (zero cost during live session)
-        transcript = build_transcript_from_context(context)
-
-        # IMPORTANT: log session id so you can compare with browser polling id
-        session_id = getattr(runner_args, "session_id", None)
-        logger.info(f"🧾 Transcript built: session_id={session_id} case_id={case_id} turns={len(transcript)}")
-
-        if not transcript:
-            logger.warning("⚠️ Transcript is empty; skipping grading submit.")
-        else:
-            payload = {
-                "sessionId": session_id,
-                "caseId": case_id,
-                "userId": user_id,
-                "transcript": transcript,
-            }
-
-            # Fire-and-forget background submit (so we don't hang teardown)
-            try:
-                logger.info(f"📤 Queueing transcript submit to {GRADING_SUBMIT_URL}")
-                th = threading.Thread(
-                    target=_submit_grading_in_background,
-                    args=(GRADING_SUBMIT_URL, payload),
-                    daemon=True,
-                )
-                th.start()
-            except Exception as e:
-                logger.error(f"❌ Failed to start background submit thread: {e}")
-
-        await task.cancel()
-
-    runner = PipelineRunner(handle_sigint=runner_args.handle_sigint)
-    await runner.run(task)
-
-
-async def bot(runner_args: RunnerArguments):
-    transport_params = {
-        "daily": lambda: DailyParams(audio_in_enabled=True, audio_out_enabled=True),
-        "webrtc": lambda: TransportParams(audio_in_enabled=True, audio_out_enabled=True),
+// voice-patient.js (ULTRA DEBUG - always injects UI)
+(() => {
+  const VERSION = "ultra-debug-2026-02-05-1";
+  const API_BASE = "https://voice-patient-web.vercel.app";
+  const ORIGIN = "https://www.scarevision.co.uk";
+
+  let currentSessionId = null;
+  let gradingPollTimer = null;
+
+  function $(id) { return document.getElementById(id); }
+
+  // ---------- Always-visible debug + grading UI ----------
+  function ensureUiRoot() {
+    let root = document.getElementById("vp-root");
+    if (root) return root;
+
+    root = document.createElement("div");
+    root.id = "vp-root";
+    root.style.border = "2px solid #333";
+    root.style.borderRadius = "12px";
+    root.style.padding = "12px";
+    root.style.margin = "12px 0";
+    root.style.background = "#fff";
+    root.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    root.style.fontSize = "14px";
+
+    // insert at top of body (guaranteed visible)
+    document.body.insertBefore(root, document.body.firstChild);
+
+    const title = document.createElement("div");
+    title.style.fontWeight = "700";
+    title.textContent = `Voice Patient Debug Panel (${VERSION})`;
+    root.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.id = "vp-meta";
+    meta.style.marginTop = "6px";
+    meta.style.opacity = "0.9";
+    root.appendChild(meta);
+
+    const btnRow = document.createElement("div");
+    btnRow.style.display = "flex";
+    btnRow.style.gap = "8px";
+    btnRow.style.marginTop = "10px";
+
+    const btnFetch = document.createElement("button");
+    btnFetch.textContent = "Fetch grading now";
+    btnFetch.onclick = () => pollGradingOnce(true);
+    btnRow.appendChild(btnFetch);
+
+    const btnClear = document.createElement("button");
+    btnClear.textContent = "Clear debug";
+    btnClear.onclick = () => {
+      const pre = document.getElementById("vp-debug");
+      if (pre) pre.textContent = "";
+    };
+    btnRow.appendChild(btnClear);
+
+    root.appendChild(btnRow);
+
+    const debug = document.createElement("pre");
+    debug.id = "vp-debug";
+    debug.style.whiteSpace = "pre-wrap";
+    debug.style.marginTop = "10px";
+    debug.style.padding = "10px";
+    debug.style.border = "1px solid #ddd";
+    debug.style.borderRadius = "10px";
+    debug.style.maxHeight = "240px";
+    debug.style.overflow = "auto";
+    debug.style.background = "#fafafa";
+    root.appendChild(debug);
+
+    const grading = document.createElement("pre");
+    grading.id = "gradingOutput";
+    grading.style.whiteSpace = "pre-wrap";
+    grading.style.marginTop = "10px";
+    grading.style.padding = "10px";
+    grading.style.border = "1px solid #0a0";
+    grading.style.borderRadius = "10px";
+    grading.style.background = "#f6fff6";
+    grading.textContent = "Grading will appear here after you stop the consultation.";
+    root.appendChild(grading);
+
+    updateMeta();
+    return root;
+  }
+
+  function updateMeta(extra = {}) {
+    const meta = document.getElementById("vp-meta");
+    if (!meta) return;
+    meta.textContent =
+      `origin=${window.location.origin} | api=${API_BASE} | sessionId=${currentSessionId || "(none)"}` +
+      (extra.note ? ` | ${extra.note}` : "");
+  }
+
+  function log(message, obj) {
+    ensureUiRoot();
+    const line =
+      `[VP ${VERSION}] ${new Date().toISOString()}  ${message}` +
+      (obj ? `\n${JSON.stringify(obj, null, 2)}` : "");
+    console.log(line);
+    const pre = document.getElementById("vp-debug");
+    if (pre) {
+      pre.textContent += line + "\n";
+      pre.scrollTop = pre.scrollHeight;
     }
-    transport = await create_transport(runner_args, transport_params)
-    await run_bot(transport, runner_args)
+  }
+
+  function setStatus(text) {
+    // still update your existing status element if present
+    const el = $("status");
+    if (el) el.textContent = text;
+    log(`[STATUS] ${text}`);
+    updateMeta({ note: text });
+  }
+
+  function setUiConnected(connected) {
+    const startBtn = $("startBtn");
+    const stopBtn  = $("stopBtn");
+    if (startBtn) startBtn.disabled = connected;
+    if (stopBtn)  stopBtn.disabled  = !connected;
+    log(`[UI] connected=${connected}`);
+  }
+
+  async function fetchJsonDebug(url, options) {
+    log(`[FETCH] ${options?.method || "GET"} ${url}`, options);
+
+    const resp = await fetch(url, options);
+    const ct = resp.headers.get("content-type");
+    const status = resp.status;
+    const text = await resp.text();
+
+    log(`[FETCH RESP] ${status} ${url}`, {
+      contentType: ct,
+      bodyPreview: text.slice(0, 300),
+    });
+
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; }
+    catch {
+      throw new Error(`Non-JSON from ${url} status=${status} ct=${ct} body=${text.slice(0, 120)}`);
+    }
+
+    if (!resp.ok) {
+      throw new Error((data && (data.error || data.message)) || `HTTP ${status}`);
+    }
+
+    return data;
+  }
+
+  // ---------- Daily iframe ----------
+  let callIframe = null;
+
+  function mountDailyIframe(dailyRoom, dailyToken) {
+    let container = $("call");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "call";
+      container.style.marginTop = "12px";
+      document.body.appendChild(container);
+    }
+
+    if (callIframe) {
+      try { callIframe.remove(); } catch {}
+      callIframe = null;
+    }
+
+    const url = `${dailyRoom}?t=${encodeURIComponent(dailyToken)}`;
+    log("[DAILY] mounting iframe", { url });
+
+    callIframe = document.createElement("iframe");
+    callIframe.allow = "microphone; camera; autoplay; display-capture";
+    callIframe.src = url;
+    callIframe.style.width = "100%";
+    callIframe.style.height = "520px";
+    callIframe.style.border = "0";
+    callIframe.style.borderRadius = "12px";
+    callIframe.onload = () => log("[DAILY] iframe loaded");
+
+    container.appendChild(callIframe);
+  }
+
+function unmountDailyIframe() {
+  log("[DAILY] unmount iframe");
+  if (callIframe) {
+    try { callIframe.src = "about:blank"; } catch {}
+    try { callIframe.remove(); } catch {}
+    callIframe = null;
+  }
+}
 
 
-if __name__ == "__main__":
-    from pipecat.runner.run import main
-    main()
+  // ---------- Cases ----------
+  async function populateCaseDropdown() {
+    const sel = $("caseSelect");
+    if (!sel) {
+      log("UI ERROR: caseSelect not found");
+      setStatus("caseSelect not found in page HTML");
+      return;
+    }
+
+    sel.innerHTML = `<option>Loading cases…</option>`;
+    setStatus("Loading cases…");
+
+    try {
+      const data = await fetchJsonDebug(`${API_BASE}/api/cases`, {
+        method: "GET",
+        cache: "no-store",
+        mode: "cors",
+      });
+
+      if (!data?.ok || !Array.isArray(data.cases)) throw new Error("Invalid /api/cases response");
+
+      sel.innerHTML = "";
+      for (const n of data.cases) {
+        const opt = document.createElement("option");
+        opt.value = String(n);
+        opt.textContent = `Case ${n}`;
+        sel.appendChild(opt);
+      }
+
+      if (data.cases.length) sel.value = String(data.cases[data.cases.length - 1]);
+      log("[CASES] loaded", { count: data.cases.length, selected: sel.value });
+      setStatus("Cases loaded. Choose a case then Start.");
+    } catch (e) {
+      log("[CASES] error", { error: e?.message || String(e) });
+      setStatus("Failed to load cases (see debug panel).");
+      sel.innerHTML = `<option>Error loading cases</option>`;
+    }
+  }
+
+  // ---------- Grading poll ----------
+  async function pollGradingOnce(manual = false) {
+    ensureUiRoot();
+    const out = document.getElementById("gradingOutput");
+
+    if (!currentSessionId) {
+      out.textContent = "No sessionId yet — start a consultation first.";
+      log("[GRADING] no currentSessionId");
+      return;
+    }
+
+    try {
+      const data = await fetchJsonDebug(
+        `${API_BASE}/api/get-grading?sessionId=${encodeURIComponent(currentSessionId)}`,
+        { method: "GET", cache: "no-store", mode: "cors" }
+      );
+
+      log("[GRADING] get-grading response", data);
+
+      if (data?.status === "ready") {
+        out.textContent = data.gradingText || "(gradingText empty)";
+        setStatus("Grading ready.");
+        stopGradingPoll();
+      } else if (data?.status === "pending") {
+        out.textContent = "Waiting for grading… (still processing)";
+        if (manual) setStatus("Grading pending…");
+      } else if (data?.status === "error") {
+        out.textContent = "Grading error:\n" + (data.error || "Unknown error");
+        if (manual) setStatus("Grading error.");
+        stopGradingPoll();
+      } else {
+        out.textContent = "No grading found yet (store empty / cold start).";
+        if (manual) setStatus("No grading found yet.");
+      }
+    } catch (e) {
+      out.textContent = "Error fetching grading (see debug panel).";
+      log("[GRADING] fetch error", { error: e?.message || String(e) });
+      if (manual) setStatus("Error fetching grading.");
+    }
+  }
+
+  function startGradingPoll() {
+    stopGradingPoll();
+    log("[GRADING] start polling", { sessionId: currentSessionId });
+    const out = document.getElementById("gradingOutput");
+    out.textContent = "Waiting for grading… (polling every 2s)";
+    gradingPollTimer = setInterval(() => pollGradingOnce(false), 2000);
+    pollGradingOnce(false);
+  }
+
+  function stopGradingPoll() {
+    if (gradingPollTimer) {
+      clearInterval(gradingPollTimer);
+      gradingPollTimer = null;
+      log("[GRADING] stop polling");
+    }
+  }
+
+  // ---------- Start/Stop ----------
+  async function startConsultation() {
+    ensureUiRoot();
+    stopGradingPoll();
+    document.getElementById("gradingOutput").textContent =
+      "Grading will appear here after you stop the consultation.";
+    currentSessionId = null;
+    updateMeta();
+
+    try {
+      setUiConnected(true);
+      setStatus("Starting session…");
+
+      const sel = $("caseSelect");
+      const raw = sel ? sel.value : null;
+      const caseId = Number(raw) || 1;
+      log("[START] selected case", { rawValue: raw, parsedCaseId: caseId });
+
+      const data = await fetchJsonDebug(`${API_BASE}/api/start-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseId }),
+        mode: "cors",
+      });
+
+      if (!data?.ok) throw new Error(data?.error || "Start failed");
+      if (!data.dailyRoom || !data.dailyToken) throw new Error("Missing dailyRoom/dailyToken");
+
+      currentSessionId = data.sessionId || null;
+      updateMeta();
+      log("[START] started", { currentSessionId });
+
+      mountDailyIframe(data.dailyRoom, data.dailyToken);
+      setStatus(`Connected (Case ${caseId}). Talk, then press Stop.`);
+    } catch (e) {
+      log("[START] error", { error: e?.message || String(e) });
+      setStatus("Error starting (see debug panel).");
+      setUiConnected(false);
+      unmountDailyIframe();
+    }
+  }
+
+  function stopConsultation() {
+    ensureUiRoot();
+    log("[STOP] clicked", { currentSessionId });
+    unmountDailyIframe();
+    setUiConnected(false);
+    setStatus("Stopped. Waiting for grading…");
+
+    if (currentSessionId) startGradingPoll();
+    else document.getElementById("gradingOutput").textContent = "No sessionId available; cannot fetch grading.";
+  }
+
+  // ---------- Boot ----------
+  window.addEventListener("DOMContentLoaded", () => {
+    ensureUiRoot();
+    log("[BOOT] DOMContentLoaded", {
+      href: window.location.href,
+      origin: window.location.origin,
+      apiBase: API_BASE,
+      expectedOrigin: ORIGIN,
+      hasCaseSelect: !!$("caseSelect"),
+      hasStartBtn: !!$("startBtn"),
+      hasStopBtn: !!$("stopBtn"),
+      hasStatus: !!$("status"),
+    });
+
+    const startBtn = $("startBtn");
+    const stopBtn  = $("stopBtn");
+    if (startBtn) startBtn.addEventListener("click", startConsultation);
+    if (stopBtn) stopBtn.addEventListener("click", stopConsultation);
+
+    setUiConnected(false);
+    setStatus("Not connected");
+    populateCaseDropdown();
+  });
+})();
