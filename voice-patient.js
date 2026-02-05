@@ -1,6 +1,22 @@
-// voice-patient.js (Vercel version)
+// voice-patient.js
+// Squarespace-hosted page loads this script from:
+// <script defer src="https://voice-patient-web.vercel.app/voice-patient.js"></script>
+//
+// This version assumes:
+// - Your Squarespace page contains the elements you showed: caseSelect, startBtn, stopBtn, status, log, and (optionally) a <div id="call"></div>
+// - Your Vercel project provides these API routes:
+//     https://voice-patient-web.vercel.app/api/cases
+//     https://voice-patient-web.vercel.app/api/start-session
+// - The API routes are CORS-enabled to allow requests from your Squarespace domain
+
 (() => {
-  function $(id) { return document.getElementById(id); }
+  // IMPORTANT: since the HTML is on Squarespace, we must call the Vercel API by absolute URL.
+  const API_BASE = "https://voice-patient-web.vercel.app";
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
   function log(message) {
     console.log(message);
     const logEl = $("log");
@@ -8,21 +24,63 @@
     logEl.value += message + "\n";
     logEl.scrollTop = logEl.scrollHeight;
   }
-  function setStatus(text) { const el = $("status"); if (el) el.textContent = text; }
-  function setUiConnected(connected) {
-    $("startBtn").disabled = connected;
-    $("stopBtn").disabled = !connected;
+
+  function setStatus(text) {
+    const statusEl = $("status");
+    if (statusEl) statusEl.textContent = text;
   }
 
-  let callIframe = null;
+  function setUiConnected(connected) {
+    const startBtn = $("startBtn");
+    const stopBtn = $("stopBtn");
+    if (startBtn) startBtn.disabled = connected;
+    if (stopBtn) stopBtn.disabled = !connected;
+  }
 
+  async function fetchJson(url, options) {
+    const resp = await fetch(url, options);
+    const text = await resp.text();
+
+    let data;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (e) {
+      // This is the exact failure you were seeing when Squarespace returned HTML.
+      throw new Error(
+        `Non-JSON response from ${url} (status ${resp.status}). ` +
+          `First 120 chars: ${text.slice(0, 120)}`
+      );
+    }
+
+    if (!resp.ok) {
+      throw new Error(
+        (data && (data.error || data.message)) ||
+          `Request failed with status ${resp.status}`
+      );
+    }
+
+    return data;
+  }
+
+  // -------------------- Cases dropdown --------------------
   async function populateCaseDropdown() {
     const sel = $("caseSelect");
+    if (!sel) {
+      log("UI ERROR: caseSelect not found in HTML.");
+      return;
+    }
+
     sel.innerHTML = `<option>Loading cases…</option>`;
+
     try {
-      const resp = await fetch(`/api/cases`, { cache: "no-store" });
-      const data = await resp.json();
-      if (!data.ok) throw new Error(data.error || "Failed to load cases");
+      const data = await fetchJson(`${API_BASE}/api/cases`, {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      if (!data?.ok || !Array.isArray(data.cases)) {
+        throw new Error("Invalid /api/cases response shape");
+      }
 
       sel.innerHTML = "";
       for (const n of data.cases) {
@@ -31,72 +89,115 @@
         opt.textContent = `Case ${n}`;
         sel.appendChild(opt);
       }
+
       if (data.cases.length) sel.value = String(data.cases[data.cases.length - 1]);
       log(`[CASES] loaded ${data.cases.length} cases`);
     } catch (err) {
       sel.innerHTML = `<option>Error loading cases</option>`;
       log("[CASES] error: " + (err?.message || String(err)));
+      setStatus("Failed to load cases (check console/log).");
     }
   }
 
+  // -------------------- Daily embed --------------------
+  let callIframe = null;
+
+  function mountDailyIframe(dailyRoom, dailyToken) {
+    // You can optionally add <div id="call"></div> to your Squarespace HTML.
+    // If it's not present, we’ll inject the iframe after the status element.
+    let container = $("call");
+    if (!container) {
+      const statusEl = $("status");
+      container = document.createElement("div");
+      container.id = "call";
+      container.style.marginTop = "12px";
+      if (statusEl?.parentNode) statusEl.parentNode.insertBefore(container, statusEl.nextSibling);
+      else document.body.appendChild(container);
+    }
+
+    if (callIframe) {
+      try { callIframe.remove(); } catch {}
+      callIframe = null;
+    }
+
+    callIframe = document.createElement("iframe");
+    callIframe.allow = "microphone; camera; autoplay; display-capture";
+
+    // Pipecat docs: join Daily room using token query param "?t=..."
+    callIframe.src = `${dailyRoom}?t=${encodeURIComponent(dailyToken)}`;
+
+    callIframe.style.width = "100%";
+    callIframe.style.height = "520px";
+    callIframe.style.border = "0";
+    callIframe.style.borderRadius = "12px";
+
+    container.appendChild(callIframe);
+  }
+
+  function unmountDailyIframe() {
+    if (callIframe) {
+      try { callIframe.remove(); } catch {}
+      callIframe = null;
+    }
+  }
+
+  // -------------------- Start/Stop --------------------
   async function startConsultation() {
     try {
       setUiConnected(true);
       setStatus("Starting session…");
 
-      const caseId = Number($("caseSelect")?.value) || 1;
+      const sel = $("caseSelect");
+      const caseId = Number(sel?.value) || 1;
 
-      const resp = await fetch(`/api/start-session`, {
+      log(`[START] requesting session for caseId=${caseId}`);
+
+      const data = await fetchJson(`${API_BASE}/api/start-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ caseId }),
       });
 
-      const data = await resp.json();
-      if (!data.ok) throw new Error(data.error || "Failed to start session");
+      if (!data?.ok) throw new Error(data?.error || "Start failed");
+      if (!data.dailyRoom || !data.dailyToken) throw new Error("Missing dailyRoom/dailyToken in response");
 
-      log(`[START] sessionId=${data.sessionId}`);
-      log(`[START] room=${data.dailyRoom}`);
+      log(`[START] sessionId=${data.sessionId || "(none)"}`);
+      log(`[START] dailyRoom=${data.dailyRoom}`);
 
-      // Embed Daily room (token in query)
-      const container = $("call");
-      if (!container) throw new Error("Missing <div id='call'></div> in HTML");
-
-      if (callIframe) callIframe.remove();
-      callIframe = document.createElement("iframe");
-
-      callIframe.src = `${data.dailyRoom}?t=${encodeURIComponent(data.dailyToken)}`;
-      callIframe.allow = "microphone; camera; autoplay; display-capture";
-      callIframe.style.width = "100%";
-      callIframe.style.height = "520px";
-      callIframe.style.border = "0";
-      callIframe.style.borderRadius = "12px";
-
-      container.appendChild(callIframe);
+      mountDailyIframe(data.dailyRoom, data.dailyToken);
 
       setStatus(`Connected (Case ${caseId}). Start talking!`);
     } catch (err) {
       log("[ERROR] " + (err?.message || String(err)));
       setStatus("Error: " + (err?.message || String(err)));
       setUiConnected(false);
+      unmountDailyIframe();
     }
   }
 
   function stopConsultation() {
     log("Stopping consultation.");
-    if (callIframe) {
-      callIframe.remove();
-      callIframe = null;
-    }
+    unmountDailyIframe();
     setUiConnected(false);
     setStatus("Stopped.");
   }
 
+  // -------------------- Boot --------------------
   window.addEventListener("DOMContentLoaded", () => {
-    $("startBtn").addEventListener("click", startConsultation);
-    $("stopBtn").addEventListener("click", stopConsultation);
-    populateCaseDropdown();
+    const startBtn = $("startBtn");
+    const stopBtn = $("stopBtn");
+
+    if (!startBtn || !stopBtn) {
+      log("UI ERROR: startBtn/stopBtn not found. Check element IDs in Squarespace HTML.");
+      return;
+    }
+
+    startBtn.addEventListener("click", startConsultation);
+    stopBtn.addEventListener("click", stopConsultation);
+
     setUiConnected(false);
     setStatus("Not connected");
+
+    populateCaseDropdown();
   });
 })();
