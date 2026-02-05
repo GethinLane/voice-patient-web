@@ -119,33 +119,51 @@ function transcriptToText(transcript) {
 
 // -------- OpenAI evaluation (returns booleans + evidence) --------
 
-function extractResponseText(respJson) {
-  if (respJson?.output_text) return respJson.output_text;
-
+function collectAllAssistantText(respJson) {
+  // Prefer structured output content segments from Responses API
   const out = respJson?.output;
-  if (!Array.isArray(out)) return "";
+  if (!Array.isArray(out)) return respJson?.output_text || "";
+
   let s = "";
   for (const item of out) {
-    if (item?.type === "message" && item?.role === "assistant" && Array.isArray(item?.content)) {
-      for (const c of item.content) {
-        if (c?.type === "output_text" && typeof c.text === "string") s += c.text;
-      }
+    if (item?.type !== "message") continue;
+    if (item?.role !== "assistant") continue;
+
+    const content = item?.content;
+    if (!Array.isArray(content)) continue;
+
+    for (const c of content) {
+      // Most common: { type:"output_text", text:"..." }
+      if (typeof c?.text === "string") s += c.text;
+      // Some variants: { type:"text", text:"..." }
+      else if (c?.type === "text" && typeof c?.text === "string") s += c.text;
     }
   }
-  return s;
+
+  // Fallback
+  return s || respJson?.output_text || "";
 }
 
-function safeJsonParse(text) {
+function safeJsonParseAny(text) {
   if (!text) return null;
-  try { return JSON.parse(text); } catch {}
-  // try to salvage
-  const i = text.indexOf("{");
-  const j = text.lastIndexOf("}");
+
+  // Trim whitespace
+  const t = String(text).trim();
+
+  // If it's already valid JSON, great
+  try { return JSON.parse(t); } catch {}
+
+  // Try to salvage the largest {...} block
+  const i = t.indexOf("{");
+  const j = t.lastIndexOf("}");
   if (i >= 0 && j > i) {
-    try { return JSON.parse(text.slice(i, j + 1)); } catch {}
+    const slice = t.slice(i, j + 1);
+    try { return JSON.parse(slice); } catch {}
   }
+
   return null;
 }
+
 
 export async function gradeTranscriptWithIndicators({ openaiKey, model, transcript, marking }) {
   const transcriptText = transcriptToText(transcript);
