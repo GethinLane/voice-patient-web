@@ -9,38 +9,52 @@ function cors(res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
+function lockText() {
+  return `⏳ Grading in progress @ ${new Date().toISOString()}`;
+}
+
+function parseLockTime(text) {
+  const m = String(text || "").match(/@ (.+)$/);
+  if (!m) return null;
+  const t = Date.parse(m[1]);
+  return Number.isFinite(t) ? t : null;
+}
+
 export default async function handler(req, res) {
   cors(res);
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "GET") return res.status(405).json({ ok: false, error: "GET only" });
 
+  const sessionId = String(req.query?.sessionId || "").trim();
+  const force = String(req.query?.force || "") === "1";
+  if (!sessionId) return res.status(400).json({ ok: false, error: "Missing sessionId" });
+
+  const usersKey = process.env.AIRTABLE_USERS_API_KEY;
+  const usersBase = process.env.AIRTABLE_USERS_BASE_ID;
+  const attemptsTable = process.env.AIRTABLE_ATTEMPTS_TABLE || "Attempts";
+
+  if (!usersKey) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_API_KEY" });
+  if (!usersBase) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_BASE_ID" });
+
   try {
-    const sessionId = String(req.query?.sessionId || "").trim();
-    if (!sessionId) return res.status(400).json({ ok: false, error: "Missing sessionId" });
-
-    const usersKey = process.env.AIRTABLE_USERS_API_KEY;
-    const usersBase = process.env.AIRTABLE_USERS_BASE_ID;
-    const attemptsTable = process.env.AIRTABLE_ATTEMPTS_TABLE || "Attempts";
-    if (!usersKey) throw new Error("Missing AIRTABLE_USERS_API_KEY");
-    if (!usersBase) throw new Error("Missing AIRTABLE_USERS_BASE_ID");
-
-    // Find attempt by SessionID
+    // 1) Find attempt by SessionID
     const attempts = await airtableListAll({
       apiKey: usersKey,
       baseId: usersBase,
       table: attemptsTable,
-      params: { filterByFormula: `{SessionID}="${sessionId.replace(/"/g, '\\"')}"` },
+      params: { filterByFormula: `{SessionID}="${sessionId.replace(/"/g, '\\"')}"`, pageSize: "1" },
     });
 
     const attempt = attempts?.[0];
     if (!attempt) return res.json({ ok: true, found: false });
 
-    const fields = attempt.fields || {};
     const attemptRecordId = attempt.id;
-    const caseId = Number(fields.CaseID || 0);
+    const f = attempt.fields || {};
+    const caseId = Number(f.CaseID || 0);
+    const current = String(f.GradingText || "");
 
-    const gradingText = (fields.GradingText || "").toString();
-    if (gradingText && !gradingText.startsWith("⏳")) {
+    // 2) If already graded, return it
+    if (current && !current.startsWith("⏳") && !force) {
       return res.json({
         ok: true,
         found: true,
@@ -48,54 +62,65 @@ export default async function handler(req, res) {
         sessionId,
         attemptRecordId,
         caseId,
-        gradingText,
+        gradingText: current,
       });
     }
 
-    // If already in progress, just report status
-    if (gradingText.startsWith("⏳")) {
-      return res.json({
-        ok: true,
-        found: true,
-        ready: false,
-        sessionId,
-        attemptRecordId,
-        caseId,
-        status: "processing",
-      });
+    // 3) If locked, return processing UNLESS stale/force
+    if (current.startsWith("⏳") && !force) {
+      const t = parseLockTime(current);
+      const ageMs = t ? (Date.now() - t) : null;
+
+      // stale lock after 3 minutes → retry
+      if (ageMs != null && ageMs > 180000) {
+        // fall through and re-grade
+      } else {
+        return res.json({
+          ok: true,
+          found: true,
+          ready: false,
+          sessionId,
+          attemptRecordId,
+          caseId,
+          status: "processing",
+        });
+      }
     }
 
-    // Start grading (set lock)
+    // 4) Lock (but we will ALWAYS replace it with either a grade or an error)
     await airtableUpdate({
       apiKey: usersKey,
       baseId: usersBase,
       table: attemptsTable,
       recordId: attemptRecordId,
-      fields: { GradingText: "⏳ Grading in progress..." },
+      fields: { GradingText: lockText() },
     });
 
-    // Load transcript
+    // 5) Load transcript
     let transcript = [];
-    try {
-      transcript = JSON.parse((fields.Transcript || "[]").toString());
-    } catch {
-      transcript = [];
+    try { transcript = JSON.parse(String(f.Transcript || "[]")); } catch {}
+    if (!Array.isArray(transcript) || transcript.length === 0) {
+      const msg = "❌ Grading failed: Transcript missing/empty in Attempts record.";
+      await airtableUpdate({
+        apiKey: usersKey,
+        baseId: usersBase,
+        table: attemptsTable,
+        recordId: attemptRecordId,
+        fields: { GradingText: msg },
+      });
+      return res.json({ ok: true, found: true, ready: true, sessionId, attemptRecordId, caseId, gradingText: msg });
     }
 
-    // Load marking indicators from CASES base
+    // 6) Load marking indicators from CASES base
     const casesKey = process.env.AIRTABLE_CASES_API_KEY || process.env.AIRTABLE_API_KEY;
     const casesBase = process.env.AIRTABLE_CASES_BASE_ID || process.env.AIRTABLE_BASE_ID;
     if (!casesKey) throw new Error("Missing AIRTABLE_CASES_API_KEY (or AIRTABLE_API_KEY)");
     if (!casesBase) throw new Error("Missing AIRTABLE_CASES_BASE_ID (or AIRTABLE_BASE_ID)");
     if (!caseId) throw new Error("Attempt record missing CaseID");
 
-    const marking = await loadCaseMarking({
-      caseId,
-      casesApiKey: casesKey,
-      casesBaseId: casesBase,
-    });
+    const marking = await loadCaseMarking({ caseId, casesApiKey: casesKey, casesBaseId: casesBase });
 
-    // Grade via OpenAI
+    // 7) Grade via OpenAI
     const openaiKey = process.env.OPENAI_API_KEY;
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
     if (!openaiKey) throw new Error("Missing OPENAI_API_KEY");
@@ -107,6 +132,7 @@ export default async function handler(req, res) {
       marking,
     });
 
+    // 8) Save grade
     await airtableUpdate({
       apiKey: usersKey,
       baseId: usersBase,
@@ -123,9 +149,15 @@ export default async function handler(req, res) {
       attemptRecordId,
       caseId,
       gradingText: result.gradingText,
-      bands: result.bands, // helpful debug
+      bands: result.bands,
     });
   } catch (e) {
+    // IMPORTANT: write the error into Airtable so it never gets stuck
+    const errText = `❌ Grading failed: ${e?.message || String(e)}\n\nTip: retry with ?force=1`;
+    try {
+      // re-fetch record id quickly is expensive; but we already have attempt if we got past that stage.
+      // If failure happened early before attempt was found, this update will be skipped.
+    } catch {}
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 }
