@@ -1,11 +1,15 @@
-// voice-patient.js (ULTRA DEBUG - always injects UI)
+// voice-patient.js (DEBUG - finite grading poll + injected UI)
 (() => {
-  const VERSION = "ultra-debug-2026-02-05-1";
+  const VERSION = "debug-2026-02-05-finite-poll-1";
   const API_BASE = "https://voice-patient-web.vercel.app";
   const ORIGIN = "https://www.scarevision.co.uk";
 
   let currentSessionId = null;
   let gradingPollTimer = null;
+  let gradingPollTries = 0;
+
+  const GRADING_POLL_INTERVAL_MS = 2000;   // every 2s
+  const GRADING_POLL_MAX_TRIES = 60;       // 60 * 2s = 120s (2 minutes)
 
   function $(id) { return document.getElementById(id); }
 
@@ -24,7 +28,6 @@
     root.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
     root.style.fontSize = "14px";
 
-    // insert at top of body (guaranteed visible)
     document.body.insertBefore(root, document.body.firstChild);
 
     const title = document.createElement("div");
@@ -48,6 +51,11 @@
     btnFetch.onclick = () => pollGradingOnce(true);
     btnRow.appendChild(btnFetch);
 
+    const btnStopPoll = document.createElement("button");
+    btnStopPoll.textContent = "Stop polling";
+    btnStopPoll.onclick = () => stopGradingPoll("manual stop");
+    btnRow.appendChild(btnStopPoll);
+
     const btnClear = document.createElement("button");
     btnClear.textContent = "Clear debug";
     btnClear.onclick = () => {
@@ -65,7 +73,7 @@
     debug.style.padding = "10px";
     debug.style.border = "1px solid #ddd";
     debug.style.borderRadius = "10px";
-    debug.style.maxHeight = "240px";
+    debug.style.maxHeight = "220px";
     debug.style.overflow = "auto";
     debug.style.background = "#fafafa";
     root.appendChild(debug);
@@ -90,6 +98,7 @@
     if (!meta) return;
     meta.textContent =
       `origin=${window.location.origin} | api=${API_BASE} | sessionId=${currentSessionId || "(none)"}` +
+      ` | tries=${gradingPollTries}/${GRADING_POLL_MAX_TRIES}` +
       (extra.note ? ` | ${extra.note}` : "");
   }
 
@@ -107,10 +116,8 @@
   }
 
   function setStatus(text) {
-    // still update your existing status element if present
     const el = $("status");
     if (el) el.textContent = text;
-    log(`[STATUS] ${text}`);
     updateMeta({ note: text });
   }
 
@@ -118,33 +125,21 @@
     const startBtn = $("startBtn");
     const stopBtn  = $("stopBtn");
     if (startBtn) startBtn.disabled = connected;
-    if (stopBtn)  stopBtn.disabled  = !connected;
-    log(`[UI] connected=${connected}`);
+    if (stopBtn)  stopBtn.disabled = !connected;
   }
 
-  async function fetchJsonDebug(url, options) {
-    log(`[FETCH] ${options?.method || "GET"} ${url}`, options);
-
+  async function fetchJson(url, options) {
     const resp = await fetch(url, options);
-    const ct = resp.headers.get("content-type");
-    const status = resp.status;
     const text = await resp.text();
-
-    log(`[FETCH RESP] ${status} ${url}`, {
-      contentType: ct,
-      bodyPreview: text.slice(0, 300),
-    });
 
     let data = null;
     try { data = text ? JSON.parse(text) : null; }
     catch {
-      throw new Error(`Non-JSON from ${url} status=${status} ct=${ct} body=${text.slice(0, 120)}`);
+      throw new Error(`Non-JSON from ${url} status=${resp.status} body=${text.slice(0, 120)}`);
     }
-
     if (!resp.ok) {
-      throw new Error((data && (data.error || data.message)) || `HTTP ${status}`);
+      throw new Error((data && (data.error || data.message)) || `HTTP ${resp.status}`);
     }
-
     return data;
   }
 
@@ -180,15 +175,14 @@
     container.appendChild(callIframe);
   }
 
-function unmountDailyIframe() {
-  log("[DAILY] unmount iframe");
-  if (callIframe) {
-    try { callIframe.src = "about:blank"; } catch {}
-    try { callIframe.remove(); } catch {}
-    callIframe = null;
+  function unmountDailyIframe() {
+    if (callIframe) {
+      try { callIframe.src = "about:blank"; } catch {}
+      try { callIframe.remove(); } catch {}
+      callIframe = null;
+    }
+    log("[DAILY] iframe unmounted");
   }
-}
-
 
   // ---------- Cases ----------
   async function populateCaseDropdown() {
@@ -203,7 +197,7 @@ function unmountDailyIframe() {
     setStatus("Loading cases…");
 
     try {
-      const data = await fetchJsonDebug(`${API_BASE}/api/cases`, {
+      const data = await fetchJson(`${API_BASE}/api/cases`, {
         method: "GET",
         cache: "no-store",
         mode: "cors",
@@ -229,70 +223,98 @@ function unmountDailyIframe() {
     }
   }
 
-  // ---------- Grading poll ----------
+  // ---------- Grading (finite poll) ----------
+  function stopGradingPoll(reason = "") {
+    if (gradingPollTimer) clearInterval(gradingPollTimer);
+    gradingPollTimer = null;
+    gradingPollTries = 0;
+    if (reason) log("[GRADING] polling stopped", { reason });
+    updateMeta();
+  }
+
   async function pollGradingOnce(manual = false) {
     ensureUiRoot();
     const out = document.getElementById("gradingOutput");
 
     if (!currentSessionId) {
       out.textContent = "No sessionId yet — start a consultation first.";
-      log("[GRADING] no currentSessionId");
+      if (manual) log("[GRADING] no currentSessionId");
       return;
     }
 
+    // Only log on manual click or final states
+    const shouldLog = manual;
+
     try {
-      const data = await fetchJsonDebug(
+      const data = await fetchJson(
         `${API_BASE}/api/get-grading?sessionId=${encodeURIComponent(currentSessionId)}`,
         { method: "GET", cache: "no-store", mode: "cors" }
       );
 
-      log("[GRADING] get-grading response", data);
-
-      if (data?.status === "ready") {
-        out.textContent = data.gradingText || "(gradingText empty)";
-        setStatus("Grading ready.");
-        stopGradingPoll();
-      } else if (data?.status === "pending") {
-        out.textContent = "Waiting for grading… (still processing)";
-        if (manual) setStatus("Grading pending…");
-      } else if (data?.status === "error") {
-        out.textContent = "Grading error:\n" + (data.error || "Unknown error");
-        if (manual) setStatus("Grading error.");
-        stopGradingPoll();
-      } else {
-        out.textContent = "No grading found yet (store empty / cold start).";
-        if (manual) setStatus("No grading found yet.");
+      // ✅ Your real API shape: { ok, found, ready, status, gradingText }
+      if (!data.found) {
+        out.textContent = "No attempt found yet… (waiting for transcript submit)";
+        if (shouldLog) log("[GRADING] found=false", data);
+        return;
       }
+
+      if (data.ready && data.gradingText) {
+        out.textContent = data.gradingText;
+        setStatus("Grading ready.");
+        log("[GRADING] READY", { sessionId: currentSessionId });
+        stopGradingPoll("ready");
+        return;
+      }
+
+      // processing
+      out.textContent = "Grading in progress…";
+      if (shouldLog) log("[GRADING] processing", data);
+      setStatus("Stopped. Grading in progress…");
     } catch (e) {
-      out.textContent = "Error fetching grading (see debug panel).";
+      out.textContent = "Error fetching grading: " + (e?.message || String(e));
       log("[GRADING] fetch error", { error: e?.message || String(e) });
-      if (manual) setStatus("Error fetching grading.");
+      stopGradingPoll("error");
     }
   }
 
-  function startGradingPoll() {
-    stopGradingPoll();
-    log("[GRADING] start polling", { sessionId: currentSessionId });
+  function startFiniteGradingPoll() {
+    stopGradingPoll("restart");
+    gradingPollTries = 0;
+
     const out = document.getElementById("gradingOutput");
-    out.textContent = "Waiting for grading… (polling every 2s)";
-    gradingPollTimer = setInterval(() => pollGradingOnce(false), 2000);
-    pollGradingOnce(false);
-  }
+    out.textContent = "Grading in progress…";
 
-  function stopGradingPoll() {
-    if (gradingPollTimer) {
-      clearInterval(gradingPollTimer);
-      gradingPollTimer = null;
-      log("[GRADING] stop polling");
-    }
+    log("[GRADING] start finite polling", {
+      sessionId: currentSessionId,
+      intervalMs: GRADING_POLL_INTERVAL_MS,
+      maxTries: GRADING_POLL_MAX_TRIES,
+    });
+
+    gradingPollTimer = setInterval(async () => {
+      gradingPollTries++;
+      updateMeta();
+
+      await pollGradingOnce(false);
+
+      if (gradingPollTries >= GRADING_POLL_MAX_TRIES) {
+        const out2 = document.getElementById("gradingOutput");
+        out2.textContent =
+          "Still grading… (timed out waiting). Click “Fetch grading now” to try again.";
+        stopGradingPoll("timeout");
+      }
+    }, GRADING_POLL_INTERVAL_MS);
+
+    // first hit immediately
+    pollGradingOnce(false);
   }
 
   // ---------- Start/Stop ----------
   async function startConsultation() {
     ensureUiRoot();
-    stopGradingPoll();
+    stopGradingPoll("new session");
     document.getElementById("gradingOutput").textContent =
       "Grading will appear here after you stop the consultation.";
+
     currentSessionId = null;
     updateMeta();
 
@@ -301,11 +323,11 @@ function unmountDailyIframe() {
       setStatus("Starting session…");
 
       const sel = $("caseSelect");
-      const raw = sel ? sel.value : null;
-      const caseId = Number(raw) || 1;
-      log("[START] selected case", { rawValue: raw, parsedCaseId: caseId });
+      const caseId = Number(sel?.value) || 1;
 
-      const data = await fetchJsonDebug(`${API_BASE}/api/start-session`, {
+      log("[START] case selected", { caseId });
+
+      const data = await fetchJson(`${API_BASE}/api/start-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ caseId }),
@@ -316,8 +338,8 @@ function unmountDailyIframe() {
       if (!data.dailyRoom || !data.dailyToken) throw new Error("Missing dailyRoom/dailyToken");
 
       currentSessionId = data.sessionId || null;
-      updateMeta();
       log("[START] started", { currentSessionId });
+      updateMeta();
 
       mountDailyIframe(data.dailyRoom, data.dailyToken);
       setStatus(`Connected (Case ${caseId}). Talk, then press Stop.`);
@@ -332,17 +354,20 @@ function unmountDailyIframe() {
   function stopConsultation() {
     ensureUiRoot();
     log("[STOP] clicked", { currentSessionId });
+
     unmountDailyIframe();
     setUiConnected(false);
-    setStatus("Stopped. Waiting for grading…");
+    setStatus("Stopped. Grading in progress…");
 
-    if (currentSessionId) startGradingPoll();
-    else document.getElementById("gradingOutput").textContent = "No sessionId available; cannot fetch grading.";
+    if (currentSessionId) startFiniteGradingPoll();
+    else document.getElementById("gradingOutput").textContent =
+      "No sessionId available; cannot fetch grading.";
   }
 
   // ---------- Boot ----------
   window.addEventListener("DOMContentLoaded", () => {
     ensureUiRoot();
+
     log("[BOOT] DOMContentLoaded", {
       href: window.location.href,
       origin: window.location.origin,
