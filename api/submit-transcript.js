@@ -1,4 +1,4 @@
-// api/submit-transcript.js
+// api/submit-transcript.js (TEST STORE WRITE)
 import { getStore } from "./_gradingStore.js";
 
 export default async function handler(req, res) {
@@ -21,36 +21,20 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing transcript[]" });
     }
 
-    // ✅ write immediately so polling sees it
+    // ✅ prove storage works
     store.set(sid, { status: "pending", caseId: cid, ts: Date.now() });
 
-    // ---- For now (TEST MODE): don't call OpenAI yet, just store a dummy grading ----
-    // This proves the end-to-end UI pipeline works without any external dependencies.
-    const dummy = `DG: Borderline Pass
-✅ (demo) Gathered some info — "Hello, how are you?"
-❌ (demo) Missed key negatives — "Not asked"
+    const gradingText = `✅ STORE TEST OK
+sessionId: ${sid}
+caseId: ${cid}
+turns: ${transcript.length}
 
-CM: Borderline Fail
-❌ (demo) No management plan discussed
+Next step: replace this dummy grading with Airtable + OpenAI grading.`;
 
-RTO: Pass
-✅ (demo) Polite communication — "Hello..."
-
-Application: Borderline Pass
-Some patient-centred phrasing but limited clinical application.
-
-Overall summary:
-This is a demo grading to confirm the plumbing works.`;
-
-    store.set(sid, { status: "ready", caseId: cid, gradingText: dummy, ts: Date.now() });
+    store.set(sid, { status: "ready", caseId: cid, gradingText, ts: Date.now() });
 
     return res.json({ ok: true, sessionId: sid });
   } catch (e) {
-    // try store error if we have sessionId
-    try {
-      const sid = String(req.body?.sessionId || "").trim();
-      if (sid) store.set(sid, { status: "error", error: e?.message || String(e), ts: Date.now() });
-    } catch {}
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 }
