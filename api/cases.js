@@ -1,24 +1,18 @@
+// api/cases.js (DEBUG)
 export default function handler(req, res) {
-  // 🔐 CORS — CHANGE THIS to your real Squarespace domain
   res.setHeader("Access-Control-Allow-Origin", "https://www.scarevision.co.uk");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // Handle preflight
-  if (req.method === "OPTIONS") {
-    res.status(200).end();
-    return;
-  }
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "GET") return res.status(405).json({ ok: false, error: "GET only" });
 
-  // Only allow GET
-  if (req.method !== "GET") {
-    res.status(405).json({ ok: false, error: "GET only" });
-    return;
-  }
-
-  // Simple static list for now
-  res.json({
+  return res.json({
     ok: true,
     cases: [1, 2, 3, 4, 5, 81],
+    debug: {
+      ts: new Date().toISOString(),
+      note: "If you can see this, CORS + routing is working.",
+    },
   });
 }
