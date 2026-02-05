@@ -1,6 +1,6 @@
 // api/submit-transcript.js
 export default async function handler(req, res) {
-  // CORS (Squarespace)
+  // CORS
   res.setHeader("Access-Control-Allow-Origin", "https://www.scarevision.co.uk");
   res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -9,11 +9,11 @@ export default async function handler(req, res) {
 
   try {
     const { sessionId, caseId, userId, transcript } = req.body || {};
-    if (!caseId || !Array.isArray(transcript)) {
+    if (!caseId || !Array.isArray(transcript) || transcript.length === 0) {
       return res.status(400).json({ ok: false, error: "Missing caseId or transcript[]" });
     }
 
-    // --- Load case grading indicators from Airtable (Case base) ---
+    // --- Airtable (Case base) ---
     const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
     const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
     if (!AIRTABLE_API_KEY) throw new Error("Missing AIRTABLE_API_KEY");
@@ -26,17 +26,16 @@ export default async function handler(req, res) {
       headers: { Authorization: `Bearer ${AIRTABLE_API_KEY}` },
     });
 
-    const caseText = await caseResp.text();
-    let caseData;
-    try { caseData = JSON.parse(caseText); } catch { caseData = null; }
+    const caseRaw = await caseResp.text();
+    let caseData = null;
+    try { caseData = JSON.parse(caseRaw); } catch {}
     if (!caseResp.ok) {
-      return res.status(caseResp.status).json({ ok: false, error: caseText.slice(0, 400) });
+      return res.status(caseResp.status).json({ ok: false, error: caseRaw.slice(0, 400) });
     }
 
     const records = caseData?.records || [];
     if (!records.length) throw new Error(`No records found in ${tableName}`);
 
-    // Helper: combine field values across rows
     const combine = (field) => {
       const parts = [];
       for (const r of records) {
@@ -58,28 +57,42 @@ export default async function handler(req, res) {
       application: combine("Application"),
     };
 
-    // --- Grade with OpenAI Responses API ---
+    // --- OpenAI grading ---
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
     if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY");
 
-    const transcriptText = transcript
-      .map((t) => `${t.role.toUpperCase()}: ${t.text}`)
-      .join("\n");
+    const transcriptText = transcript.map(t => `${String(t.role).toUpperCase()}: ${t.text}`).join("\n");
 
-    const gradingPrompt = `
+    const prompt = `
 You are an OSCE examiner. Grade the candidate based ONLY on the transcript vs the marking indicators below.
 
-Marking scheme rules:
-- Domains: DG, CM, RTO, Application.
-- Each domain gets one of: Pass, Borderline Pass, Borderline Fail, Fail.
-- The FIRST THREE indicators in each positive/negative list are higher weighting.
-- Decide if each indicator is achieved (yes/no) and quote short supporting evidence from the transcript.
-- Be strict: if not clearly evidenced, mark as not achieved.
-- Output TWO things:
-  1) A JSON object with per-domain results and indicator checklist
-  2) A readable text report (same content), formatted for display on a website.
+Domains and scoring:
+- Domains: Data gathering & diagnosis (DG), Clinical management (CM), Relating to others (RTO), Application.
+- Each domain score must be one of: Pass, Borderline Pass, Borderline Fail, Fail.
+- FIRST THREE indicators in each positive/negative list are higher weighting.
+- For each indicator, mark Achieved = Yes/No and include a short evidence quote (max ~15 words).
+- Be strict: if not clearly evidenced, mark Not achieved.
+
+Return output in TWO PARTS:
+PART A (JSON):
+{
+  "DG": {"score":"...", "positives":[{"item":"...","achieved":true/false,"evidence":"..."}], "negatives":[...]},
+  "CM": {...},
+  "RTO": {...},
+  "Application": {"score":"...", "notes":"..."},
+  "overallSummary":"..."
+}
+
+PART B (TEXT REPORT):
+A readable report with:
+- DG score + key hits/misses
+- CM score + key hits/misses
+- RTO score + key hits/misses
+- Application score + brief justification
+- Overall summary
 
 Indicators:
+
 DG positive:
 ${rubric.dg_pos || "[none]"}
 DG negative:
@@ -110,21 +123,19 @@ ${transcriptText}
       },
       body: JSON.stringify({
         model: "gpt-5.2",
-        input: gradingPrompt,
+        input: prompt,
         text: { verbosity: "low" },
-        reasoning: { effort: "none" },
+        reasoning: { effort: "low" },
       }),
     });
 
     const oaiRaw = await oaiResp.text();
-    let oai;
-    try { oai = JSON.parse(oaiRaw); } catch { oai = null; }
+    let oai = null;
+    try { oai = JSON.parse(oaiRaw); } catch {}
     if (!oaiResp.ok) {
       return res.status(oaiResp.status).json({ ok: false, error: oaiRaw.slice(0, 800) });
     }
 
-    // Responses API returns content in output_text convenience on many SDKs,
-    // but via raw HTTP we’ll extract the first text we can find.
     const extractText = (resp) => {
       if (!resp) return "";
       if (typeof resp.output_text === "string") return resp.output_text;
@@ -140,13 +151,11 @@ ${transcriptText}
     };
 
     const gradingText = extractText(oai) || "[No grading text returned]";
-    const gradingJson = JSON.stringify({ rubric, transcript, openai: oai }, null, 2);
 
-    // --- Store in Users AI Airtable (Attempts table) ---
+    // --- Store in Users AI base (Attempts table) ---
     const USERS_AIRTABLE_API_KEY = process.env.USERS_AIRTABLE_API_KEY;
     const USERS_AIRTABLE_BASE_ID = process.env.USERS_AIRTABLE_BASE_ID;
     const USERS_TABLE_NAME = process.env.USERS_TABLE_NAME || "Attempts";
-
     if (!USERS_AIRTABLE_API_KEY) throw new Error("Missing USERS_AIRTABLE_API_KEY");
     if (!USERS_AIRTABLE_BASE_ID) throw new Error("Missing USERS_AIRTABLE_BASE_ID");
 
@@ -166,7 +175,8 @@ ${transcriptText}
               caseId: Number(caseId),
               userId: userId || "",
               gradingText,
-              gradingJson,
+              // keep raw response for debugging/replay
+              gradingRaw: oaiRaw,
             },
           },
         ],
