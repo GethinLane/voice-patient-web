@@ -1,6 +1,11 @@
-// api/submit-transcript.js
+// api/submit-transcript.js (NO Users Airtable - test mode)
+function store() {
+  // survives warm invocations; resets on cold start (fine for testing)
+  if (!globalThis.__gradingStore) globalThis.__gradingStore = new Map();
+  return globalThis.__gradingStore;
+}
+
 export default async function handler(req, res) {
-  // CORS
   res.setHeader("Access-Control-Allow-Origin", "https://www.scarevision.co.uk");
   res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -8,10 +13,15 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
 
   try {
-    const { sessionId, caseId, userId, transcript } = req.body || {};
-    if (!caseId || !Array.isArray(transcript) || transcript.length === 0) {
-      return res.status(400).json({ ok: false, error: "Missing caseId or transcript[]" });
+    const { sessionId, caseId, transcript } = req.body || {};
+    if (!sessionId) return res.status(400).json({ ok: false, error: "Missing sessionId" });
+    if (!caseId) return res.status(400).json({ ok: false, error: "Missing caseId" });
+    if (!Array.isArray(transcript) || transcript.length === 0) {
+      return res.status(400).json({ ok: false, error: "Missing transcript[]" });
     }
+
+    // mark as pending
+    store().set(sessionId, { status: "pending", ts: Date.now() });
 
     // --- Airtable (Case base) ---
     const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY;
@@ -29,9 +39,7 @@ export default async function handler(req, res) {
     const caseRaw = await caseResp.text();
     let caseData = null;
     try { caseData = JSON.parse(caseRaw); } catch {}
-    if (!caseResp.ok) {
-      return res.status(caseResp.status).json({ ok: false, error: caseRaw.slice(0, 400) });
-    }
+    if (!caseResp.ok) throw new Error(`Airtable error: ${caseRaw.slice(0, 300)}`);
 
     const records = caseData?.records || [];
     if (!records.length) throw new Error(`No records found in ${tableName}`);
@@ -68,28 +76,27 @@ You are an OSCE examiner. Grade the candidate based ONLY on the transcript vs th
 
 Domains and scoring:
 - Domains: Data gathering & diagnosis (DG), Clinical management (CM), Relating to others (RTO), Application.
-- Each domain score must be one of: Pass, Borderline Pass, Borderline Fail, Fail.
+- Each domain score: Pass / Borderline Pass / Borderline Fail / Fail.
 - FIRST THREE indicators in each positive/negative list are higher weighting.
-- For each indicator, mark Achieved = Yes/No and include a short evidence quote (max ~15 words).
+- For each indicator: Achieved Yes/No with a short evidence quote.
 - Be strict: if not clearly evidenced, mark Not achieved.
 
-Return output in TWO PARTS:
-PART A (JSON):
-{
-  "DG": {"score":"...", "positives":[{"item":"...","achieved":true/false,"evidence":"..."}], "negatives":[...]},
-  "CM": {...},
-  "RTO": {...},
-  "Application": {"score":"...", "notes":"..."},
-  "overallSummary":"..."
-}
+Return output as ONE TEXT REPORT ONLY (no JSON), formatted:
 
-PART B (TEXT REPORT):
-A readable report with:
-- DG score + key hits/misses
-- CM score + key hits/misses
-- RTO score + key hits/misses
-- Application score + brief justification
-- Overall summary
+DG: <score>
+✅ <indicator> — "<evidence>"
+❌ <indicator> — "<why not evidenced>"
+
+CM: <score>
+...
+
+RTO: <score>
+...
+
+Application: <score>
+<brief justification>
+
+Overall summary: <3–5 lines>
 
 Indicators:
 
@@ -132,7 +139,9 @@ ${transcriptText}
     const oaiRaw = await oaiResp.text();
     let oai = null;
     try { oai = JSON.parse(oaiRaw); } catch {}
+
     if (!oaiResp.ok) {
+      store().set(sessionId, { status: "error", error: oaiRaw.slice(0, 800), ts: Date.now() });
       return res.status(oaiResp.status).json({ ok: false, error: oaiRaw.slice(0, 800) });
     }
 
@@ -151,45 +160,13 @@ ${transcriptText}
     };
 
     const gradingText = extractText(oai) || "[No grading text returned]";
+    store().set(sessionId, { status: "ready", gradingText, caseId: Number(caseId), ts: Date.now() });
 
-    // --- Store in Users AI base (Attempts table) ---
-    const USERS_AIRTABLE_API_KEY = process.env.USERS_AIRTABLE_API_KEY;
-    const USERS_AIRTABLE_BASE_ID = process.env.USERS_AIRTABLE_BASE_ID;
-    const USERS_TABLE_NAME = process.env.USERS_TABLE_NAME || "Attempts";
-    if (!USERS_AIRTABLE_API_KEY) throw new Error("Missing USERS_AIRTABLE_API_KEY");
-    if (!USERS_AIRTABLE_BASE_ID) throw new Error("Missing USERS_AIRTABLE_BASE_ID");
-
-    const usersUrl = `https://api.airtable.com/v0/${USERS_AIRTABLE_BASE_ID}/${encodeURIComponent(USERS_TABLE_NAME)}`;
-
-    const createResp = await fetch(usersUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${USERS_AIRTABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        records: [
-          {
-            fields: {
-              sessionId: sessionId || "",
-              caseId: Number(caseId),
-              userId: userId || "",
-              gradingText,
-              // keep raw response for debugging/replay
-              gradingRaw: oaiRaw,
-            },
-          },
-        ],
-      }),
-    });
-
-    const createRaw = await createResp.text();
-    if (!createResp.ok) {
-      return res.status(createResp.status).json({ ok: false, error: createRaw.slice(0, 800) });
-    }
-
-    return res.json({ ok: true, sessionId: sessionId || null });
+    return res.json({ ok: true, sessionId });
   } catch (e) {
+    if (req?.body?.sessionId) {
+      store().set(req.body.sessionId, { status: "error", error: e?.message || String(e), ts: Date.now() });
+    }
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 }
