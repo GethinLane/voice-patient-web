@@ -1,21 +1,11 @@
-// voice-patient.js
-// Squarespace-hosted page loads this script from:
-// <script defer src="https://voice-patient-web.vercel.app/voice-patient.js"></script>
-//
-// This version assumes:
-// - Your Squarespace page contains the elements you showed: caseSelect, startBtn, stopBtn, status, log, and (optionally) a <div id="call"></div>
-// - Your Vercel project provides these API routes:
-//     https://voice-patient-web.vercel.app/api/cases
-//     https://voice-patient-web.vercel.app/api/start-session
-// - The API routes are CORS-enabled to allow requests from your Squarespace domain
-
+// voice-patient.js (Squarespace-compatible)
+// Loaded from Squarespace via:
+// <script defer src="https://voice-patient-web.vercel.app/voice-patient.js?v=..."></script>
 (() => {
-  // IMPORTANT: since the HTML is on Squarespace, we must call the Vercel API by absolute URL.
   const API_BASE = "https://voice-patient-web.vercel.app";
+  console.log("[VOICE-PATIENT] loaded. API_BASE =", API_BASE);
 
-  function $(id) {
-    return document.getElementById(id);
-  }
+  function $(id) { return document.getElementById(id); }
 
   function log(message) {
     console.log(message);
@@ -32,9 +22,9 @@
 
   function setUiConnected(connected) {
     const startBtn = $("startBtn");
-    const stopBtn = $("stopBtn");
+    const stopBtn  = $("stopBtn");
     if (startBtn) startBtn.disabled = connected;
-    if (stopBtn) stopBtn.disabled = !connected;
+    if (stopBtn)  stopBtn.disabled  = !connected;
   }
 
   async function fetchJson(url, options) {
@@ -44,25 +34,19 @@
     let data;
     try {
       data = text ? JSON.parse(text) : null;
-    } catch (e) {
-      // This is the exact failure you were seeing when Squarespace returned HTML.
+    } catch {
       throw new Error(
-        `Non-JSON response from ${url} (status ${resp.status}). ` +
-          `First 120 chars: ${text.slice(0, 120)}`
+        `Non-JSON response from ${url} (status ${resp.status}). First 120 chars: ${text.slice(0, 120)}`
       );
     }
 
     if (!resp.ok) {
-      throw new Error(
-        (data && (data.error || data.message)) ||
-          `Request failed with status ${resp.status}`
-      );
+      throw new Error((data && (data.error || data.message)) || `HTTP ${resp.status}`);
     }
 
     return data;
   }
 
-  // -------------------- Cases dropdown --------------------
   async function populateCaseDropdown() {
     const sel = $("caseSelect");
     if (!sel) {
@@ -99,12 +83,10 @@
     }
   }
 
-  // -------------------- Daily embed --------------------
+  // Daily embed
   let callIframe = null;
 
   function mountDailyIframe(dailyRoom, dailyToken) {
-    // You can optionally add <div id="call"></div> to your Squarespace HTML.
-    // If it's not present, we’ll inject the iframe after the status element.
     let container = $("call");
     if (!container) {
       const statusEl = $("status");
@@ -122,8 +104,6 @@
 
     callIframe = document.createElement("iframe");
     callIframe.allow = "microphone; camera; autoplay; display-capture";
-
-    // Pipecat docs: join Daily room using token query param "?t=..."
     callIframe.src = `${dailyRoom}?t=${encodeURIComponent(dailyToken)}`;
 
     callIframe.style.width = "100%";
@@ -141,7 +121,6 @@
     }
   }
 
-  // -------------------- Start/Stop --------------------
   async function startConsultation() {
     try {
       setUiConnected(true);
@@ -165,7 +144,6 @@
       log(`[START] dailyRoom=${data.dailyRoom}`);
 
       mountDailyIframe(data.dailyRoom, data.dailyToken);
-
       setStatus(`Connected (Case ${caseId}). Start talking!`);
     } catch (err) {
       log("[ERROR] " + (err?.message || String(err)));
@@ -182,10 +160,9 @@
     setStatus("Stopped.");
   }
 
-  // -------------------- Boot --------------------
   window.addEventListener("DOMContentLoaded", () => {
     const startBtn = $("startBtn");
-    const stopBtn = $("stopBtn");
+    const stopBtn  = $("stopBtn");
 
     if (!startBtn || !stopBtn) {
       log("UI ERROR: startBtn/stopBtn not found. Check element IDs in Squarespace HTML.");
