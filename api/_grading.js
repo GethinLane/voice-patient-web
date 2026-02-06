@@ -2,15 +2,11 @@
 import { airtableListAll } from "./_airtable.js";
 
 /**
- * Goal:
- * - OpenAI writes the full narrative feedback.
- * - It MUST reference Airtable criteria (hit + missed) as a guide, not strict wording.
- * - It MUST include concrete examples and candidate phrases.
- * - Avoid generic "no improvements needed" when bands aren't strong.
- *
- * Exports:
- * - loadCaseMarking(...)
- * - gradeTranscriptWithIndicators(...)
+ * Key changes vs your earlier versions:
+ * - We DO NOT match indicators by text (fragile). We score by INDEX.
+ * - OpenAI returns compact arrays of numbers (0/1/2) aligned to criteria order.
+ * - Narrative is still rich and tied to criteria (we derive hit/miss lists from scores).
+ * - Retry if JSON is truncated or narrative is generic.
  */
 
 // -------------------- Airtable indicator loading --------------------
@@ -69,7 +65,7 @@ function normalizeRole(role) {
 
 function transcriptToText(transcript) {
   const trimmed = Array.isArray(transcript) ? transcript : [];
-  const last = trimmed.slice(-200);
+  const last = trimmed.slice(-200); // keep it reasonable
   const lines = [];
   for (const t of last) {
     const who = normalizeRole(t?.role);
@@ -110,7 +106,22 @@ function safeJsonParseAny(text) {
   return null;
 }
 
-// -------------------- Bands (not strict) --------------------
+function wordCount(s) {
+  return String(s || "").trim().split(/\s+/).filter(Boolean).length;
+}
+
+function looksTooGeneric(s) {
+  const t = String(s || "").toLowerCase();
+  const banned = [
+    "no significant improvements",
+    "no improvements needed",
+    "performed well",
+    "excellent communication",
+  ];
+  return banned.some((p) => t.includes(p));
+}
+
+// -------------------- Bands (guide, not strict) --------------------
 
 const BANDS = ["Fail", "Borderline Fail", "Borderline Pass", "Pass"];
 
@@ -127,73 +138,48 @@ function bandFromRatio(r) {
   return "Fail";
 }
 
-function weightForIndex(i) {
-  return i < 3 ? 2 : 1; // keep your original “first 3 heavier” feel
+function w(i) {
+  return i < 3 ? 2 : 1; // first 3 heavier
 }
 
-function scoreToPoints(rating) {
-  if (rating === "met") return 2;
-  if (rating === "partial") return 1;
-  return 0; // missed/unknown
-}
+function computeDomainBandFromScores(posScores012, negSev012) {
+  const pos = Array.isArray(posScores012) ? posScores012 : [];
+  const neg = Array.isArray(negSev012) ? negSev012 : [];
 
-function computeDomainBand(posResults, negResults) {
-  // positives: met/partial/missed
-  const posMax = posResults.reduce((acc, _it, i) => acc + weightForIndex(i) * 2, 0) || 1;
-  const posGot = posResults.reduce((acc, it, i) => acc + weightForIndex(i) * scoreToPoints(it.rating), 0);
-  let ratio = posGot / posMax;
+  // Core-weighted: first 6 are "core", remainder light-touch
+  const coreN = Math.min(6, pos.length);
+  const core = pos.slice(0, coreN);
+  const optional = pos.slice(coreN);
 
-  // negatives: severity 0..2, mild penalty
-  const negMax = (negResults?.reduce((acc, _it, i) => acc + weightForIndex(i) * 2, 0)) || 1;
-  const negGot = (negResults?.reduce((acc, it, i) => acc + weightForIndex(i) * (Number(it.severity) || 0), 0)) || 0;
+  const coreMax = core.reduce((a, _v, i) => a + w(i) * 2, 0) || 1;
+  const coreGot = core.reduce((a, v, i) => a + w(i) * (Number(v) || 0), 0);
+
+  const optMax = optional.length * 2 || 1;
+  const optGot = optional.reduce((a, v) => a + (Number(v) || 0), 0);
+
+  let ratio = 0.85 * (coreGot / coreMax) + 0.15 * (optGot / optMax);
+
+  // gentle negative penalty
+  const negMax = neg.length * 2 || 1;
+  const negGot = neg.reduce((a, v) => a + (Number(v) || 0), 0);
   const negPenalty = negGot / negMax;
 
-  // penalty is gentle: don’t nuke borderline performances
-  ratio = Math.max(0, Math.min(1, ratio - 0.18 * negPenalty));
-
+  ratio = Math.max(0, Math.min(1, ratio - 0.15 * negPenalty));
   return bandFromRatio(ratio);
-}
-
-// -------------------- Narrative quality checks + retry --------------------
-
-const BANNED_PHRASES = [
-  "no significant improvements",
-  "no improvements needed",
-  "performed well",
-  "excellent communication", // too generic unless backed by examples
-];
-
-function looksTooGeneric(text) {
-  const t = String(text || "").toLowerCase();
-  return BANNED_PHRASES.some((p) => t.includes(p));
-}
-
-function wordCount(s) {
-  return String(s || "").trim().split(/\s+/).filter(Boolean).length;
-}
-
-function normalizeForContains(s) {
-  return String(s || "")
-    .toLowerCase()
-    .replace(/[“”]/g, '"')
-    .replace(/[’‘]/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function quoteSeemsFromTranscript(quote, transcriptText) {
-  const q = normalizeForContains(quote);
-  const tx = normalizeForContains(transcriptText);
-  if (!q || q.length < 8) return false;
-  return tx.includes(q);
 }
 
 // -------------------- Main grading --------------------
 
 export async function gradeTranscriptWithIndicators({ openaiKey, model, transcript, marking }) {
-  const transcriptText = transcriptToText(transcript);
+  if (!openaiKey) throw new Error("Missing openaiKey");
+  if (!model) throw new Error("Missing model");
+  if (!marking) throw new Error("Missing marking");
 
-  const mk = {
+  const transcriptText = transcriptToText(transcript);
+  if (!transcriptText.trim()) throw new Error("Transcript text empty after formatting");
+
+  // We pass criteria as arrays of strings, and FORCE the model to return arrays of equal length (by index).
+  const criteria = {
     dg_positive: marking.dg.positive,
     dg_negative: marking.dg.negative,
     cm_positive: marking.cm.positive,
@@ -203,32 +189,20 @@ export async function gradeTranscriptWithIndicators({ openaiKey, model, transcri
     application: marking.application,
   };
 
-  const schemaHint = {
-    dg_positive: [{ indicator: "string", rating: "met|partial|missed", note: "string", phrases: ["string"] }],
-    dg_negative: [{ indicator: "string", severity: "0|1|2", note: "string", phrases: ["string"] }],
-    cm_positive: [{ indicator: "string", rating: "met|partial|missed", note: "string", phrases: ["string"] }],
-    cm_negative: [{ indicator: "string", severity: "0|1|2", note: "string", phrases: ["string"] }],
-    rto_positive: [{ indicator: "string", rating: "met|partial|missed", note: "string", phrases: ["string"] }],
-    rto_negative: [{ indicator: "string", severity: "0|1|2", note: "string", phrases: ["string"] }],
-    application: [{ indicator: "string", rating: "met|partial|missed", note: "string", phrases: ["string"] }],
+  const outputSchemaHint = {
+    // IMPORTANT: arrays MUST be same length as input arrays; values are 0..2
+    dg_pos_scores: ["0|1|2"],
+    dg_neg_severity: ["0|1|2"],
+    cm_pos_scores: ["0|1|2"],
+    cm_neg_severity: ["0|1|2"],
+    rto_pos_scores: ["0|1|2"],
+    rto_neg_severity: ["0|1|2"],
+    app_scores: ["0|1|2"],
     narrative: {
-      dg: {
-        paragraph: "string",                 // ONE substantial paragraph: positives + improvements
-        hits: ["string"],                    // indicators mostly achieved (copy indicator text)
-        misses: ["string"],                  // indicators to work on (copy indicator text)
-        example_phrases: ["string"],         // exact/near-exact candidate phrases (prefer exact)
-      },
-      cm: { paragraph: "string", hits: ["string"], misses: ["string"], example_phrases: ["string"] },
-      rto: {
-        paragraph: "string",
-        hits: ["string"],
-        misses: ["string"],
-        example_phrases: ["string"],         // MUST include at least 2 phrases about empathy/structure/checking understanding
-      },
-      overall: {
-        paragraph: "string",                 // overall summary + next focus points
-        priorities_next_time: ["string"],    // 3-5 concrete things to practice
-      },
+      dg: { paragraph: "string", example_phrases: ["string"] },
+      cm: { paragraph: "string", example_phrases: ["string"] },
+      rto: { paragraph: "string", example_phrases: ["string"] },
+      overall: { paragraph: "string", priorities_next_time: ["string"] },
     },
   };
 
@@ -240,19 +214,23 @@ export async function gradeTranscriptWithIndicators({ openaiKey, model, transcri
           role: "system",
           content:
             "You are an OSCE examiner. Use the marking criteria as a GUIDE, not a strict word-for-word checklist.\n" +
-            "Your job is to compare the transcript to the criteria and judge whether each criterion is MET, PARTIAL, or MISSED.\n" +
-            "Be fair: give PARTIAL credit when the intent is present but incomplete.\n\n" +
-            "Output MUST be valid JSON only (no markdown).\n\n" +
-            "CRITICAL OUTPUT QUALITY RULES:\n" +
-            "- For EACH domain (DG/CM/RTO), write ONE substantial paragraph (roughly 120–200 words) that includes BOTH:\n" +
-            "  (a) what they did well, explicitly tied to criteria they hit, AND\n" +
-            "  (b) what they should improve, explicitly tied to criteria they partially missed.\n" +
-            "- Do NOT say 'no improvements needed' unless the domain is a clear PASS and there are no meaningful misses.\n" +
-            "- In Relating to Others, you MUST give specific examples of consultation/communication behaviours (empathy, ICE, structure, safety-netting, checking understanding) and cite at least 2 candidate phrases.\n" +
-            "- Provide 'hits' and 'misses' arrays per domain containing the indicator text (not IDs).\n" +
-            "- Provide 'example_phrases' per domain: short phrases the candidate said (prefer exact words from transcript; if not exact, keep very close).\n\n" +
+            "Be fair: give PARTIAL credit when the intent is present but incomplete.\n" +
+            "Do NOT require exact wording.\n\n" +
+            "Return ONLY valid JSON. No markdown.\n\n" +
+            "SCORING OUTPUT (critical):\n" +
+            "- For each POSITIVE criteria list, return an array of scores 0..2 in the SAME ORDER and SAME LENGTH as provided:\n" +
+            "  0 = not addressed, 1 = partially addressed, 2 = clearly addressed.\n" +
+            "- For each NEGATIVE criteria list, return severity 0..2 in the SAME ORDER and SAME LENGTH:\n" +
+            "  0 = not present, 1 = mild issue, 2 = major issue.\n" +
+            "- Keep per-criterion output VERY short (numbers only). Do NOT repeat or rewrite the indicator text.\n\n" +
+            "NARRATIVE OUTPUT (critical):\n" +
+            "- For EACH domain (DG/CM/RTO) write ONE substantial paragraph (about 120–200 words) that includes BOTH:\n" +
+            "  (a) what was done well tied to the criteria they hit, AND\n" +
+            "  (b) what to improve tied to criteria they partially missed.\n" +
+            "- Include 2–4 short example phrases the candidate used (from CLINICIAN lines) per domain.\n" +
+            "- Do NOT say 'no improvements needed' unless it is a clear PASS and there are no meaningful gaps.\n" +
             (retryMode
-              ? "RETRY MODE: Your previous output was too generic. Remove vague praise. Add specific criteria hit/missed and concrete examples/phrases.\n"
+              ? "\nRETRY MODE: Your last output was too generic or invalid JSON. Be more specific, and keep JSON compact."
               : ""),
         },
         {
@@ -261,8 +239,8 @@ export async function gradeTranscriptWithIndicators({ openaiKey, model, transcri
             {
               transcript: transcriptText,
               note: "CLINICIAN lines are the candidate; PATIENT lines are the simulator.",
-              criteria: mk,
-              output_schema_hint: schemaHint,
+              criteria,
+              output_schema_hint: outputSchemaHint,
             },
             null,
             2
@@ -270,8 +248,8 @@ export async function gradeTranscriptWithIndicators({ openaiKey, model, transcri
         },
       ],
       text: { format: { type: "json_object" } },
-      temperature: 0.2,            // allow better wording while staying grounded
-      max_output_tokens: 2600,
+      temperature: 0.2,
+      max_output_tokens: 6000, // raise headroom to avoid truncation
     };
 
     const resp = await fetch("https://api.openai.com/v1/responses", {
@@ -289,144 +267,142 @@ export async function gradeTranscriptWithIndicators({ openaiKey, model, transcri
     const data = raw ? JSON.parse(raw) : null;
     const outText = collectAllAssistantText(data);
     const parsed = safeJsonParseAny(outText);
-    if (!parsed) throw new Error(`OpenAI returned non-JSON. Preview: ${String(outText).slice(0, 260)}`);
+    if (!parsed) {
+      throw new Error(`OpenAI returned non-JSON. Preview: ${String(outText).slice(0, 260)}`);
+    }
     return parsed;
   }
 
-  let parsed = await callOpenAI({ retryMode: false });
-
-  // If narrative is too generic/short, retry once.
-  const dgP = parsed?.narrative?.dg?.paragraph || "";
-  const cmP = parsed?.narrative?.cm?.paragraph || "";
-  const rtoP = parsed?.narrative?.rto?.paragraph || "";
-  const anyGeneric =
-    looksTooGeneric(dgP) || looksTooGeneric(cmP) || looksTooGeneric(rtoP) ||
-    wordCount(dgP) < 80 || wordCount(cmP) < 80 || wordCount(rtoP) < 80;
-
-  if (anyGeneric) {
+  let parsed;
+  try {
+    parsed = await callOpenAI({ retryMode: false });
+  } catch (e) {
+    // One retry if JSON got truncated / invalid
     parsed = await callOpenAI({ retryMode: true });
   }
 
-  // Normalize per-indicator arrays back to Airtable order (matching by indicator text)
-  function zipPos(indicators, arr) {
-    const map = new Map((Array.isArray(arr) ? arr : []).map((x) => [x.indicator, x]));
-    return (indicators || []).map((indicator) => {
-      const x = map.get(indicator) || {};
-      const rating = (String(x.rating || "").toLowerCase().trim());
-      return {
-        indicator,
-        rating: (rating === "met" || rating === "partial" || rating === "missed") ? rating : "missed",
-        note: String(x.note || "").trim(),
-        phrases: Array.isArray(x.phrases) ? x.phrases.map((p) => String(p || "").trim()).filter(Boolean) : [],
-      };
-    });
+  // Ensure arrays match expected lengths (pad/truncate)
+  function normalize012Array(arr, n) {
+    const a = Array.isArray(arr) ? arr.map((v) => Number(v)) : [];
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const v = a[i];
+      out.push(v === 0 || v === 1 || v === 2 ? v : 0);
+    }
+    return out;
   }
 
-  function zipNeg(indicators, arr) {
-    const map = new Map((Array.isArray(arr) ? arr : []).map((x) => [x.indicator, x]));
-    return (indicators || []).map((indicator) => {
-      const x = map.get(indicator) || {};
-      const sev = Number(x.severity);
-      return {
-        indicator,
-        severity: (sev === 0 || sev === 1 || sev === 2) ? sev : 0,
-        note: String(x.note || "").trim(),
-        phrases: Array.isArray(x.phrases) ? x.phrases.map((p) => String(p || "").trim()).filter(Boolean) : [],
-      };
-    });
-  }
+  const dgPosScores = normalize012Array(parsed.dg_pos_scores, marking.dg.positive.length);
+  const dgNegSev = normalize012Array(parsed.dg_neg_severity, marking.dg.negative.length);
+  const cmPosScores = normalize012Array(parsed.cm_pos_scores, marking.cm.positive.length);
+  const cmNegSev = normalize012Array(parsed.cm_neg_severity, marking.cm.negative.length);
+  const rtoPosScores = normalize012Array(parsed.rto_pos_scores, marking.rto.positive.length);
+  const rtoNegSev = normalize012Array(parsed.rto_neg_severity, marking.rto.negative.length);
+  const appScores = normalize012Array(parsed.app_scores, marking.application.length);
 
-  const dgPos = zipPos(marking.dg.positive, parsed.dg_positive);
-  const dgNeg = zipNeg(marking.dg.negative, parsed.dg_negative);
-  const cmPos = zipPos(marking.cm.positive, parsed.cm_positive);
-  const cmNeg = zipNeg(marking.cm.negative, parsed.cm_negative);
-  const rtoPos = zipPos(marking.rto.positive, parsed.rto_positive);
-  const rtoNeg = zipNeg(marking.rto.negative, parsed.rto_negative);
-  const appPos = zipPos(marking.application, parsed.application);
+  const dgBand = computeDomainBandFromScores(dgPosScores, dgNegSev);
+  const cmBand = computeDomainBandFromScores(cmPosScores, cmNegSev);
+  const rtoBand = computeDomainBandFromScores(rtoPosScores, rtoNegSev);
+  const appBand = bandFromRatio((appScores.reduce((a, v) => a + v, 0)) / ((appScores.length * 2) || 1));
 
-  const dgBand = computeDomainBand(dgPos, dgNeg);
-  const cmBand = computeDomainBand(cmPos, cmNeg);
-  const rtoBand = computeDomainBand(rtoPos, rtoNeg);
-
-  // Application band (positive-only)
-  const appMax = appPos.reduce((acc, _it, i) => acc + weightForIndex(i) * 2, 0) || 1;
-  const appGot = appPos.reduce((acc, it, i) => acc + weightForIndex(i) * scoreToPoints(it.rating), 0);
-  const appBand = bandFromRatio(appGot / appMax);
-
-  // Overall = average of indices
   const overallIdx =
     Math.round(
       (BANDS.indexOf(dgBand) + BANDS.indexOf(cmBand) + BANDS.indexOf(rtoBand) + BANDS.indexOf(appBand)) / 4
     );
   const overall = BANDS[clampBandIndex(overallIdx)];
 
-  // Pull narrative
-  const n = parsed?.narrative || {};
+  // Derive "criteria hit/missed" from scores (guide)
+  function hitMissFromScores(indicators, scores) {
+    const hits = [];
+    const misses = [];
+    for (let i = 0; i < indicators.length; i++) {
+      const s = scores[i] || 0;
+      if (s >= 1) hits.push(indicators[i]);      // partial counts as "touched"
+      else misses.push(indicators[i]);
+    }
+    return { hits, misses };
+  }
+
+  const dgHM = hitMissFromScores(marking.dg.positive, dgPosScores);
+  const cmHM = hitMissFromScores(marking.cm.positive, cmPosScores);
+  const rtoHM = hitMissFromScores(marking.rto.positive, rtoPosScores);
+
+  // Narrative
+  const n = parsed.narrative || {};
   const ndg = n.dg || {};
   const ncm = n.cm || {};
   const nrto = n.rto || {};
   const nov = n.overall || {};
 
-  function listTop(arr, max = 6) {
-    return (Array.isArray(arr) ? arr : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, max);
+  // If narrative is still too generic, force a second refinement call (rare, but helps)
+  const dgPara = String(ndg.paragraph || "").trim();
+  const cmPara = String(ncm.paragraph || "").trim();
+  const rtoPara = String(nrto.paragraph || "").trim();
+
+  if (
+    wordCount(dgPara) < 80 || wordCount(cmPara) < 80 || wordCount(rtoPara) < 80 ||
+    looksTooGeneric(dgPara) || looksTooGeneric(cmPara) || looksTooGeneric(rtoPara)
+  ) {
+    // One more refinement attempt
+    parsed = await callOpenAI({ retryMode: true });
   }
 
-  function listPhrases(ph, transcriptText, max = 3) {
-    const raw = listTop(ph, 8);
-    // Prefer phrases that actually appear (soft check; do not fail)
-    const good = [];
-    for (const q of raw) {
-      if (quoteSeemsFromTranscript(q, transcriptText)) good.push(q);
-      if (good.length >= max) break;
-    }
-    // If none found, just return first few (still useful, but may be near-exact)
-    return good.length ? good : raw.slice(0, max);
-  }
+  const nn = parsed.narrative || {};
+  const dgP = String((nn.dg || {}).paragraph || "").trim();
+  const cmP = String((nn.cm || {}).paragraph || "").trim();
+  const rtoP = String((nn.rto || {}).paragraph || "").trim();
+  const ovP = String((nn.overall || {}).paragraph || "").trim();
 
-  const dgPhrases = listPhrases(ndg.example_phrases, transcriptText, 2);
-  const cmPhrases = listPhrases(ncm.example_phrases, transcriptText, 2);
-  const rtoPhrases = listPhrases(nrto.example_phrases, transcriptText, 3);
+  function top(arr, n = 6) {
+    return (Array.isArray(arr) ? arr : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, n);
+  }
 
   const gradingText = [
     `## Data Gathering & Diagnosis: **${dgBand}**`,
     "",
-    String(ndg.paragraph || "").trim(),
-    dgPhrases.length ? `\n**Example phrases:** ${dgPhrases.map((p) => `"${p}"`).join(" • ")}` : "",
+    dgP,
+    top((nn.dg || {}).example_phrases, 4).length
+      ? `\n**Example phrases:** ${top((nn.dg || {}).example_phrases, 4).map((p) => `"${p}"`).join(" • ")}`
+      : "",
     "",
     `**Criteria mostly achieved (guide):**`,
-    ...listTop(ndg.hits, 6).map((x) => `- ${x}`),
+    ...dgHM.hits.slice(0, 6).map((x) => `- ${x}`),
     "",
     `**Criteria to work on (guide):**`,
-    ...listTop(ndg.misses, 6).map((x) => `- ${x}`),
+    ...dgHM.misses.slice(0, 6).map((x) => `- ${x}`),
     "",
     `## Clinical Management: **${cmBand}**`,
     "",
-    String(ncm.paragraph || "").trim(),
-    cmPhrases.length ? `\n**Example phrases:** ${cmPhrases.map((p) => `"${p}"`).join(" • ")}` : "",
+    cmP,
+    top((nn.cm || {}).example_phrases, 4).length
+      ? `\n**Example phrases:** ${top((nn.cm || {}).example_phrases, 4).map((p) => `"${p}"`).join(" • ")}`
+      : "",
     "",
     `**Criteria mostly achieved (guide):**`,
-    ...listTop(ncm.hits, 6).map((x) => `- ${x}`),
+    ...cmHM.hits.slice(0, 6).map((x) => `- ${x}`),
     "",
     `**Criteria to work on (guide):**`,
-    ...listTop(ncm.misses, 6).map((x) => `- ${x}`),
+    ...cmHM.misses.slice(0, 6).map((x) => `- ${x}`),
     "",
     `## Relating to Others: **${rtoBand}**`,
     "",
-    String(nrto.paragraph || "").trim(),
-    rtoPhrases.length ? `\n**Example phrases:** ${rtoPhrases.map((p) => `"${p}"`).join(" • ")}` : "",
+    rtoP,
+    top((nn.rto || {}).example_phrases, 4).length
+      ? `\n**Example phrases:** ${top((nn.rto || {}).example_phrases, 4).map((p) => `"${p}"`).join(" • ")}`
+      : "",
     "",
     `**Criteria mostly achieved (guide):**`,
-    ...listTop(nrto.hits, 6).map((x) => `- ${x}`),
+    ...rtoHM.hits.slice(0, 6).map((x) => `- ${x}`),
     "",
     `**Criteria to work on (guide):**`,
-    ...listTop(nrto.misses, 6).map((x) => `- ${x}`),
+    ...rtoHM.misses.slice(0, 6).map((x) => `- ${x}`),
     "",
     `## Overall: **${overall}**`,
     "",
-    String(nov.paragraph || "").trim(),
+    ovP,
     "",
     `**Next priorities:**`,
-    ...listTop(nov.priorities_next_time, 5).map((x) => `- ${x}`),
+    ...top((nn.overall || {}).priorities_next_time, 5).map((x) => `- ${x}`),
   ]
     .filter((x) => x !== null && x !== undefined)
     .join("\n");
