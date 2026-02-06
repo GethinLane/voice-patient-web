@@ -1,9 +1,19 @@
 // api/_grading.js
 import { airtableListAll } from "./_airtable.js";
 
-/* =========================================================
-   Airtable: load indicators from Case {N} table
-   ========================================================= */
+/**
+ * Goal:
+ * - OpenAI writes the full narrative feedback.
+ * - It MUST reference Airtable criteria (hit + missed) as a guide, not strict wording.
+ * - It MUST include concrete examples and candidate phrases.
+ * - Avoid generic "no improvements needed" when bands aren't strong.
+ *
+ * Exports:
+ * - loadCaseMarking(...)
+ * - gradeTranscriptWithIndicators(...)
+ */
+
+// -------------------- Airtable indicator loading --------------------
 
 function combineFieldAcrossRows(records, fieldName) {
   const parts = [];
@@ -29,12 +39,7 @@ function parseIndicators(text) {
 
 export async function loadCaseMarking({ caseId, casesApiKey, casesBaseId }) {
   const table = `Case ${caseId}`;
-
-  const records = await airtableListAll({
-    apiKey: casesApiKey,
-    baseId: casesBaseId,
-    table,
-  });
+  const records = await airtableListAll({ apiKey: casesApiKey, baseId: casesBaseId, table });
 
   const dgPos = parseIndicators(combineFieldAcrossRows(records, "DG positive"));
   const dgNeg = parseIndicators(combineFieldAcrossRows(records, "DG negative"));
@@ -53,9 +58,7 @@ export async function loadCaseMarking({ caseId, casesApiKey, casesBaseId }) {
   };
 }
 
-/* =========================================================
-   Transcript formatting
-   ========================================================= */
+// -------------------- Transcript formatting --------------------
 
 function normalizeRole(role) {
   const r = String(role || "").toLowerCase().trim();
@@ -66,7 +69,7 @@ function normalizeRole(role) {
 
 function transcriptToText(transcript) {
   const trimmed = Array.isArray(transcript) ? transcript : [];
-  const last = trimmed.slice(-160); // cap token cost
+  const last = trimmed.slice(-200);
   const lines = [];
   for (const t of last) {
     const who = normalizeRole(t?.role);
@@ -77,24 +80,18 @@ function transcriptToText(transcript) {
   return lines.join("\n");
 }
 
-/* =========================================================
-   OpenAI response extraction + parsing
-   ========================================================= */
+// -------------------- OpenAI response extraction/parsing --------------------
 
 function collectAllAssistantText(respJson) {
   const out = respJson?.output;
   if (!Array.isArray(out)) return respJson?.output_text || "";
-
   let s = "";
   for (const item of out) {
-    if (item?.type !== "message") continue;
-    if (item?.role !== "assistant") continue;
-
+    if (item?.type !== "message" || item?.role !== "assistant") continue;
     const content = item?.content;
     if (!Array.isArray(content)) continue;
-
     for (const c of content) {
-      if (typeof c?.text === "string") s += c.text; // output_text or text
+      if (typeof c?.text === "string") s += c.text;
       else if (c?.type === "text" && typeof c?.text === "string") s += c.text;
     }
   }
@@ -103,34 +100,25 @@ function collectAllAssistantText(respJson) {
 
 function safeJsonParseAny(text) {
   if (!text) return null;
-
   const t = String(text).trim();
-
-  // direct
-  try {
-    return JSON.parse(t);
-  } catch {}
-
-  // salvage largest {...}
+  try { return JSON.parse(t); } catch {}
   const i = t.indexOf("{");
   const j = t.lastIndexOf("}");
   if (i >= 0 && j > i) {
-    const slice = t.slice(i, j + 1);
-    try {
-      return JSON.parse(slice);
-    } catch {}
+    try { return JSON.parse(t.slice(i, j + 1)); } catch {}
   }
-
   return null;
 }
 
-/* =========================================================
-   Rubric scoring + banding
-   - Positives: score 0/1/2 (not / partial / clear)
-   - Negatives: severity 0/1/2 (none / mild / major)
-   ========================================================= */
+// -------------------- Bands (not strict) --------------------
 
 const BANDS = ["Fail", "Borderline Fail", "Borderline Pass", "Pass"];
+
+function clampBandIndex(i) {
+  if (i < 0) return 0;
+  if (i > 3) return 3;
+  return i;
+}
 
 function bandFromRatio(r) {
   if (r >= 0.75) return "Pass";
@@ -139,180 +127,215 @@ function bandFromRatio(r) {
   return "Fail";
 }
 
-function ratioFromScores(posArr) {
-  const max = (posArr.length * 2) || 1;
-  const got = posArr.reduce((a, it) => a + (it.score || 0), 0);
-  return got / max;
+function weightForIndex(i) {
+  return i < 3 ? 2 : 1; // keep your original “first 3 heavier” feel
 }
 
-function penaltyFromNeg(negArr) {
-  const max = (negArr.length * 2) || 1;
-  const got = negArr.reduce((a, it) => a + (it.severity || 0), 0);
-  return got / max;
+function scoreToPoints(rating) {
+  if (rating === "met") return 2;
+  if (rating === "partial") return 1;
+  return 0; // missed/unknown
 }
 
-function bandFromRubric(ratio, negPenalty) {
-  // gentle penalty, not catastrophic
-  const adjusted = Math.max(0, Math.min(1, ratio - 0.25 * negPenalty));
-  return bandFromRatio(adjusted);
+function computeDomainBand(posResults, negResults) {
+  // positives: met/partial/missed
+  const posMax = posResults.reduce((acc, _it, i) => acc + weightForIndex(i) * 2, 0) || 1;
+  const posGot = posResults.reduce((acc, it, i) => acc + weightForIndex(i) * scoreToPoints(it.rating), 0);
+  let ratio = posGot / posMax;
+
+  // negatives: severity 0..2, mild penalty
+  const negMax = (negResults?.reduce((acc, _it, i) => acc + weightForIndex(i) * 2, 0)) || 1;
+  const negGot = (negResults?.reduce((acc, it, i) => acc + weightForIndex(i) * (Number(it.severity) || 0), 0)) || 0;
+  const negPenalty = negGot / negMax;
+
+  // penalty is gentle: don’t nuke borderline performances
+  ratio = Math.max(0, Math.min(1, ratio - 0.18 * negPenalty));
+
+  return bandFromRatio(ratio);
 }
 
-function clamp012(n) {
-  const x = Number(n);
-  return x === 0 || x === 1 || x === 2 ? x : 0;
+// -------------------- Narrative quality checks + retry --------------------
+
+const BANNED_PHRASES = [
+  "no significant improvements",
+  "no improvements needed",
+  "performed well",
+  "excellent communication", // too generic unless backed by examples
+];
+
+function looksTooGeneric(text) {
+  const t = String(text || "").toLowerCase();
+  return BANNED_PHRASES.some((p) => t.includes(p));
 }
 
-// safer zipping: allow slight text mismatches by index fallback
-function zipPos(indicators, arr) {
-  const src = Array.isArray(arr) ? arr : [];
-  const map = new Map(src.map((x) => [String(x.indicator || "").trim(), x]));
-
-  return (indicators || []).map((indicator, idx) => {
-    const key = String(indicator || "").trim();
-    const found = map.get(key) || src[idx] || {};
-    return {
-      indicator: key,
-      score: clamp012(found.score),
-      note: String(found.note || found.evidence || "").trim(),
-    };
-  });
+function wordCount(s) {
+  return String(s || "").trim().split(/\s+/).filter(Boolean).length;
 }
 
-function zipNeg(indicators, arr) {
-  const src = Array.isArray(arr) ? arr : [];
-  const map = new Map(src.map((x) => [String(x.indicator || "").trim(), x]));
-
-  return (indicators || []).map((indicator, idx) => {
-    const key = String(indicator || "").trim();
-    const found = map.get(key) || src[idx] || {};
-    return {
-      indicator: key,
-      severity: clamp012(found.severity),
-      note: String(found.note || found.evidence || "").trim(),
-    };
-  });
+function normalizeForContains(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[“”]/g, '"')
+    .replace(/[’‘]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-/* =========================================================
-   Main grading function
-   ========================================================= */
+function quoteSeemsFromTranscript(quote, transcriptText) {
+  const q = normalizeForContains(quote);
+  const tx = normalizeForContains(transcriptText);
+  if (!q || q.length < 8) return false;
+  return tx.includes(q);
+}
+
+// -------------------- Main grading --------------------
 
 export async function gradeTranscriptWithIndicators({ openaiKey, model, transcript, marking }) {
-  if (!openaiKey) throw new Error("Missing openaiKey");
-  if (!model) throw new Error("Missing model");
-  if (!marking) throw new Error("Missing marking");
-  if (!Array.isArray(transcript) || transcript.length === 0) throw new Error("Transcript missing/empty");
-
   const transcriptText = transcriptToText(transcript);
-  if (!transcriptText.trim()) throw new Error("Transcript text empty after formatting");
+
+  const mk = {
+    dg_positive: marking.dg.positive,
+    dg_negative: marking.dg.negative,
+    cm_positive: marking.cm.positive,
+    cm_negative: marking.cm.negative,
+    rto_positive: marking.rto.positive,
+    rto_negative: marking.rto.negative,
+    application: marking.application,
+  };
 
   const schemaHint = {
-    dg_positive: [{ indicator: "string", score: "0|1|2", note: "string" }],
-    dg_negative: [{ indicator: "string", severity: "0|1|2", note: "string" }],
-    cm_positive: [{ indicator: "string", score: "0|1|2", note: "string" }],
-    cm_negative: [{ indicator: "string", severity: "0|1|2", note: "string" }],
-    rto_positive: [{ indicator: "string", score: "0|1|2", note: "string" }],
-    rto_negative: [{ indicator: "string", severity: "0|1|2", note: "string" }],
-    application: [{ indicator: "string", score: "0|1|2", note: "string" }],
+    dg_positive: [{ indicator: "string", rating: "met|partial|missed", note: "string", phrases: ["string"] }],
+    dg_negative: [{ indicator: "string", severity: "0|1|2", note: "string", phrases: ["string"] }],
+    cm_positive: [{ indicator: "string", rating: "met|partial|missed", note: "string", phrases: ["string"] }],
+    cm_negative: [{ indicator: "string", severity: "0|1|2", note: "string", phrases: ["string"] }],
+    rto_positive: [{ indicator: "string", rating: "met|partial|missed", note: "string", phrases: ["string"] }],
+    rto_negative: [{ indicator: "string", severity: "0|1|2", note: "string", phrases: ["string"] }],
+    application: [{ indicator: "string", rating: "met|partial|missed", note: "string", phrases: ["string"] }],
     narrative: {
-      dg: { strengths: "string", improvements: "string" },
-      cm: { strengths: "string", improvements: "string" },
-      rto: { strengths: "string", improvements: "string" },
-      overall: { summary: "string", next_steps: "string" },
+      dg: {
+        paragraph: "string",                 // ONE substantial paragraph: positives + improvements
+        hits: ["string"],                    // indicators mostly achieved (copy indicator text)
+        misses: ["string"],                  // indicators to work on (copy indicator text)
+        example_phrases: ["string"],         // exact/near-exact candidate phrases (prefer exact)
+      },
+      cm: { paragraph: "string", hits: ["string"], misses: ["string"], example_phrases: ["string"] },
+      rto: {
+        paragraph: "string",
+        hits: ["string"],
+        misses: ["string"],
+        example_phrases: ["string"],         // MUST include at least 2 phrases about empathy/structure/checking understanding
+      },
+      overall: {
+        paragraph: "string",                 // overall summary + next focus points
+        priorities_next_time: ["string"],    // 3-5 concrete things to practice
+      },
     },
   };
 
-  const payload = {
-    model,
-    input: [
-      {
-        role: "system",
-        content:
-          "You are an OSCE examiner.\n" +
-          "Use the marking indicators as GUIDANCE (a rubric), not a strict checklist.\n" +
-          "Be balanced: credit partial attempts and good reasoning.\n" +
-          "Do not require exact wording and do not demand direct quotes.\n" +
-          "Return ONLY valid JSON (no markdown).\n\n" +
-          "Scoring:\n" +
-          "- For positives: score 0/1/2 (0 not addressed, 1 partially/implicitly, 2 clearly).\n" +
-          "- For negatives: severity 0/1/2 (0 none, 1 mild concern, 2 major concern).\n" +
-          "Notes can be a short paraphrase of what the clinician did/didn't do.\n" +
-          "Narrative should be concise and specific to this transcript.\n",
-      },
-      {
-        role: "user",
-        content: JSON.stringify(
-          {
-            transcript: transcriptText,
-            indicators: {
-              dg_positive: marking.dg.positive,
-              dg_negative: marking.dg.negative,
-              cm_positive: marking.cm.positive,
-              cm_negative: marking.cm.negative,
-              rto_positive: marking.rto.positive,
-              rto_negative: marking.rto.negative,
-              application: marking.application,
+  async function callOpenAI({ retryMode = false } = {}) {
+    const payload = {
+      model,
+      input: [
+        {
+          role: "system",
+          content:
+            "You are an OSCE examiner. Use the marking criteria as a GUIDE, not a strict word-for-word checklist.\n" +
+            "Your job is to compare the transcript to the criteria and judge whether each criterion is MET, PARTIAL, or MISSED.\n" +
+            "Be fair: give PARTIAL credit when the intent is present but incomplete.\n\n" +
+            "Output MUST be valid JSON only (no markdown).\n\n" +
+            "CRITICAL OUTPUT QUALITY RULES:\n" +
+            "- For EACH domain (DG/CM/RTO), write ONE substantial paragraph (roughly 120–200 words) that includes BOTH:\n" +
+            "  (a) what they did well, explicitly tied to criteria they hit, AND\n" +
+            "  (b) what they should improve, explicitly tied to criteria they partially missed.\n" +
+            "- Do NOT say 'no improvements needed' unless the domain is a clear PASS and there are no meaningful misses.\n" +
+            "- In Relating to Others, you MUST give specific examples of consultation/communication behaviours (empathy, ICE, structure, safety-netting, checking understanding) and cite at least 2 candidate phrases.\n" +
+            "- Provide 'hits' and 'misses' arrays per domain containing the indicator text (not IDs).\n" +
+            "- Provide 'example_phrases' per domain: short phrases the candidate said (prefer exact words from transcript; if not exact, keep very close).\n\n" +
+            (retryMode
+              ? "RETRY MODE: Your previous output was too generic. Remove vague praise. Add specific criteria hit/missed and concrete examples/phrases.\n"
+              : ""),
+        },
+        {
+          role: "user",
+          content: JSON.stringify(
+            {
+              transcript: transcriptText,
+              note: "CLINICIAN lines are the candidate; PATIENT lines are the simulator.",
+              criteria: mk,
+              output_schema_hint: schemaHint,
             },
-            output_schema_hint: schemaHint,
-          },
-          null,
-          2
-        ),
-      },
-    ],
-    text: { format: { type: "json_object" } },
-    temperature: 0,
-    max_output_tokens: 2200,
-  };
+            null,
+            2
+          ),
+        },
+      ],
+      text: { format: { type: "json_object" } },
+      temperature: 0.2,            // allow better wording while staying grounded
+      max_output_tokens: 2600,
+    };
 
-  async function callOpenAI(body) {
     const resp = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${openaiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
 
     const raw = await resp.text();
     if (!resp.ok) throw new Error(`OpenAI error ${resp.status}: ${raw.slice(0, 400)}`);
-    return raw ? JSON.parse(raw) : null;
+
+    const data = raw ? JSON.parse(raw) : null;
+    const outText = collectAllAssistantText(data);
+    const parsed = safeJsonParseAny(outText);
+    if (!parsed) throw new Error(`OpenAI returned non-JSON. Preview: ${String(outText).slice(0, 260)}`);
+    return parsed;
   }
 
-  let parsed = null;
+  let parsed = await callOpenAI({ retryMode: false });
 
-  // First attempt
-  const data1 = await callOpenAI(payload);
-  const outText1 = collectAllAssistantText(data1);
-  parsed = safeJsonParseAny(outText1);
+  // If narrative is too generic/short, retry once.
+  const dgP = parsed?.narrative?.dg?.paragraph || "";
+  const cmP = parsed?.narrative?.cm?.paragraph || "";
+  const rtoP = parsed?.narrative?.rto?.paragraph || "";
+  const anyGeneric =
+    looksTooGeneric(dgP) || looksTooGeneric(cmP) || looksTooGeneric(rtoP) ||
+    wordCount(dgP) < 80 || wordCount(cmP) < 80 || wordCount(rtoP) < 80;
 
-  // Retry once with stricter "return JSON only" phrasing if parse failed
-  if (!parsed) {
-    const retry = {
-      ...payload,
-      input: [
-        {
-          role: "system",
-          content:
-            "Return ONLY valid JSON. No markdown. No commentary outside JSON.\n" +
-            "Follow the output schema. Keep narrative fields short.\n",
-        },
-        payload.input[1],
-      ],
-      max_output_tokens: 2600,
-    };
-
-    const data2 = await callOpenAI(retry);
-    const outText2 = collectAllAssistantText(data2);
-    parsed = safeJsonParseAny(outText2);
+  if (anyGeneric) {
+    parsed = await callOpenAI({ retryMode: true });
   }
 
-  if (!parsed) {
-    throw new Error("OpenAI returned non-JSON output (failed to parse).");
+  // Normalize per-indicator arrays back to Airtable order (matching by indicator text)
+  function zipPos(indicators, arr) {
+    const map = new Map((Array.isArray(arr) ? arr : []).map((x) => [x.indicator, x]));
+    return (indicators || []).map((indicator) => {
+      const x = map.get(indicator) || {};
+      const rating = (String(x.rating || "").toLowerCase().trim());
+      return {
+        indicator,
+        rating: (rating === "met" || rating === "partial" || rating === "missed") ? rating : "missed",
+        note: String(x.note || "").trim(),
+        phrases: Array.isArray(x.phrases) ? x.phrases.map((p) => String(p || "").trim()).filter(Boolean) : [],
+      };
+    });
   }
 
-  // Zip results back to Airtable indicator ordering
+  function zipNeg(indicators, arr) {
+    const map = new Map((Array.isArray(arr) ? arr : []).map((x) => [x.indicator, x]));
+    return (indicators || []).map((indicator) => {
+      const x = map.get(indicator) || {};
+      const sev = Number(x.severity);
+      return {
+        indicator,
+        severity: (sev === 0 || sev === 1 || sev === 2) ? sev : 0,
+        note: String(x.note || "").trim(),
+        phrases: Array.isArray(x.phrases) ? x.phrases.map((p) => String(p || "").trim()).filter(Boolean) : [],
+      };
+    });
+  }
+
   const dgPos = zipPos(marking.dg.positive, parsed.dg_positive);
   const dgNeg = zipNeg(marking.dg.negative, parsed.dg_negative);
   const cmPos = zipPos(marking.cm.positive, parsed.cm_positive);
@@ -321,42 +344,95 @@ export async function gradeTranscriptWithIndicators({ openaiKey, model, transcri
   const rtoNeg = zipNeg(marking.rto.negative, parsed.rto_negative);
   const appPos = zipPos(marking.application, parsed.application);
 
-  const dgBand = bandFromRubric(ratioFromScores(dgPos), penaltyFromNeg(dgNeg));
-  const cmBand = bandFromRubric(ratioFromScores(cmPos), penaltyFromNeg(cmNeg));
-  const rtoBand = bandFromRubric(ratioFromScores(rtoPos), penaltyFromNeg(rtoNeg));
-  const appBand = bandFromRatio(ratioFromScores(appPos));
+  const dgBand = computeDomainBand(dgPos, dgNeg);
+  const cmBand = computeDomainBand(cmPos, cmNeg);
+  const rtoBand = computeDomainBand(rtoPos, rtoNeg);
 
-  const n = parsed.narrative || {};
+  // Application band (positive-only)
+  const appMax = appPos.reduce((acc, _it, i) => acc + weightForIndex(i) * 2, 0) || 1;
+  const appGot = appPos.reduce((acc, it, i) => acc + weightForIndex(i) * scoreToPoints(it.rating), 0);
+  const appBand = bandFromRatio(appGot / appMax);
+
+  // Overall = average of indices
+  const overallIdx =
+    Math.round(
+      (BANDS.indexOf(dgBand) + BANDS.indexOf(cmBand) + BANDS.indexOf(rtoBand) + BANDS.indexOf(appBand)) / 4
+    );
+  const overall = BANDS[clampBandIndex(overallIdx)];
+
+  // Pull narrative
+  const n = parsed?.narrative || {};
+  const ndg = n.dg || {};
+  const ncm = n.cm || {};
+  const nrto = n.rto || {};
+  const nov = n.overall || {};
+
+  function listTop(arr, max = 6) {
+    return (Array.isArray(arr) ? arr : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, max);
+  }
+
+  function listPhrases(ph, transcriptText, max = 3) {
+    const raw = listTop(ph, 8);
+    // Prefer phrases that actually appear (soft check; do not fail)
+    const good = [];
+    for (const q of raw) {
+      if (quoteSeemsFromTranscript(q, transcriptText)) good.push(q);
+      if (good.length >= max) break;
+    }
+    // If none found, just return first few (still useful, but may be near-exact)
+    return good.length ? good : raw.slice(0, max);
+  }
+
+  const dgPhrases = listPhrases(ndg.example_phrases, transcriptText, 2);
+  const cmPhrases = listPhrases(ncm.example_phrases, transcriptText, 2);
+  const rtoPhrases = listPhrases(nrto.example_phrases, transcriptText, 3);
+
   const gradingText = [
     `## Data Gathering & Diagnosis: **${dgBand}**`,
-    (n.dg?.strengths || "Strengths: (not provided)").trim(),
     "",
-    `What to improve:`,
-    (n.dg?.improvements || "Improvements: (not provided)").trim(),
+    String(ndg.paragraph || "").trim(),
+    dgPhrases.length ? `\n**Example phrases:** ${dgPhrases.map((p) => `"${p}"`).join(" • ")}` : "",
+    "",
+    `**Criteria mostly achieved (guide):**`,
+    ...listTop(ndg.hits, 6).map((x) => `- ${x}`),
+    "",
+    `**Criteria to work on (guide):**`,
+    ...listTop(ndg.misses, 6).map((x) => `- ${x}`),
     "",
     `## Clinical Management: **${cmBand}**`,
-    (n.cm?.strengths || "Strengths: (not provided)").trim(),
     "",
-    `What to improve:`,
-    (n.cm?.improvements || "Improvements: (not provided)").trim(),
+    String(ncm.paragraph || "").trim(),
+    cmPhrases.length ? `\n**Example phrases:** ${cmPhrases.map((p) => `"${p}"`).join(" • ")}` : "",
+    "",
+    `**Criteria mostly achieved (guide):**`,
+    ...listTop(ncm.hits, 6).map((x) => `- ${x}`),
+    "",
+    `**Criteria to work on (guide):**`,
+    ...listTop(ncm.misses, 6).map((x) => `- ${x}`),
     "",
     `## Relating to Others: **${rtoBand}**`,
-    (n.rto?.strengths || "Strengths: (not provided)").trim(),
     "",
-    `What to improve:`,
-    (n.rto?.improvements || "Improvements: (not provided)").trim(),
+    String(nrto.paragraph || "").trim(),
+    rtoPhrases.length ? `\n**Example phrases:** ${rtoPhrases.map((p) => `"${p}"`).join(" • ")}` : "",
     "",
-    `## Overall`,
-    (n.overall?.summary || "Summary: (not provided)").trim(),
+    `**Criteria mostly achieved (guide):**`,
+    ...listTop(nrto.hits, 6).map((x) => `- ${x}`),
     "",
-    `Next steps:`,
-    (n.overall?.next_steps || "Next steps: (not provided)").trim(),
+    `**Criteria to work on (guide):**`,
+    ...listTop(nrto.misses, 6).map((x) => `- ${x}`),
     "",
-    `\n(Internal bands: DG=${dgBand}, CM=${cmBand}, RTO=${rtoBand}, App=${appBand})`,
-  ].join("\n");
+    `## Overall: **${overall}**`,
+    "",
+    String(nov.paragraph || "").trim(),
+    "",
+    `**Next priorities:**`,
+    ...listTop(nov.priorities_next_time, 5).map((x) => `- ${x}`),
+  ]
+    .filter((x) => x !== null && x !== undefined)
+    .join("\n");
 
   return {
     gradingText,
-    bands: { dgBand, cmBand, rtoBand, appBand },
+    bands: { dgBand, cmBand, rtoBand, appBand, overall },
   };
 }
