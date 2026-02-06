@@ -244,56 +244,8 @@ function requireIndicatorArrays(parsed, marking) {
 
 // -------------------- Main grading function --------------------
 
-export async function gradeTranscriptWithIndicators({
-  openaiKey,
-  model,
-  transcript,
-  marking,
-}) {
-  if (!openaiKey) throw new Error("Missing openaiKey");
-  if (!model) throw new Error("Missing model");
-  if (!marking) throw new Error("Missing marking");
-  if (!Array.isArray(transcript) || transcript.length === 0) {
-    throw new Error("Transcript missing/empty");
-  }
-
+export async function gradeTranscriptWithIndicators({ openaiKey, model, transcript, marking }) {
   const transcriptText = transcriptToText(transcript);
-  if (!transcriptText.trim()) throw new Error("Transcript text empty after formatting");
-
-  // Strong anti-generic instruction:
-  // - MUST include exact short quotes per section (validated server-side)
-  // - MUST provide narrative strengths/improvements grounded in transcript
-  const schemaHint = {
-    dg_positive: [{ indicator: "string", met: "boolean", evidence: "string" }],
-    dg_negative: [{ indicator: "string", occurred: "boolean", evidence: "string" }],
-    cm_positive: [{ indicator: "string", met: "boolean", evidence: "string" }],
-    cm_negative: [{ indicator: "string", occurred: "boolean", evidence: "string" }],
-    rto_positive: [{ indicator: "string", met: "boolean", evidence: "string" }],
-    rto_negative: [{ indicator: "string", occurred: "boolean", evidence: "string" }],
-    application: [{ indicator: "string", met: "boolean", evidence: "string" }],
-    narrative: {
-      dg: {
-        strengths: "string",
-        improvements: "string",
-        quotes: ["string"], // EXACT words copied from transcript
-      },
-      cm: {
-        strengths: "string",
-        improvements: "string",
-        quotes: ["string"],
-      },
-      rto: {
-        strengths: "string",
-        improvements: "string",
-        quotes: ["string"],
-      },
-      overall: {
-        what_went_well: "string",
-        next_time: "string",
-        quotes: ["string"],
-      },
-    },
-  };
 
   const payload = {
     model,
@@ -301,26 +253,21 @@ export async function gradeTranscriptWithIndicators({
       {
         role: "system",
         content:
-          "You are an OSCE examiner grading a candidate clinician from a transcript.\n" +
-          "Return ONLY valid JSON. No markdown. No bullet lists in the narrative.\n" +
-          "You MUST be transcript-grounded and specific:\n" +
-          "- Every narrative paragraph must refer to what was/wasn't said in THIS transcript.\n" +
-          "- Include EXACT short quotes copied from the transcript (required arrays) to prove grounding.\n" +
-          "- Do NOT give generic advice. Do NOT invent missing content.\n" +
-          "Indicator rules:\n" +
-          "- For each indicator, set met/occurred ONLY if clearly evidenced.\n" +
-          "- If uncertain, set false and keep evidence as empty string.\n" +
-          "Narrative rules:\n" +
-          "- Provide 2 short paragraphs per domain: strengths then improvements.\n" +
-          "- Overall should compare performance to Application (what aligned / what didn’t).\n" +
-          "- Narrative fields MUST be non-empty.\n",
+          "You are an OSCE examiner.\n" +
+          "Use the marking indicators as GUIDANCE, not a strict checklist.\n" +
+          "Give balanced feedback: credit partial attempts and good clinical reasoning.\n" +
+          "Do NOT require exact wording. Do NOT demand quotes.\n" +
+          "Return ONLY valid JSON (no markdown).\n\n" +
+          "Scoring rules:\n" +
+          "- For positive indicators, give score 0,1,2 (0 not addressed, 1 partially, 2 clearly).\n" +
+          "- For negative indicators, give severity 0,1,2 (0 none, 1 mild, 2 major).\n" +
+          "- Evidence is optional and can be short paraphrase.\n"
       },
       {
         role: "user",
         content: JSON.stringify(
           {
             transcript: transcriptText,
-            // Note: "CLINICIAN" lines are the candidate; "PATIENT" lines are the simulated patient.
             indicators: {
               dg_positive: marking.dg.positive,
               dg_negative: marking.dg.negative,
@@ -330,21 +277,30 @@ export async function gradeTranscriptWithIndicators({
               rto_negative: marking.rto.negative,
               application: marking.application,
             },
-            output_schema_hint: schemaHint,
-            quote_rules: {
-              exact_copy_required: true,
-              max_quotes_each_section: 3,
-              max_quote_length_chars: 140,
-            },
+            output_schema_hint: {
+              dg_positive: [{ indicator: "string", score: "0|1|2", note: "string" }],
+              dg_negative: [{ indicator: "string", severity: "0|1|2", note: "string" }],
+              cm_positive: [{ indicator: "string", score: "0|1|2", note: "string" }],
+              cm_negative: [{ indicator: "string", severity: "0|1|2", note: "string" }],
+              rto_positive: [{ indicator: "string", score: "0|1|2", note: "string" }],
+              rto_negative: [{ indicator: "string", severity: "0|1|2", note: "string" }],
+              application: [{ indicator: "string", score: "0|1|2", note: "string" }],
+              narrative: {
+                dg: { strengths: "string", improvements: "string" },
+                cm: { strengths: "string", improvements: "string" },
+                rto: { strengths: "string", improvements: "string" },
+                overall: { summary: "string", next_steps: "string" }
+              }
+            }
           },
           null,
           2
-        ),
-      },
+        )
+      }
     ],
     text: { format: { type: "json_object" } },
     temperature: 0,
-    max_output_tokens: 2200,
+    max_output_tokens: 2200
   };
 
   const resp = await fetch("https://api.openai.com/v1/responses", {
@@ -357,53 +313,23 @@ export async function gradeTranscriptWithIndicators({
   });
 
   const raw = await resp.text();
-  if (!resp.ok) {
-    throw new Error(`OpenAI error ${resp.status}: ${raw.slice(0, 400)}`);
-  }
+  if (!resp.ok) throw new Error(`OpenAI error ${resp.status}: ${raw.slice(0, 400)}`);
 
   const data = raw ? JSON.parse(raw) : null;
   const outText = collectAllAssistantText(data);
   const parsed = safeJsonParseAny(outText);
+  if (!parsed) throw new Error(`OpenAI returned non-JSON. Preview: ${String(outText).slice(0, 240)}`);
 
-  if (!parsed) {
-    throw new Error(`OpenAI returned non-JSON output_text preview: ${String(outText).slice(0, 260)}`);
-  }
-
-  // Enforce required shapes before we do anything else (NO fallback)
-  requireIndicatorArrays(parsed, marking);
-
-  // Enforce narrative presence + evidence quotes that MUST appear in transcript
-  const narrative = parsed.narrative || {};
-
-  const dgStrengths = requireNonEmptyString(narrative?.dg?.strengths, "narrative.dg.strengths");
-  const dgImprove = requireNonEmptyString(narrative?.dg?.improvements, "narrative.dg.improvements");
-  const dgQuotes = requireQuotesInTranscript(narrative?.dg?.quotes, transcriptText, "narrative.dg.quotes");
-
-  const cmStrengths = requireNonEmptyString(narrative?.cm?.strengths, "narrative.cm.strengths");
-  const cmImprove = requireNonEmptyString(narrative?.cm?.improvements, "narrative.cm.improvements");
-  const cmQuotes = requireQuotesInTranscript(narrative?.cm?.quotes, transcriptText, "narrative.cm.quotes");
-
-  const rtoStrengths = requireNonEmptyString(narrative?.rto?.strengths, "narrative.rto.strengths");
-  const rtoImprove = requireNonEmptyString(narrative?.rto?.improvements, "narrative.rto.improvements");
-  const rtoQuotes = requireQuotesInTranscript(narrative?.rto?.quotes, transcriptText, "narrative.rto.quotes");
-
-  const overallGood = requireNonEmptyString(narrative?.overall?.what_went_well, "narrative.overall.what_went_well");
-  const overallNext = requireNonEmptyString(narrative?.overall?.next_time, "narrative.overall.next_time");
-  const overallQuotes = requireQuotesInTranscript(
-    narrative?.overall?.quotes,
-    transcriptText,
-    "narrative.overall.quotes"
-  );
-
-  // Normalize arrays to match original indicator ordering (keeps weighting stable)
+  // ---- helper: align model arrays to Airtable indicator ordering ----
   function zipPos(indicators, arr) {
     const map = new Map((Array.isArray(arr) ? arr : []).map((x) => [x.indicator, x]));
     return (indicators || []).map((indicator) => {
       const x = map.get(indicator) || {};
+      const score = Number(x.score);
       return {
         indicator,
-        met: !!x.met,
-        evidence: (x.evidence || "").toString().trim(),
+        score: score === 0 || score === 1 || score === 2 ? score : 0,
+        note: String(x.note || "").trim(),
       };
     });
   }
@@ -412,12 +338,36 @@ export async function gradeTranscriptWithIndicators({
     const map = new Map((Array.isArray(arr) ? arr : []).map((x) => [x.indicator, x]));
     return (indicators || []).map((indicator) => {
       const x = map.get(indicator) || {};
+      const sev = Number(x.severity);
       return {
         indicator,
-        occurred: !!x.occurred,
-        evidence: (x.evidence || "").toString().trim(),
+        severity: sev === 0 || sev === 1 || sev === 2 ? sev : 0,
+        note: String(x.note || "").trim(),
       };
     });
+  }
+
+  // ---- compute bands from scores (rubric, not strict) ----
+  function ratioFromScores(posArr) {
+    const max = (posArr.length * 2) || 1;
+    const got = posArr.reduce((a, it) => a + (it.score || 0), 0);
+    return got / max;
+  }
+
+  function penaltyFromNeg(negArr) {
+    // mild=1, major=2 -> convert to 0..1 penalty scale
+    const max = (negArr.length * 2) || 1;
+    const got = negArr.reduce((a, it) => a + (it.severity || 0), 0);
+    return got / max;
+  }
+
+  function bandFromRubric(ratio, negPenalty) {
+    // negate a bit, but not catastrophic unless lots of negatives
+    const adjusted = Math.max(0, Math.min(1, ratio - 0.25 * negPenalty));
+    if (adjusted >= 0.75) return "Pass";
+    if (adjusted >= 0.55) return "Borderline Pass";
+    if (adjusted >= 0.35) return "Borderline Fail";
+    return "Fail";
   }
 
   const dgPos = zipPos(marking.dg.positive, parsed.dg_positive);
@@ -426,66 +376,42 @@ export async function gradeTranscriptWithIndicators({
   const cmNeg = zipNeg(marking.cm.negative, parsed.cm_negative);
   const rtoPos = zipPos(marking.rto.positive, parsed.rto_positive);
   const rtoNeg = zipNeg(marking.rto.negative, parsed.rto_negative);
-
-  // Application met list (not displayed as pass/fail; used in overall band return if you want it later)
   const appPos = zipPos(marking.application, parsed.application);
 
-  const dgBand = computeDomainBand(dgPos, dgNeg);
-  const cmBand = computeDomainBand(cmPos, cmNeg);
-  const rtoBand = computeDomainBand(rtoPos, rtoNeg);
+  const dgBand = bandFromRubric(ratioFromScores(dgPos), penaltyFromNeg(dgNeg));
+  const cmBand = bandFromRubric(ratioFromScores(cmPos), penaltyFromNeg(cmNeg));
+  const rtoBand = bandFromRubric(ratioFromScores(rtoPos), penaltyFromNeg(rtoNeg));
+  const appBand = bandFromRatio(ratioFromScores(appPos)); // reuse your old bandFromRatio if you like
 
-  // Optional internal application band (NOT shown in gradingText)
-  const appMax = appPos.reduce((a, _it, i) => a + weightForIndex(i), 0) || 1;
-  const appGot = appPos.reduce((a, it, i) => a + (it.met ? weightForIndex(i) : 0), 0);
-  const appBand = bandFromRatio(appGot / appMax);
-
-  // Build the output exactly as you requested: 4 sections, narrative only, no ✅/❌ lists
+  const n = parsed.narrative || {};
   const gradingText = [
     `## Data Gathering & Diagnosis: **${dgBand}**`,
-    ``,
-    dgStrengths,
-    ``,
+    (n.dg?.strengths || "").trim(),
+    "",
     `What to improve:`,
-    dgImprove,
-    ``,
-    `Evidence quotes:`,
-    ...dgQuotes.map((q) => `- "${q}"`),
-    ``,
+    (n.dg?.improvements || "").trim(),
+    "",
     `## Clinical Management: **${cmBand}**`,
-    ``,
-    cmStrengths,
-    ``,
+    (n.cm?.strengths || "").trim(),
+    "",
     `What to improve:`,
-    cmImprove,
-    ``,
-    `Evidence quotes:`,
-    ...cmQuotes.map((q) => `- "${q}"`),
-    ``,
+    (n.cm?.improvements || "").trim(),
+    "",
     `## Relating to Others: **${rtoBand}**`,
-    ``,
-    rtoStrengths,
-    ``,
+    (n.rto?.strengths || "").trim(),
+    "",
     `What to improve:`,
-    rtoImprove,
-    ``,
-    `Evidence quotes:`,
-    ...rtoQuotes.map((q) => `- "${q}"`),
-    ``,
+    (n.rto?.improvements || "").trim(),
+    "",
     `## Overall`,
-    ``,
-    overallGood,
-    ``,
-    `Next time:`,
-    overallNext,
-    ``,
-    `Evidence quotes:`,
-    ...overallQuotes.map((q) => `- "${q}"`),
+    (n.overall?.summary || "").trim(),
+    "",
+    `Next steps:`,
+    (n.overall?.next_steps || "").trim(),
   ].join("\n");
 
   return {
     gradingText,
     bands: { dgBand, cmBand, rtoBand, appBand },
-    // If you ever want debugging/inspection later:
-    // indicatorResults: { dgPos, dgNeg, cmPos, cmNeg, rtoPos, rtoNeg, appPos },
   };
 }
