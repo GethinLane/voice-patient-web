@@ -36,6 +36,10 @@ export default async function handler(req, res) {
   if (!usersKey) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_API_KEY" });
   if (!usersBase) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_BASE_ID" });
 
+  // ✅ Hoist these so catch() can update Airtable even after lock
+  let attemptRecordId = null;
+  let caseId = null;
+
   try {
     // 1) Find attempt by SessionID
     const attempts = await airtableListAll({
@@ -48,9 +52,9 @@ export default async function handler(req, res) {
     const attempt = attempts?.[0];
     if (!attempt) return res.json({ ok: true, found: false });
 
-    const attemptRecordId = attempt.id;
+    attemptRecordId = attempt.id;
     const f = attempt.fields || {};
-    const caseId = Number(f.CaseID || 0);
+    caseId = Number(f.CaseID || 0);
     const current = String(f.GradingText || "");
 
     // 2) If already graded, return it
@@ -71,9 +75,8 @@ export default async function handler(req, res) {
       const t = parseLockTime(current);
       const ageMs = t ? (Date.now() - t) : null;
 
-      // stale lock after 3 minutes → retry
       if (ageMs != null && ageMs > 180000) {
-        // fall through and re-grade
+        // stale lock -> fall through and re-grade
       } else {
         return res.json({
           ok: true,
@@ -87,13 +90,16 @@ export default async function handler(req, res) {
       }
     }
 
-    // 4) Lock (but we will ALWAYS replace it with either a grade or an error)
+    // 4) Lock (ALWAYS replaced by grade or error)
     await airtableUpdate({
       apiKey: usersKey,
       baseId: usersBase,
       table: attemptsTable,
       recordId: attemptRecordId,
-      fields: { GradingText: lockText() },
+      fields: {
+        GradingText: lockText(),
+        GradingStatus: "processing",
+      },
     });
 
     // 5) Load transcript
@@ -106,7 +112,7 @@ export default async function handler(req, res) {
         baseId: usersBase,
         table: attemptsTable,
         recordId: attemptRecordId,
-        fields: { GradingText: msg },
+        fields: { GradingText: msg, GradingStatus: "error" },
       });
       return res.json({ ok: true, found: true, ready: true, sessionId, attemptRecordId, caseId, gradingText: msg });
     }
@@ -125,12 +131,7 @@ export default async function handler(req, res) {
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
     if (!openaiKey) throw new Error("Missing OPENAI_API_KEY");
 
-    const result = await gradeTranscriptWithIndicators({
-      openaiKey,
-      model,
-      transcript,
-      marking,
-    });
+    const result = await gradeTranscriptWithIndicators({ openaiKey, model, transcript, marking });
 
     // 8) Save grade
     await airtableUpdate({
@@ -138,7 +139,10 @@ export default async function handler(req, res) {
       baseId: usersBase,
       table: attemptsTable,
       recordId: attemptRecordId,
-      fields: { GradingText: result.gradingText },
+      fields: {
+        GradingText: result.gradingText,
+        GradingStatus: "done",
+      },
     });
 
     return res.json({
@@ -152,12 +156,31 @@ export default async function handler(req, res) {
       bands: result.bands,
     });
   } catch (e) {
-    // IMPORTANT: write the error into Airtable so it never gets stuck
     const errText = `❌ Grading failed: ${e?.message || String(e)}\n\nTip: retry with ?force=1`;
-    try {
-      // re-fetch record id quickly is expensive; but we already have attempt if we got past that stage.
-      // If failure happened early before attempt was found, this update will be skipped.
-    } catch {}
-    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+
+    // ✅ This is what you were missing:
+    if (attemptRecordId) {
+      try {
+        await airtableUpdate({
+          apiKey: usersKey,
+          baseId: usersBase,
+          table: attemptsTable,
+          recordId: attemptRecordId,
+          fields: { GradingText: errText, GradingStatus: "error" },
+        });
+      } catch {}
+    }
+
+    // Return 200 so your polling can stop and show the error message cleanly
+    return res.status(200).json({
+      ok: false,
+      found: !!attemptRecordId,
+      ready: true,
+      sessionId,
+      attemptRecordId,
+      caseId,
+      error: e?.message || String(e),
+      gradingText: errText,
+    });
   }
 }
