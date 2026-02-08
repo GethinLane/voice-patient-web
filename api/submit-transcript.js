@@ -1,12 +1,27 @@
 // api/submit-transcript.js
 import { airtableListAll, airtableCreate } from "./_airtable.js";
 
-function cors(res) {
-  const origin = process.env.ALLOWED_ORIGIN || "https://www.scarevision.co.uk";
-  res.setHeader("Access-Control-Allow-Origin", origin);
+function cors(req, res) {
+  const origin = req.headers.origin;
+
+  const allowed = new Set([
+    "https://www.scarevision.co.uk",
+    "https://www.scarevision.ai",
+    // Optional but recommended:
+    "https://scarevision.co.uk",
+    "https://scarevision.ai",
+  ]);
+
+  if (allowed.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
 }
+
 
 export default async function handler(req, res) {
   cors(res);
