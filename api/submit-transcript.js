@@ -7,7 +7,6 @@ function cors(req, res) {
   const allowed = new Set([
     "https://www.scarevision.co.uk",
     "https://www.scarevision.ai",
-    // Optional but recommended:
     "https://scarevision.co.uk",
     "https://scarevision.ai",
   ]);
@@ -22,6 +21,9 @@ function cors(req, res) {
   res.setHeader("Access-Control-Max-Age", "86400");
 }
 
+function escapeFormulaString(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
 
 export default async function handler(req, res) {
   cors(req, res);
@@ -29,10 +31,22 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
 
   try {
-    const { sessionId, caseId, userId, transcript } = req.body || {};
+    const { sessionId, caseId, userId, email, transcript } = req.body || {};
+
     if (!sessionId) return res.status(400).json({ ok: false, error: "Missing sessionId" });
     if (!caseId) return res.status(400).json({ ok: false, error: "Missing caseId" });
     if (!Array.isArray(transcript)) return res.status(400).json({ ok: false, error: "Missing transcript[]" });
+
+    // 🔒 IMPORTANT: do NOT allow anonymous sessions to create "fake" users
+    const userIdStr = userId != null ? String(userId).trim() : "";
+    const emailStr = email != null ? String(email).trim().toLowerCase() : "";
+
+    if (!userIdStr && !emailStr) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing userId or email (must identify an existing user)",
+      });
+    }
 
     const usersKey = process.env.AIRTABLE_USERS_API_KEY;
     const usersBase = process.env.AIRTABLE_USERS_BASE_ID;
@@ -43,27 +57,35 @@ export default async function handler(req, res) {
     if (!usersKey) throw new Error("Missing AIRTABLE_USERS_API_KEY");
     if (!usersBase) throw new Error("Missing AIRTABLE_USERS_BASE_ID");
 
-    const effectiveUserId = (userId && String(userId).trim()) || `anon-${sessionId.slice(0, 8)}`;
+    // ✅ Find existing user (DO NOT CREATE)
+    const parts = [];
+    if (userIdStr) parts.push(`{${idField}}='${escapeFormulaString(userIdStr)}'`);
+    if (emailStr) parts.push(`LOWER({Email})='${escapeFormulaString(emailStr)}'`);
 
-    // Find or create user
+    const filterByFormula = parts.length === 1 ? parts[0] : `OR(${parts.join(",")})`;
+
     const userRecs = await airtableListAll({
       apiKey: usersKey,
       baseId: usersBase,
       table: usersTable,
-      params: { filterByFormula: `{${idField}}="${effectiveUserId.replace(/"/g, '\\"')}"` },
+      params: { filterByFormula, maxRecords: 2 },
     });
 
-    let userRecordId = userRecs?.[0]?.id;
-    if (!userRecordId) {
-      const created = await airtableCreate({
-        apiKey: usersKey,
-        baseId: usersBase,
-        table: usersTable,
-        fields: { [idField]: effectiveUserId },
+    if (!userRecs || userRecs.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: "User not found in Users table (MemberSpace/Zapier user sync may not have run yet)",
       });
-      userRecordId = created?.id;
     }
-    if (!userRecordId) throw new Error("Failed to create/find user record");
+
+    if (userRecs.length > 1) {
+      return res.status(409).json({
+        ok: false,
+        error: "Multiple Users matched (email/UserID not unique). Fix duplicates in Airtable.",
+      });
+    }
+
+    const userRecordId = userRecs[0].id;
 
     // AttemptNumber = count existing attempts for this user+case
     const attempts = await airtableListAll({
@@ -74,6 +96,7 @@ export default async function handler(req, res) {
         filterByFormula: `AND({CaseID}=${Number(caseId)}, FIND("${userRecordId}", ARRAYJOIN({User})))`,
       },
     });
+
     const attemptNumber = (attempts?.length || 0) + 1;
 
     const attempt = await airtableCreate({
@@ -81,12 +104,12 @@ export default async function handler(req, res) {
       baseId: usersBase,
       table: attemptsTable,
       fields: {
-        User: [userRecordId],
+        User: [userRecordId], // ✅ link by Airtable record id
         AttemptNumber: attemptNumber,
         CaseID: Number(caseId),
         SessionID: String(sessionId),
         Transcript: JSON.stringify(transcript),
-        GradingText: "", // will be filled by get-grading
+        GradingText: "",
       },
     });
 
@@ -95,7 +118,9 @@ export default async function handler(req, res) {
       stored: true,
       sessionId,
       caseId: Number(caseId),
-      userId: effectiveUserId,
+      userId: userIdStr || null,
+      email: emailStr || null,
+      userRecordId,
       attemptRecordId: attempt?.id,
       attemptNumber,
     });
