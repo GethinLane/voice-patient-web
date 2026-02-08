@@ -2,14 +2,21 @@
 (() => {
   const VERSION = "debug-2026-02-05-finite-poll-1";
   const API_BASE = "https://voice-patient-web.vercel.app";
-  const ORIGIN = "https://www.scarevision.co.uk";
+  const ALLOWED_ORIGINS = new Set([
+  "https://www.scarevision.co.uk",
+  "https://www.scarevision.ai",
+  // optional (non-www variants):
+  "https://scarevision.co.uk",
+  "https://scarevision.ai",
+]);
+
 
   let currentSessionId = null;
   let gradingPollTimer = null;
   let gradingPollTries = 0;
 
-  const GRADING_POLL_INTERVAL_MS = 2000;   // every 2s
-  const GRADING_POLL_MAX_TRIES = 60;       // 60 * 2s = 120s (2 minutes)
+  const GRADING_POLL_INTERVAL_MS = 6000;   // every 2s
+  const GRADING_POLL_MAX_TRIES = 20;       // 60 * 2s = 120s (2 minutes)
 
   function $(id) { return document.getElementById(id); }
 
@@ -372,7 +379,7 @@
       href: window.location.href,
       origin: window.location.origin,
       apiBase: API_BASE,
-      expectedOrigin: ORIGIN,
+      originAllowed: ALLOWED_ORIGINS.has(window.location.origin),
       hasCaseSelect: !!$("caseSelect"),
       hasStartBtn: !!$("startBtn"),
       hasStopBtn: !!$("stopBtn"),
