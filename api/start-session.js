@@ -1,9 +1,26 @@
 // api/start-session.js (DEBUG)
 export default async function handler(req, res) {
   // CORS
-  res.setHeader("Access-Control-Allow-Origin", "https://www.scarevision.co.uk");
-  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+// CORS
+const origin = req.headers.origin;
+
+const allowed = new Set([
+  "https://www.scarevision.co.uk",
+  "https://www.scarevision.ai",
+  // Optional but recommended (if either domain ever loads without www):
+  "https://scarevision.co.uk",
+  "https://scarevision.ai",
+]);
+
+if (allowed.has(origin)) {
+  res.setHeader("Access-Control-Allow-Origin", origin);
+}
+
+res.setHeader("Vary", "Origin");
+res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+res.setHeader("Access-Control-Max-Age", "86400");
+
 
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
