@@ -2,12 +2,28 @@
 import { airtableListAll, airtableUpdate } from "./_airtable.js";
 import { loadCaseMarking, gradeTranscriptWithIndicators } from "./_grading.js";
 
-function cors(res) {
-  const origin = process.env.ALLOWED_ORIGIN || "https://www.scarevision.co.uk";
-  res.setHeader("Access-Control-Allow-Origin", origin);
+function cors(req, res) {
+  const origin = req.headers.origin;
+
+  const allowed = new Set([
+    "https://www.scarevision.co.uk",
+    "https://www.scarevision.ai",
+    // optional (if you ever use www on the .co.uk)
+    "https://www.scarevision.co.uk",
+    // optional (if you ever use www on the .ai)
+    "https://www.scarevision.ai",
+  ]);
+
+  if (allowed.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
 }
+
 
 function lockText() {
   return `⏳ Grading in progress @ ${new Date().toISOString()}`;
