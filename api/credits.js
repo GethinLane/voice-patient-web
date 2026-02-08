@@ -1,4 +1,24 @@
 // /api/credits.js
+const ALLOWED_ORIGINS = new Set([
+  "https://www.scarevision.ai",
+  "https://scarevision.ai",
+]);
+
+export default async function handler(req, res) {
+  const origin = req.headers.origin;
+
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") return res.status(204).end();
+
+  // ...rest of your existing code
+}
+
 
 function requireEnv(name) {
   const v = process.env[name];
