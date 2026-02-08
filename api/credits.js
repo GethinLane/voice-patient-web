@@ -1,24 +1,33 @@
 // /api/credits.js
-const ALLOWED_ORIGINS = new Set([
-  "https://www.scarevision.ai",
-  "https://scarevision.ai",
-]);
 
-export default async function handler(req, res) {
+const isAllowedOrigin = (origin) => {
+  if (!origin) return false;
+  try {
+    const { hostname, protocol } = new URL(origin);
+    if (protocol !== "https:") return false;
+
+    // allow root + www + any subdomain of scarevision.ai
+    return (
+      hostname === "scarevision.ai" ||
+      hostname === "www.scarevision.ai" ||
+      hostname.endsWith(".scarevision.ai")
+    );
+  } catch {
+    return false;
+  }
+};
+
+function applyCors(req, res) {
   const origin = req.headers.origin;
 
-  if (ALLOWED_ORIGINS.has(origin)) {
+  if (isAllowedOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Max-Age", "86400");
   }
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") return res.status(204).end();
-
-  // ...rest of your existing code
 }
-
 
 function requireEnv(name) {
   const v = process.env[name];
@@ -31,10 +40,21 @@ function escapeFormulaString(value) {
 }
 
 export default async function handler(req, res) {
+  // ✅ CORS headers must be set on *every* response path
+  applyCors(req, res);
+
+  // ✅ Preflight
+  if (req.method === "OPTIONS") return res.status(204).end();
+
   try {
     if (req.method !== "GET") {
-      res.setHeader("Allow", "GET");
+      res.setHeader("Allow", "GET,OPTIONS");
       return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    const origin = req.headers.origin;
+    if (origin && !isAllowedOrigin(origin)) {
+      return res.status(403).json({ error: "Origin not allowed" });
     }
 
     const email = req.query.email;
@@ -42,7 +62,7 @@ export default async function handler(req, res) {
 
     const baseId = requireEnv("AIRTABLE_USERS_BASE_ID");
     const apiKey = requireEnv("AIRTABLE_USERS_API_KEY");
-    const table = requireEnv("USERS_AI_USERS_TABLE"); // your table name or table ID
+    const table = requireEnv("USERS_AI_USERS_TABLE");
 
     const filterByFormula = `{Email}='${escapeFormulaString(email)}'`;
 
@@ -68,7 +88,6 @@ export default async function handler(req, res) {
     const record = data?.records?.[0];
     const creditsRemaining = record?.fields?.CreditsRemaining ?? null;
 
-    // Prevent caching issues
     res.setHeader("Cache-Control", "no-store");
     return res.status(200).json({ creditsRemaining });
   } catch (err) {
