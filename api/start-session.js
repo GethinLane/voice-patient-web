@@ -1,26 +1,22 @@
 // api/start-session.js (DEBUG)
 export default async function handler(req, res) {
-  // CORS
-// CORS
-const origin = req.headers.origin;
+  const origin = req.headers.origin;
 
-const allowed = new Set([
-  "https://www.scarevision.co.uk",
-  "https://www.scarevision.ai",
-  // Optional but recommended (if either domain ever loads without www):
-  "https://scarevision.co.uk",
-  "https://scarevision.ai",
-]);
+  const allowed = new Set([
+    "https://www.scarevision.co.uk",
+    "https://www.scarevision.ai",
+    "https://scarevision.co.uk",
+    "https://scarevision.ai",
+  ]);
 
-if (allowed.has(origin)) {
-  res.setHeader("Access-Control-Allow-Origin", origin);
-}
+  if (allowed.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
 
-res.setHeader("Vary", "Origin");
-res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
-res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-res.setHeader("Access-Control-Max-Age", "86400");
-
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
 
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
@@ -29,8 +25,18 @@ res.setHeader("Access-Control-Max-Age", "86400");
     const receivedCaseId = req.body?.caseId;
     const caseId = Number(receivedCaseId);
 
+    // ✅ NEW: accept identity from frontend
+    const userId = req.body?.userId != null ? String(req.body.userId).trim() : "";
+    const email  = req.body?.email  != null ? String(req.body.email).trim().toLowerCase() : "";
+
     if (!caseId) {
       return res.status(400).json({ ok: false, error: "Missing/invalid caseId", receivedCaseId });
+    }
+
+    // 🔒 Optional but recommended: require identity
+    // (If you want to allow free anonymous demo mode, remove this)
+    if (!userId && !email) {
+      return res.status(400).json({ ok: false, error: "Missing userId/email (not logged in)" });
     }
 
     const agentName = process.env.PIPECAT_AGENT_NAME;
@@ -41,7 +47,11 @@ res.setHeader("Access-Control-Max-Age", "86400");
     const sent = {
       transport: "webrtc",
       createDailyRoom: true,
-      body: { caseId }, // <-- critical: this is what bot.py should read
+      body: {
+        caseId,
+        userId, // ✅ forwarded into runner_args.body
+        email,  // ✅ forwarded into runner_args.body
+      },
     };
 
     const url = `https://api.pipecat.daily.co/v1/public/${encodeURIComponent(agentName)}/start`;
