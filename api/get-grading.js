@@ -24,7 +24,6 @@ function cors(req, res) {
   res.setHeader("Access-Control-Max-Age", "86400");
 }
 
-
 function lockText() {
   return `⏳ Grading in progress @ ${new Date().toISOString()}`;
 }
@@ -43,23 +42,31 @@ function escapeFormulaString(s) {
 export default async function handler(req, res) {
   cors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "GET") return res.status(405).json({ ok: false, error: "GET only" });
+  if (req.method !== "GET") return res.status(405).json({ ok: false, error: "GET only", status: "error" });
 
   const sessionId = String(req.query?.sessionId || "").trim();
   const force = String(req.query?.force || "") === "1";
-  if (!sessionId) return res.status(400).json({ ok: false, error: "Missing sessionId" });
+  if (!sessionId) return res.status(400).json({ ok: false, error: "Missing sessionId", status: "error" });
 
   const usersKey = process.env.AIRTABLE_USERS_API_KEY;
   const usersBase = process.env.AIRTABLE_USERS_BASE_ID;
   const attemptsTable = process.env.AIRTABLE_ATTEMPTS_TABLE || "Attempts";
 
-  if (!usersKey) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_API_KEY" });
-  if (!usersBase) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_BASE_ID" });
+  if (!usersKey) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_API_KEY", status: "error" });
+  if (!usersBase) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_BASE_ID", status: "error" });
 
   // Hoisted so catch can always write back
-  let attemptRecordId = null;
+  let attemptRecordId = null; // Airtable RECORD ID (e.g. "recXXXX"), NOT a field in your table
   let caseId = null;
   let stage = "start";
+
+  // Server logs (Vercel)
+  console.log("[GET-GRADING] request", {
+    origin: req.headers.origin,
+    sessionId,
+    force,
+    attemptsTable,
+  });
 
   try {
     stage = "find_attempt";
@@ -76,13 +83,25 @@ export default async function handler(req, res) {
     });
 
     const attempt = attempts?.[0];
-    if (!attempt) return res.json({ ok: true, found: false });
+    if (!attempt) {
+      console.log("[GET-GRADING] attempt not found", { sessionId });
+      return res.json({ ok: true, found: false, ready: false, sessionId, status: "not_found" });
+    }
 
     attemptRecordId = attempt.id;
     const f = attempt.fields || {};
     caseId = Number(f.CaseID || 0);
     const currentText = String(f.GradingText || "");
     const currentStatus = String(f.GradingStatus || "").toLowerCase().trim();
+
+    console.log("[GET-GRADING] attempt found", {
+      attemptRecordId,
+      caseId,
+      currentStatus,
+      hasGradingText: !!currentText,
+      gradingTextStartsWithLock: currentText.startsWith("⏳"),
+      force,
+    });
 
     // 2) If already graded (either by status or by text), return it
     if (!force) {
@@ -91,6 +110,7 @@ export default async function handler(req, res) {
           ok: true,
           found: true,
           ready: true,
+          status: "done",
           sessionId,
           attemptRecordId,
           caseId,
@@ -103,6 +123,7 @@ export default async function handler(req, res) {
           ok: true,
           found: true,
           ready: true,
+          status: "done",
           sessionId,
           attemptRecordId,
           caseId,
@@ -118,22 +139,25 @@ export default async function handler(req, res) {
 
       // stale lock after 3 minutes -> retry
       if (ageMs != null && ageMs > 180000) {
+        console.log("[GET-GRADING] stale lock -> regrade", { attemptRecordId, ageMs });
         // fall through and re-grade
       } else {
         return res.json({
           ok: true,
           found: true,
           ready: false,
+          status: "processing",
           sessionId,
           attemptRecordId,
           caseId,
-          status: "processing",
         });
       }
     }
 
     // 4) Lock (always replaced by grade or error)
     stage = "lock";
+    console.log("[GET-GRADING] locking attempt", { attemptRecordId });
+
     await airtableUpdate({
       apiKey: usersKey,
       baseId: usersBase,
@@ -156,6 +180,8 @@ export default async function handler(req, res) {
 
     if (!Array.isArray(transcript) || transcript.length === 0) {
       const msg = "❌ Grading failed: Transcript missing/empty in Attempts record.";
+      console.log("[GET-GRADING] transcript missing/empty", { attemptRecordId });
+
       await airtableUpdate({
         apiKey: usersKey,
         baseId: usersBase,
@@ -168,6 +194,7 @@ export default async function handler(req, res) {
         ok: false,
         found: true,
         ready: true,
+        status: "error",
         sessionId,
         attemptRecordId,
         caseId,
@@ -184,6 +211,8 @@ export default async function handler(req, res) {
     if (!casesBase) throw new Error("Missing AIRTABLE_CASES_BASE_ID (or AIRTABLE_BASE_ID)");
     if (!caseId) throw new Error("Attempt record missing CaseID");
 
+    console.log("[GET-GRADING] loading marking", { caseId });
+
     const marking = await loadCaseMarking({
       caseId,
       casesApiKey: casesKey,
@@ -196,15 +225,27 @@ export default async function handler(req, res) {
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
     if (!openaiKey) throw new Error("Missing OPENAI_API_KEY");
 
+    console.log("[GET-GRADING] calling OpenAI", { model, attemptRecordId, caseId });
+
+    const t0 = Date.now();
     const result = await gradeTranscriptWithIndicators({
       openaiKey,
       model,
       transcript,
       marking,
     });
+    const ms = Date.now() - t0;
+
+    console.log("[GET-GRADING] OpenAI done", {
+      attemptRecordId,
+      ms,
+      gradingTextLen: result?.gradingText ? String(result.gradingText).length : 0,
+    });
 
     // 8) Save grade
     stage = "save_grade";
+    console.log("[GET-GRADING] saving grade", { attemptRecordId });
+
     await airtableUpdate({
       apiKey: usersKey,
       baseId: usersBase,
@@ -216,10 +257,13 @@ export default async function handler(req, res) {
       },
     });
 
+    console.log("[GET-GRADING] saved grade OK", { attemptRecordId });
+
     return res.json({
       ok: true,
       found: true,
       ready: true,
+      status: "done",
       sessionId,
       attemptRecordId,
       caseId,
@@ -232,6 +276,14 @@ export default async function handler(req, res) {
       `❌ Grading failed at stage "${stage}": ${msg}\n\n` +
       `Tip: retry with ?force=1`;
 
+    console.log("[GET-GRADING] ERROR", {
+      stage,
+      sessionId,
+      attemptRecordId,
+      caseId,
+      error: msg,
+    });
+
     if (attemptRecordId) {
       try {
         await airtableUpdate({
@@ -241,13 +293,20 @@ export default async function handler(req, res) {
           recordId: attemptRecordId,
           fields: { GradingText: errText, GradingStatus: "error" },
         });
-      } catch {}
+        console.log("[GET-GRADING] wrote error to Airtable", { attemptRecordId });
+      } catch (e2) {
+        console.log("[GET-GRADING] failed writing error to Airtable", {
+          attemptRecordId,
+          error: e2?.message || String(e2),
+        });
+      }
     }
 
     return res.status(200).json({
       ok: false,
       found: !!attemptRecordId,
       ready: true,
+      status: "error",
       sessionId,
       attemptRecordId,
       caseId,
