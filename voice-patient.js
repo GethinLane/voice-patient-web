@@ -1,6 +1,6 @@
 // voice-patient.js (DEBUG - finite grading poll + injected UI) + MemberSpace identity passthrough
 (() => {
-  const VERSION = "debug-2026-02-05-finite-poll-1+ms-identity";
+  const VERSION = "debug-2026-02-05-finite-poll-1+ms-identity+grading-guard-1";
   const API_BASE = "https://voice-patient-web.vercel.app";
   const ALLOWED_ORIGINS = new Set([
     "https://www.scarevision.co.uk",
@@ -16,6 +16,10 @@
 
   const GRADING_POLL_INTERVAL_MS = 6000; // every 6s
   const GRADING_POLL_MAX_TRIES = 20;     // 20 * 6s = 120s (2 minutes)
+
+  // NEW: track weird states + auto-force retry
+  let gradingReadyEmptyCount = 0;
+  let gradingForceNext = false;
 
   function $(id) { return document.getElementById(id); }
 
@@ -54,7 +58,7 @@
 
     const btnFetch = document.createElement("button");
     btnFetch.textContent = "Fetch grading now";
-    btnFetch.onclick = () => pollGradingOnce(true);
+    btnFetch.onclick = () => pollGradingOnce(true); // manual = true
     btnRow.appendChild(btnFetch);
 
     const btnStopPoll = document.createElement("button");
@@ -109,6 +113,7 @@
       `origin=${window.location.origin} | api=${API_BASE} | sessionId=${currentSessionId || "(none)"}` +
       ` | tries=${gradingPollTries}/${GRADING_POLL_MAX_TRIES}` +
       ` | userId=${userId || "(none)"} | email=${email || "(none)"}` +
+      ` | readyEmpty=${gradingReadyEmptyCount} | forceNext=${gradingForceNext ? "yes" : "no"}` +
       (extra.note ? ` | ${extra.note}` : "");
   }
 
@@ -163,7 +168,6 @@
     if (!id && !email) return;
 
     msMember = { ...mi, id, email };
-    // Optional: share with other scripts (e.g. your Stripe email-lock script)
     window.__msMemberInfo = msMember;
 
     log("[MEMBERSPACE] identity set", { source, id, email });
@@ -175,7 +179,7 @@
       const MS = window.MemberSpace;
       if (!MS || typeof MS.getMemberInfo !== "function") return false;
 
-      const data = MS.getMemberInfo(); // { isLoggedIn: true, memberInfo: {...} } or { isLoggedIn:false }
+      const data = MS.getMemberInfo();
       if (data?.isLoggedIn && data?.memberInfo) {
         setMsMember(data.memberInfo, "MemberSpace.getMemberInfo");
         return true;
@@ -186,23 +190,18 @@
     }
   }
 
-  // Event: MemberSpace.member.info
   document.addEventListener("MemberSpace.member.info", (e) => {
-    // Docs: event.detail contains MemberInfo (often wrapped as { memberInfo })
     const detail = e.detail || null;
     const mi = detail?.memberInfo || detail;
     setMsMember(mi, "MemberSpace.member.info");
   });
 
-  // Event: MemberSpace.ready (good time to call getter)
   document.addEventListener("MemberSpace.ready", () => {
     tryHydrateFromMemberSpaceGetter();
   });
 
-  // If another script already captured it (like your Stripe lock code), use it
   if (window.__msMemberInfo) setMsMember(window.__msMemberInfo, "window.__msMemberInfo");
 
-  // Try once immediately (may still be too early; that's fine)
   tryHydrateFromMemberSpaceGetter();
 
   function getIdentity() {
@@ -218,13 +217,11 @@
       const { userId, email } = getIdentity();
       if (userId || email) return { userId, email };
 
-      // try the getter in case we missed the event
       tryHydrateFromMemberSpaceGetter();
       await new Promise((r) => setTimeout(r, intervalMs));
     }
     return getIdentity();
   }
-
 
   // ---------- Daily iframe ----------
   let callIframe = null;
@@ -311,6 +308,9 @@
     if (gradingPollTimer) clearInterval(gradingPollTimer);
     gradingPollTimer = null;
     gradingPollTries = 0;
+    gradingReadyEmptyCount = 0;
+    gradingForceNext = false;
+
     if (reason) log("[GRADING] polling stopped", { reason });
     updateMeta();
   }
@@ -327,11 +327,20 @@
 
     const shouldLog = manual;
 
+    // NEW: manual fetch forces re-grade; also auto-force if we saw "ready but empty"
+    const useForce = manual || gradingForceNext;
+    gradingForceNext = false;
+
+    const url =
+      `${API_BASE}/api/get-grading?sessionId=${encodeURIComponent(currentSessionId)}` +
+      (useForce ? `&force=1` : "");
+
+    if (shouldLog || useForce) log("[GRADING] request", { url });
+
     try {
-      const data = await fetchJson(
-        `${API_BASE}/api/get-grading?sessionId=${encodeURIComponent(currentSessionId)}`,
-        { method: "GET", cache: "no-store", mode: "cors" }
-      );
+      const data = await fetchJson(url, { method: "GET", cache: "no-store", mode: "cors" });
+
+      if (shouldLog) log("[GRADING] response", data);
 
       if (!data.found) {
         out.textContent = "No attempt found yet… (waiting for transcript submit)";
@@ -339,19 +348,48 @@
         return;
       }
 
-      if (data.ready && data.gradingText) {
-  out.textContent = data.gradingText;
-  setStatus("Grading ready.");
-  log("[GRADING] READY", {
-    sessionId: currentSessionId,
-    attemptRecordId: data.attemptRecordId,
-    caseId: data.caseId,
-  });
-  stopGradingPoll("ready");
-  return;
-}
+      const gradingText = typeof data.gradingText === "string" ? data.gradingText : "";
+      const trimmed = gradingText.trim();
 
+      // ✅ IMPORTANT CHANGE:
+      // Only stop polling if gradingText is genuinely non-empty.
+      // If API says ready:true but gradingText is empty/blank, KEEP polling and force retry.
+      if (data.ready) {
+        if (trimmed.length > 0) {
+          out.textContent = gradingText;
+          setStatus("Grading ready.");
+          log("[GRADING] READY", {
+            sessionId: currentSessionId,
+            attemptRecordId: data.attemptRecordId,
+            caseId: data.caseId,
+            status: data.status,
+            len: gradingText.length,
+          });
+          stopGradingPoll("ready");
+          return;
+        }
 
+        // ready:true but no grading text -> keep polling + schedule force retry
+        gradingReadyEmptyCount++;
+        if (gradingReadyEmptyCount >= 2) gradingForceNext = true;
+
+        out.textContent =
+          "Grading finished but returned empty text. Retrying…" +
+          (gradingForceNext ? " (forcing re-grade)" : "");
+        log("[GRADING] ready=true but gradingText empty", {
+          sessionId: currentSessionId,
+          attemptRecordId: data.attemptRecordId,
+          caseId: data.caseId,
+          status: data.status,
+          readyEmptyCount: gradingReadyEmptyCount,
+          willForceNext: gradingForceNext,
+          data,
+        });
+        setStatus("Stopped. Retrying grading…");
+        return; // DO NOT stop polling
+      }
+
+      // processing
       out.textContent = "Grading in progress…";
       if (shouldLog) log("[GRADING] processing", data);
       setStatus("Stopped. Grading in progress…");
@@ -365,6 +403,8 @@
   function startFiniteGradingPoll() {
     stopGradingPoll("restart");
     gradingPollTries = 0;
+    gradingReadyEmptyCount = 0;
+    gradingForceNext = false;
 
     const out = document.getElementById("gradingOutput");
     out.textContent = "Grading in progress…";
@@ -411,7 +451,7 @@
 
       log("[START] case selected", { caseId });
 
-      // ✅ NEW: include MemberSpace identity in the start request
+      // ✅ include MemberSpace identity in the start request
       const { userId, email } = await ensureIdentity({ timeoutMs: 2500, intervalMs: 150 });
 
       if (!userId && !email) {
@@ -421,11 +461,10 @@
         return;
       }
 
-
       const data = await fetchJson(`${API_BASE}/api/start-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseId, userId, email }), // ✅ CHANGED
+        body: JSON.stringify({ caseId, userId, email }),
         mode: "cors",
       });
 
