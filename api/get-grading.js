@@ -56,17 +56,11 @@ export default async function handler(req, res) {
   if (!usersBase) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_BASE_ID", status: "error" });
 
   // Hoisted so catch can always write back
-  let attemptRecordId = null; // Airtable RECORD ID (e.g. "recXXXX"), NOT a field in your table
+  let attemptRecordId = null; // Airtable record id (e.g. "recXXXX") – not a field in your base
   let caseId = null;
   let stage = "start";
 
-  // Server logs (Vercel)
-  console.log("[GET-GRADING] request", {
-    origin: req.headers.origin,
-    sessionId,
-    force,
-    attemptsTable,
-  });
+  console.log("[GET-GRADING] request", { origin: req.headers.origin, sessionId, force });
 
   try {
     stage = "find_attempt";
@@ -83,29 +77,30 @@ export default async function handler(req, res) {
     });
 
     const attempt = attempts?.[0];
-    if (!attempt) {
-      console.log("[GET-GRADING] attempt not found", { sessionId });
-      return res.json({ ok: true, found: false, ready: false, sessionId, status: "not_found" });
-    }
+    if (!attempt) return res.json({ ok: true, found: false, ready: false, sessionId, status: "not_found" });
 
     attemptRecordId = attempt.id;
     const f = attempt.fields || {};
     caseId = Number(f.CaseID || 0);
+
     const currentText = String(f.GradingText || "");
+    const currentTextTrim = currentText.trim(); // ✅ NEW: treat whitespace-only as empty
     const currentStatus = String(f.GradingStatus || "").toLowerCase().trim();
 
     console.log("[GET-GRADING] attempt found", {
       attemptRecordId,
       caseId,
       currentStatus,
-      hasGradingText: !!currentText,
-      gradingTextStartsWithLock: currentText.startsWith("⏳"),
+      currentTextLen: currentText.length,
+      currentTextTrimLen: currentTextTrim.length,
+      startsWithLock: currentText.startsWith("⏳"),
       force,
     });
 
     // 2) If already graded (either by status or by text), return it
+    // ✅ NEW: must be NON-WHITESPACE text, not just "\n"
     if (!force) {
-      if (currentStatus === "done" && currentText && !currentText.startsWith("⏳")) {
+      if (currentStatus === "done" && currentTextTrim && !currentText.startsWith("⏳")) {
         return res.json({
           ok: true,
           found: true,
@@ -118,7 +113,7 @@ export default async function handler(req, res) {
         });
       }
 
-      if (currentText && !currentText.startsWith("⏳") && currentStatus !== "processing") {
+      if (currentTextTrim && !currentText.startsWith("⏳") && currentStatus !== "processing") {
         return res.json({
           ok: true,
           found: true,
@@ -236,10 +231,14 @@ export default async function handler(req, res) {
     });
     const ms = Date.now() - t0;
 
+    const rawText = typeof result?.gradingText === "string" ? result.gradingText : "";
+    const hasRealText = rawText.trim().length > 0; // ✅ NEW: protect against "\n"
+
     console.log("[GET-GRADING] OpenAI done", {
       attemptRecordId,
       ms,
-      gradingTextLen: result?.gradingText ? String(result.gradingText).length : 0,
+      gradingTextLen: rawText.length,
+      gradingTextTrimLen: rawText.trim().length,
     });
 
     // 8) Save grade
@@ -252,7 +251,7 @@ export default async function handler(req, res) {
       table: attemptsTable,
       recordId: attemptRecordId,
       fields: {
-        GradingText: result.gradingText || "⚠️ Grading completed but gradingText was empty.",
+        GradingText: hasRealText ? rawText : "⚠️ Grading completed but gradingText was empty.",
         GradingStatus: "done",
       },
     });
@@ -267,8 +266,8 @@ export default async function handler(req, res) {
       sessionId,
       attemptRecordId,
       caseId,
-      gradingText: result.gradingText,
-      bands: result.bands,
+      gradingText: hasRealText ? rawText : "⚠️ Grading completed but gradingText was empty.",
+      bands: result?.bands,
     });
   } catch (e) {
     const msg = e?.message || String(e);
@@ -276,13 +275,7 @@ export default async function handler(req, res) {
       `❌ Grading failed at stage "${stage}": ${msg}\n\n` +
       `Tip: retry with ?force=1`;
 
-    console.log("[GET-GRADING] ERROR", {
-      stage,
-      sessionId,
-      attemptRecordId,
-      caseId,
-      error: msg,
-    });
+    console.log("[GET-GRADING] ERROR", { stage, sessionId, attemptRecordId, caseId, error: msg });
 
     if (attemptRecordId) {
       try {
