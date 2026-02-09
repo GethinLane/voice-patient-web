@@ -153,26 +153,78 @@
     return data;
   }
 
-  // ---------- MemberSpace identity ----------
+  // ---------- MemberSpace identity (robust) ----------
   let msMember = null;
 
-  // MemberSpace dispatches this event when it knows the logged-in member.
-  document.addEventListener("MemberSpace.member.info", (e) => {
-    msMember = e.detail?.memberInfo || e.detail || null;
+  function setMsMember(mi, source = "unknown") {
+    if (!mi) return;
+    const id = mi?.id != null ? String(mi.id).trim() : "";
+    const email = mi?.email ? String(mi.email).trim().toLowerCase() : "";
+    if (!id && !email) return;
 
-    // Avoid logging full object; just the fields we care about.
-    log("[MEMBERSPACE] member info received", {
-      id: msMember?.id ?? null,
-      email: msMember?.email ?? null,
-    });
+    msMember = { ...mi, id, email };
+    // Optional: share with other scripts (e.g. your Stripe email-lock script)
+    window.__msMemberInfo = msMember;
+
+    log("[MEMBERSPACE] identity set", { source, id, email });
     updateMeta();
+  }
+
+  function tryHydrateFromMemberSpaceGetter() {
+    try {
+      const MS = window.MemberSpace;
+      if (!MS || typeof MS.getMemberInfo !== "function") return false;
+
+      const data = MS.getMemberInfo(); // { isLoggedIn: true, memberInfo: {...} } or { isLoggedIn:false }
+      if (data?.isLoggedIn && data?.memberInfo) {
+        setMsMember(data.memberInfo, "MemberSpace.getMemberInfo");
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Event: MemberSpace.member.info
+  document.addEventListener("MemberSpace.member.info", (e) => {
+    // Docs: event.detail contains MemberInfo (often wrapped as { memberInfo })
+    const detail = e.detail || null;
+    const mi = detail?.memberInfo || detail;
+    setMsMember(mi, "MemberSpace.member.info");
   });
 
+  // Event: MemberSpace.ready (good time to call getter)
+  document.addEventListener("MemberSpace.ready", () => {
+    tryHydrateFromMemberSpaceGetter();
+  });
+
+  // If another script already captured it (like your Stripe lock code), use it
+  if (window.__msMemberInfo) setMsMember(window.__msMemberInfo, "window.__msMemberInfo");
+
+  // Try once immediately (may still be too early; that's fine)
+  tryHydrateFromMemberSpaceGetter();
+
   function getIdentity() {
-    const userId = msMember?.id != null ? String(msMember.id).trim() : "";
-    const email = msMember?.email ? String(msMember.email).trim().toLowerCase() : "";
+    const mi = msMember || window.__msMemberInfo || null;
+    const userId = mi?.id != null ? String(mi.id).trim() : "";
+    const email = mi?.email ? String(mi.email).trim().toLowerCase() : "";
     return { userId, email };
   }
+
+  async function ensureIdentity({ timeoutMs = 2500, intervalMs = 150 } = {}) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const { userId, email } = getIdentity();
+      if (userId || email) return { userId, email };
+
+      // try the getter in case we missed the event
+      tryHydrateFromMemberSpaceGetter();
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return getIdentity();
+  }
+
 
   // ---------- Daily iframe ----------
   let callIframe = null;
@@ -355,15 +407,15 @@
       log("[START] case selected", { caseId });
 
       // ✅ NEW: include MemberSpace identity in the start request
-      const { userId, email } = getIdentity();
+      const { userId, email } = await ensureIdentity({ timeoutMs: 2500, intervalMs: 150 });
 
-      // Recommended: require login, so Attempts always link to a real Users row.
       if (!userId && !email) {
-        log("[START] blocked: missing MemberSpace identity");
-        setStatus("Please log in to MemberSpace before starting.");
+        log("[START] blocked: missing MemberSpace identity (after retry)");
+        setStatus("Couldn't detect MemberSpace login. Refresh the page, then try again.");
         setUiConnected(false);
         return;
       }
+
 
       const data = await fetchJson(`${API_BASE}/api/start-session`, {
         method: "POST",
