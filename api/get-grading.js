@@ -39,28 +39,99 @@ function escapeFormulaString(s) {
   return String(s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+// -------------------- NEW: credit deduction helper --------------------
+
+async function airtableGetRecord({ apiKey, baseId, table, recordId, fields = [] }) {
+  const qs = new URLSearchParams();
+  for (const f of fields) qs.append("fields[]", f);
+
+  const url =
+    `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}/${recordId}` +
+    (fields.length ? `?${qs.toString()}` : "");
+
+  const resp = await fetch(url, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+
+  const text = await resp.text();
+  if (!resp.ok) throw new Error(`Airtable get error ${resp.status}: ${text.slice(0, 400)}`);
+  return text ? JSON.parse(text) : null;
+}
+
+async function deductOneCreditIfNeeded({
+  usersKey,
+  usersBase,
+  usersTable,
+  creditsField,
+  userRecordId,
+  shouldDeduct,
+}) {
+  if (!shouldDeduct) {
+    return { didDeduct: false, before: null, after: null, reason: "already_done_or_forced" };
+  }
+
+  if (!userRecordId) {
+    // No linked user -> we cannot safely deduct
+    return { didDeduct: false, before: null, after: null, reason: "missing_user_link" };
+  }
+
+  // Read current credits
+  const userRec = await airtableGetRecord({
+    apiKey: usersKey,
+    baseId: usersBase,
+    table: usersTable,
+    recordId: userRecordId,
+    fields: [creditsField],
+  });
+
+  const beforeRaw = userRec?.fields?.[creditsField];
+  const before = Number(beforeRaw);
+  if (!Number.isFinite(before)) {
+    // Credits field missing/blank/non-numeric -> don't break grading, just skip deduction
+    return { didDeduct: false, before: beforeRaw ?? null, after: null, reason: "credits_not_numeric" };
+  }
+
+  const after = Math.max(0, before - 1);
+
+  // Write back
+  await airtableUpdate({
+    apiKey: usersKey,
+    baseId: usersBase,
+    table: usersTable,
+    recordId: userRecordId,
+    fields: { [creditsField]: after },
+  });
+
+  return { didDeduct: true, before, after, reason: "deducted" };
+}
+
+// -------------------- handler --------------------
+
 export default async function handler(req, res) {
   cors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "GET") return res.status(405).json({ ok: false, error: "GET only", status: "error" });
+  if (req.method !== "GET") return res.status(405).json({ ok: false, error: "GET only" });
 
   const sessionId = String(req.query?.sessionId || "").trim();
   const force = String(req.query?.force || "") === "1";
-  if (!sessionId) return res.status(400).json({ ok: false, error: "Missing sessionId", status: "error" });
+  if (!sessionId) return res.status(400).json({ ok: false, error: "Missing sessionId" });
 
   const usersKey = process.env.AIRTABLE_USERS_API_KEY;
   const usersBase = process.env.AIRTABLE_USERS_BASE_ID;
+
   const attemptsTable = process.env.AIRTABLE_ATTEMPTS_TABLE || "Attempts";
 
-  if (!usersKey) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_API_KEY", status: "error" });
-  if (!usersBase) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_BASE_ID", status: "error" });
+  // NEW: user table + credits field (no new Airtable fields, just config)
+  const usersTable = process.env.AIRTABLE_USERS_TABLE || "Users";
+  const creditsField = process.env.AIRTABLE_USERS_CREDITS_FIELD || "CreditsRemaining";
+
+  if (!usersKey) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_API_KEY" });
+  if (!usersBase) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_BASE_ID" });
 
   // Hoisted so catch can always write back
-  let attemptRecordId = null; // Airtable record id (e.g. "recXXXX") – not a field in your base
+  let attemptRecordId = null;
   let caseId = null;
   let stage = "start";
-
-  console.log("[GET-GRADING] request", { origin: req.headers.origin, sessionId, force });
 
   try {
     stage = "find_attempt";
@@ -77,30 +148,21 @@ export default async function handler(req, res) {
     });
 
     const attempt = attempts?.[0];
-    if (!attempt) return res.json({ ok: true, found: false, ready: false, sessionId, status: "not_found" });
+    if (!attempt) return res.json({ ok: true, found: false });
 
     attemptRecordId = attempt.id;
     const f = attempt.fields || {};
     caseId = Number(f.CaseID || 0);
-
     const currentText = String(f.GradingText || "");
-    const currentTextTrim = currentText.trim(); // ✅ NEW: treat whitespace-only as empty
     const currentStatus = String(f.GradingStatus || "").toLowerCase().trim();
 
-    console.log("[GET-GRADING] attempt found", {
-      attemptRecordId,
-      caseId,
-      currentStatus,
-      currentTextLen: currentText.length,
-      currentTextTrimLen: currentTextTrim.length,
-      startsWithLock: currentText.startsWith("⏳"),
-      force,
-    });
+    // NEW: user link record id from Attempts.User (linked record field)
+    const userRecordId =
+      Array.isArray(f.User) && f.User.length ? String(f.User[0]) : null;
 
     // 2) If already graded (either by status or by text), return it
-    // ✅ NEW: must be NON-WHITESPACE text, not just "\n"
     if (!force) {
-      if (currentStatus === "done" && currentTextTrim && !currentText.startsWith("⏳")) {
+      if (currentStatus === "done" && currentText && !currentText.startsWith("⏳")) {
         return res.json({
           ok: true,
           found: true,
@@ -113,12 +175,12 @@ export default async function handler(req, res) {
         });
       }
 
-      if (currentTextTrim && !currentText.startsWith("⏳") && currentStatus !== "processing") {
+      if (currentText && !currentText.startsWith("⏳") && currentStatus !== "processing") {
         return res.json({
           ok: true,
           found: true,
           ready: true,
-          status: "done",
+          status: currentStatus || "done",
           sessionId,
           attemptRecordId,
           caseId,
@@ -134,7 +196,6 @@ export default async function handler(req, res) {
 
       // stale lock after 3 minutes -> retry
       if (ageMs != null && ageMs > 180000) {
-        console.log("[GET-GRADING] stale lock -> regrade", { attemptRecordId, ageMs });
         // fall through and re-grade
       } else {
         return res.json({
@@ -149,10 +210,14 @@ export default async function handler(req, res) {
       }
     }
 
+    // Guard for double-deduction:
+    // If the attempt is already marked done, and caller is forcing a regrade,
+    // we MUST NOT deduct again.
+    const wasAlreadyDone =
+      currentStatus === "done" && currentText && !currentText.startsWith("⏳");
+
     // 4) Lock (always replaced by grade or error)
     stage = "lock";
-    console.log("[GET-GRADING] locking attempt", { attemptRecordId });
-
     await airtableUpdate({
       apiKey: usersKey,
       baseId: usersBase,
@@ -175,8 +240,6 @@ export default async function handler(req, res) {
 
     if (!Array.isArray(transcript) || transcript.length === 0) {
       const msg = "❌ Grading failed: Transcript missing/empty in Attempts record.";
-      console.log("[GET-GRADING] transcript missing/empty", { attemptRecordId });
-
       await airtableUpdate({
         apiKey: usersKey,
         baseId: usersBase,
@@ -206,8 +269,6 @@ export default async function handler(req, res) {
     if (!casesBase) throw new Error("Missing AIRTABLE_CASES_BASE_ID (or AIRTABLE_BASE_ID)");
     if (!caseId) throw new Error("Attempt record missing CaseID");
 
-    console.log("[GET-GRADING] loading marking", { caseId });
-
     const marking = await loadCaseMarking({
       caseId,
       casesApiKey: casesKey,
@@ -220,30 +281,17 @@ export default async function handler(req, res) {
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
     if (!openaiKey) throw new Error("Missing OPENAI_API_KEY");
 
-    console.log("[GET-GRADING] calling OpenAI", { model, attemptRecordId, caseId });
-
-    const t0 = Date.now();
     const result = await gradeTranscriptWithIndicators({
       openaiKey,
       model,
       transcript,
       marking,
     });
-    const ms = Date.now() - t0;
-
-    const rawText = typeof result?.gradingText === "string" ? result.gradingText : "";
-    const hasRealText = rawText.trim().length > 0; // ✅ NEW: protect against "\n"
-
-    console.log("[GET-GRADING] OpenAI done", {
-      attemptRecordId,
-      ms,
-      gradingTextLen: rawText.length,
-      gradingTextTrimLen: rawText.trim().length,
-    });
 
     // 8) Save grade
     stage = "save_grade";
-    console.log("[GET-GRADING] saving grade", { attemptRecordId });
+    const gradingTextToSave =
+      result.gradingText || "⚠️ Grading completed but gradingText was empty.";
 
     await airtableUpdate({
       apiKey: usersKey,
@@ -251,12 +299,22 @@ export default async function handler(req, res) {
       table: attemptsTable,
       recordId: attemptRecordId,
       fields: {
-        GradingText: hasRealText ? rawText : "⚠️ Grading completed but gradingText was empty.",
+        GradingText: gradingTextToSave,
         GradingStatus: "done",
       },
     });
 
-    console.log("[GET-GRADING] saved grade OK", { attemptRecordId });
+    // 9) NEW: deduct ONE credit AFTER we have a grade saved
+    // Deduct only if this attempt wasn't already done (prevents double-charging)
+    stage = "deduct_credit";
+    const creditResult = await deductOneCreditIfNeeded({
+      usersKey,
+      usersBase,
+      usersTable,
+      creditsField,
+      userRecordId,
+      shouldDeduct: !wasAlreadyDone,
+    });
 
     return res.json({
       ok: true,
@@ -266,16 +324,20 @@ export default async function handler(req, res) {
       sessionId,
       attemptRecordId,
       caseId,
-      gradingText: hasRealText ? rawText : "⚠️ Grading completed but gradingText was empty.",
-      bands: result?.bands,
+      gradingText: gradingTextToSave,
+      bands: result.bands,
+      credits: {
+        didDeduct: creditResult.didDeduct,
+        before: creditResult.before,
+        after: creditResult.after,
+        reason: creditResult.reason,
+      },
     });
   } catch (e) {
     const msg = e?.message || String(e);
     const errText =
       `❌ Grading failed at stage "${stage}": ${msg}\n\n` +
       `Tip: retry with ?force=1`;
-
-    console.log("[GET-GRADING] ERROR", { stage, sessionId, attemptRecordId, caseId, error: msg });
 
     if (attemptRecordId) {
       try {
@@ -286,13 +348,7 @@ export default async function handler(req, res) {
           recordId: attemptRecordId,
           fields: { GradingText: errText, GradingStatus: "error" },
         });
-        console.log("[GET-GRADING] wrote error to Airtable", { attemptRecordId });
-      } catch (e2) {
-        console.log("[GET-GRADING] failed writing error to Airtable", {
-          attemptRecordId,
-          error: e2?.message || String(e2),
-        });
-      }
+      } catch {}
     }
 
     return res.status(200).json({
