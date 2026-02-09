@@ -1,6 +1,6 @@
-// voice-patient.js (DEBUG - finite grading poll + injected UI) + MemberSpace identity passthrough
+// voice-patient.js (DEBUG - finite grading poll + injected UI) + MemberSpace identity passthrough + 12-min countdown + auto-stop
 (() => {
-  const VERSION = "debug-2026-02-05-finite-poll-1+ms-identity+grading-guard-1";
+  const VERSION = "debug-2026-02-05-finite-poll-1+ms-identity+grading-guard-1+12min-timer";
   const API_BASE = "https://voice-patient-web.vercel.app";
   const ALLOWED_ORIGINS = new Set([
     "https://www.scarevision.co.uk",
@@ -17,9 +17,13 @@
   const GRADING_POLL_INTERVAL_MS = 6000; // every 6s
   const GRADING_POLL_MAX_TRIES = 20;     // 20 * 6s = 120s (2 minutes)
 
-  // NEW: track weird states + auto-force retry
-  let gradingReadyEmptyCount = 0;
-  let gradingForceNext = false;
+  // ---------------- Countdown (12 min) ----------------
+  const MAX_SESSION_SECONDS = 12 * 60;
+  let countdownTimer = null;
+  let countdownEndsAt = null;
+
+  // Grading guard (prevents "ready but empty gradingText" looking like success)
+  let readyEmptyCount = 0;
 
   function $(id) { return document.getElementById(id); }
 
@@ -51,6 +55,15 @@
     meta.style.opacity = "0.9";
     root.appendChild(meta);
 
+    // Timer row (created once)
+    const timer = document.createElement("div");
+    timer.id = "vp-timer";
+    timer.style.marginTop = "6px";
+    timer.style.fontWeight = "700";
+    timer.style.color = "#1565C0";
+    timer.textContent = ""; // will be set when session starts
+    root.appendChild(timer);
+
     const btnRow = document.createElement("div");
     btnRow.style.display = "flex";
     btnRow.style.gap = "8px";
@@ -58,7 +71,7 @@
 
     const btnFetch = document.createElement("button");
     btnFetch.textContent = "Fetch grading now";
-    btnFetch.onclick = () => pollGradingOnce(true); // manual = true
+    btnFetch.onclick = () => pollGradingOnce(true);
     btnRow.appendChild(btnFetch);
 
     const btnStopPoll = document.createElement("button");
@@ -113,7 +126,6 @@
       `origin=${window.location.origin} | api=${API_BASE} | sessionId=${currentSessionId || "(none)"}` +
       ` | tries=${gradingPollTries}/${GRADING_POLL_MAX_TRIES}` +
       ` | userId=${userId || "(none)"} | email=${email || "(none)"}` +
-      ` | readyEmpty=${gradingReadyEmptyCount} | forceNext=${gradingForceNext ? "yes" : "no"}` +
       (extra.note ? ` | ${extra.note}` : "");
   }
 
@@ -158,6 +170,49 @@
     return data;
   }
 
+  // ---------------- Countdown helpers ----------------
+  function formatMMSS(totalSeconds) {
+    const s = Math.max(0, Math.floor(totalSeconds));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+  }
+
+  function setCountdownText(text) {
+    ensureUiRoot();
+    const el = document.getElementById("vp-timer");
+    if (el) el.textContent = text || "";
+  }
+
+  function stopCountdown(reason = "") {
+    if (countdownTimer) clearInterval(countdownTimer);
+    countdownTimer = null;
+    countdownEndsAt = null;
+    if (reason) setCountdownText(`Timer stopped (${reason})`);
+    else setCountdownText("");
+  }
+
+  function startCountdown(seconds = MAX_SESSION_SECONDS) {
+    stopCountdown("restart");
+    countdownEndsAt = Date.now() + seconds * 1000;
+
+    const tick = () => {
+      const remainingMs = countdownEndsAt - Date.now();
+      const remainingSec = Math.ceil(remainingMs / 1000);
+
+      setCountdownText(`Time left: ${formatMMSS(remainingSec)}`);
+
+      if (remainingSec <= 0) {
+        stopCountdown("time limit reached");
+        log("[TIMER] reached zero -> auto stop", { currentSessionId });
+        stopConsultation(true); // auto stop
+      }
+    };
+
+    tick();
+    countdownTimer = setInterval(tick, 250);
+  }
+
   // ---------- MemberSpace identity (robust) ----------
   let msMember = null;
 
@@ -185,7 +240,7 @@
         return true;
       }
       return false;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -201,7 +256,6 @@
   });
 
   if (window.__msMemberInfo) setMsMember(window.__msMemberInfo, "window.__msMemberInfo");
-
   tryHydrateFromMemberSpaceGetter();
 
   function getIdentity() {
@@ -216,7 +270,6 @@
     while (Date.now() - start < timeoutMs) {
       const { userId, email } = getIdentity();
       if (userId || email) return { userId, email };
-
       tryHydrateFromMemberSpaceGetter();
       await new Promise((r) => setTimeout(r, intervalMs));
     }
@@ -308,14 +361,16 @@
     if (gradingPollTimer) clearInterval(gradingPollTimer);
     gradingPollTimer = null;
     gradingPollTries = 0;
-    gradingReadyEmptyCount = 0;
-    gradingForceNext = false;
-
     if (reason) log("[GRADING] polling stopped", { reason });
     updateMeta();
   }
 
-  async function pollGradingOnce(manual = false) {
+  function isMeaningfulText(s) {
+    const t = String(s || "");
+    return t.trim().length >= 20; // avoid "\n" or tiny placeholders
+  }
+
+  async function pollGradingOnce(manual = false, { force = false } = {}) {
     ensureUiRoot();
     const out = document.getElementById("gradingOutput");
 
@@ -325,73 +380,67 @@
       return;
     }
 
-    const shouldLog = manual;
-
-    // NEW: manual fetch forces re-grade; also auto-force if we saw "ready but empty"
-    const useForce = manual || gradingForceNext;
-    gradingForceNext = false;
-
     const url =
       `${API_BASE}/api/get-grading?sessionId=${encodeURIComponent(currentSessionId)}` +
-      (useForce ? `&force=1` : "");
+      (force ? `&force=1` : "");
 
-    if (shouldLog || useForce) log("[GRADING] request", { url });
+    if (manual || force) log("[GRADING] request", { url });
 
     try {
       const data = await fetchJson(url, { method: "GET", cache: "no-store", mode: "cors" });
 
-      if (shouldLog) log("[GRADING] response", data);
-
       if (!data.found) {
         out.textContent = "No attempt found yet… (waiting for transcript submit)";
-        if (shouldLog) log("[GRADING] found=false", data);
+        if (manual) log("[GRADING] found=false", data);
         return;
       }
 
-      const gradingText = typeof data.gradingText === "string" ? data.gradingText : "";
-      const trimmed = gradingText.trim();
+      const status = String(data.status || "");
+      const gradingText = String(data.gradingText || "");
+      const ready = !!data.ready;
 
-      // ✅ IMPORTANT CHANGE:
-      // Only stop polling if gradingText is genuinely non-empty.
-      // If API says ready:true but gradingText is empty/blank, KEEP polling and force retry.
-      if (data.ready) {
-        if (trimmed.length > 0) {
-          out.textContent = gradingText;
-          setStatus("Grading ready.");
-          log("[GRADING] READY", {
-            sessionId: currentSessionId,
-            attemptRecordId: data.attemptRecordId,
-            caseId: data.caseId,
-            status: data.status,
-            len: gradingText.length,
-          });
-          stopGradingPoll("ready");
-          return;
-        }
+      // ✅ If ready but gradingText is empty/whitespace, treat as not ready yet
+      if (ready && !isMeaningfulText(gradingText)) {
+        readyEmptyCount += 1;
+        const willForceNext = readyEmptyCount >= 2;
 
-        // ready:true but no grading text -> keep polling + schedule force retry
-        gradingReadyEmptyCount++;
-        if (gradingReadyEmptyCount >= 2) gradingForceNext = true;
-
-        out.textContent =
-          "Grading finished but returned empty text. Retrying…" +
-          (gradingForceNext ? " (forcing re-grade)" : "");
         log("[GRADING] ready=true but gradingText empty", {
           sessionId: currentSessionId,
           attemptRecordId: data.attemptRecordId,
           caseId: data.caseId,
-          status: data.status,
-          readyEmptyCount: gradingReadyEmptyCount,
-          willForceNext: gradingForceNext,
+          status,
+          readyEmptyCount,
+          willForceNext,
           data,
         });
-        setStatus("Stopped. Retrying grading…");
-        return; // DO NOT stop polling
+
+        out.textContent = "Grading finishing…";
+        setStatus("Stopped. Grading finishing…");
+
+        // after 2 empties, force a re-grade on next poll
+        if (willForceNext) {
+          await pollGradingOnce(false, { force: true });
+        }
+        return;
+      }
+
+      if (ready && gradingText) {
+        out.textContent = gradingText;
+        setStatus("Grading ready.");
+        log("[GRADING] READY", {
+          sessionId: currentSessionId,
+          attemptRecordId: data.attemptRecordId,
+          caseId: data.caseId,
+          status,
+          len: gradingText.length,
+        });
+        stopGradingPoll("ready");
+        return;
       }
 
       // processing
       out.textContent = "Grading in progress…";
-      if (shouldLog) log("[GRADING] processing", data);
+      if (manual) log("[GRADING] processing", data);
       setStatus("Stopped. Grading in progress…");
     } catch (e) {
       out.textContent = "Error fetching grading: " + (e?.message || String(e));
@@ -403,8 +452,7 @@
   function startFiniteGradingPoll() {
     stopGradingPoll("restart");
     gradingPollTries = 0;
-    gradingReadyEmptyCount = 0;
-    gradingForceNext = false;
+    readyEmptyCount = 0;
 
     const out = document.getElementById("gradingOutput");
     out.textContent = "Grading in progress…";
@@ -429,6 +477,7 @@
       }
     }, GRADING_POLL_INTERVAL_MS);
 
+    // first hit immediately
     pollGradingOnce(false);
   }
 
@@ -436,6 +485,7 @@
   async function startConsultation() {
     ensureUiRoot();
     stopGradingPoll("new session");
+    stopCountdown("new session");
     document.getElementById("gradingOutput").textContent =
       "Grading will appear here after you stop the consultation.";
 
@@ -451,7 +501,7 @@
 
       log("[START] case selected", { caseId });
 
-      // ✅ include MemberSpace identity in the start request
+      // include MemberSpace identity in the start request
       const { userId, email } = await ensureIdentity({ timeoutMs: 2500, intervalMs: 150 });
 
       if (!userId && !email) {
@@ -476,22 +526,25 @@
       updateMeta();
 
       mountDailyIframe(data.dailyRoom, data.dailyToken);
+      startCountdown(MAX_SESSION_SECONDS);
       setStatus(`Connected (Case ${caseId}). Talk, then press Stop.`);
     } catch (e) {
       log("[START] error", { error: e?.message || String(e) });
       setStatus("Error starting (see debug panel).");
       setUiConnected(false);
       unmountDailyIframe();
+      stopCountdown("start failed");
     }
   }
 
-  function stopConsultation() {
+  function stopConsultation(auto = false) {
     ensureUiRoot();
-    log("[STOP] clicked", { currentSessionId });
+    log("[STOP] clicked", { currentSessionId, auto });
 
+    stopCountdown(auto ? "auto stop" : "manual stop");
     unmountDailyIframe();
     setUiConnected(false);
-    setStatus("Stopped. Grading in progress…");
+    setStatus(auto ? "Time limit reached. Grading in progress…" : "Stopped. Grading in progress…");
 
     if (currentSessionId) startFiniteGradingPoll();
     else document.getElementById("gradingOutput").textContent =
@@ -516,10 +569,11 @@
     const startBtn = $("startBtn");
     const stopBtn = $("stopBtn");
     if (startBtn) startBtn.addEventListener("click", startConsultation);
-    if (stopBtn) stopBtn.addEventListener("click", stopConsultation);
+    if (stopBtn) stopBtn.addEventListener("click", () => stopConsultation(false));
 
     setUiConnected(false);
     setStatus("Not connected");
     populateCaseDropdown();
+    setCountdownText(""); // ensure clean
   });
 })();
