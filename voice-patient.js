@@ -340,12 +340,17 @@
       }
 
       if (data.ready && data.gradingText) {
-        out.textContent = data.gradingText;
-        setStatus("Grading ready.");
-        log("[GRADING] READY", { sessionId: currentSessionId });
-        stopGradingPoll("ready");
-        return;
-      }
+  out.textContent = data.gradingText;
+  setStatus("Grading ready.");
+  log("[GRADING] READY", {
+    sessionId: currentSessionId,
+    attemptRecordId: data.attemptRecordId,
+    caseId: data.caseId,
+  });
+  stopGradingPoll("ready");
+  return;
+}
+
 
       out.textContent = "Grading in progress…";
       if (shouldLog) log("[GRADING] processing", data);
