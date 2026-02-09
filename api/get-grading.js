@@ -39,74 +39,6 @@ function escapeFormulaString(s) {
   return String(s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-// -------------------- NEW: credit deduction helper --------------------
-
-async function airtableGetRecord({ apiKey, baseId, table, recordId, fields = [] }) {
-  const qs = new URLSearchParams();
-  for (const f of fields) qs.append("fields[]", f);
-
-  const url =
-    `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}/${recordId}` +
-    (fields.length ? `?${qs.toString()}` : "");
-
-  const resp = await fetch(url, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-
-  const text = await resp.text();
-  if (!resp.ok) throw new Error(`Airtable get error ${resp.status}: ${text.slice(0, 400)}`);
-  return text ? JSON.parse(text) : null;
-}
-
-async function deductOneCreditIfNeeded({
-  usersKey,
-  usersBase,
-  usersTable,
-  creditsField,
-  userRecordId,
-  shouldDeduct,
-}) {
-  if (!shouldDeduct) {
-    return { didDeduct: false, before: null, after: null, reason: "already_done_or_forced" };
-  }
-
-  if (!userRecordId) {
-    // No linked user -> we cannot safely deduct
-    return { didDeduct: false, before: null, after: null, reason: "missing_user_link" };
-  }
-
-  // Read current credits
-  const userRec = await airtableGetRecord({
-    apiKey: usersKey,
-    baseId: usersBase,
-    table: usersTable,
-    recordId: userRecordId,
-    fields: [creditsField],
-  });
-
-  const beforeRaw = userRec?.fields?.[creditsField];
-  const before = Number(beforeRaw);
-  if (!Number.isFinite(before)) {
-    // Credits field missing/blank/non-numeric -> don't break grading, just skip deduction
-    return { didDeduct: false, before: beforeRaw ?? null, after: null, reason: "credits_not_numeric" };
-  }
-
-  const after = Math.max(0, before - 1);
-
-  // Write back
-  await airtableUpdate({
-    apiKey: usersKey,
-    baseId: usersBase,
-    table: usersTable,
-    recordId: userRecordId,
-    fields: { [creditsField]: after },
-  });
-
-  return { didDeduct: true, before, after, reason: "deducted" };
-}
-
-// -------------------- handler --------------------
-
 export default async function handler(req, res) {
   cors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -118,10 +50,9 @@ export default async function handler(req, res) {
 
   const usersKey = process.env.AIRTABLE_USERS_API_KEY;
   const usersBase = process.env.AIRTABLE_USERS_BASE_ID;
-
   const attemptsTable = process.env.AIRTABLE_ATTEMPTS_TABLE || "Attempts";
 
-  // NEW: user table + credits field (no new Airtable fields, just config)
+  // ✅ NEW (defaults only; doesn’t break existing env)
   const usersTable = process.env.AIRTABLE_USERS_TABLE || "Users";
   const creditsField = process.env.AIRTABLE_USERS_CREDITS_FIELD || "CreditsRemaining";
 
@@ -155,10 +86,6 @@ export default async function handler(req, res) {
     caseId = Number(f.CaseID || 0);
     const currentText = String(f.GradingText || "");
     const currentStatus = String(f.GradingStatus || "").toLowerCase().trim();
-
-    // NEW: user link record id from Attempts.User (linked record field)
-    const userRecordId =
-      Array.isArray(f.User) && f.User.length ? String(f.User[0]) : null;
 
     // 2) If already graded (either by status or by text), return it
     if (!force) {
@@ -209,12 +136,6 @@ export default async function handler(req, res) {
         });
       }
     }
-
-    // Guard for double-deduction:
-    // If the attempt is already marked done, and caller is forcing a regrade,
-    // we MUST NOT deduct again.
-    const wasAlreadyDone =
-      currentStatus === "done" && currentText && !currentText.startsWith("⏳");
 
     // 4) Lock (always replaced by grade or error)
     stage = "lock";
@@ -290,31 +211,84 @@ export default async function handler(req, res) {
 
     // 8) Save grade
     stage = "save_grade";
-    const gradingTextToSave =
-      result.gradingText || "⚠️ Grading completed but gradingText was empty.";
-
     await airtableUpdate({
       apiKey: usersKey,
       baseId: usersBase,
       table: attemptsTable,
       recordId: attemptRecordId,
       fields: {
-        GradingText: gradingTextToSave,
+        GradingText: result.gradingText || "⚠️ Grading completed but gradingText was empty.",
         GradingStatus: "done",
       },
     });
 
-    // 9) NEW: deduct ONE credit AFTER we have a grade saved
-    // Deduct only if this attempt wasn't already done (prevents double-charging)
-    stage = "deduct_credit";
-    const creditResult = await deductOneCreditIfNeeded({
-      usersKey,
-      usersBase,
-      usersTable,
-      creditsField,
-      userRecordId,
-      shouldDeduct: !wasAlreadyDone,
-    });
+    // ✅ NEW: Deduct 1 credit (NON-FATAL; never breaks grading)
+    // This runs AFTER grade is saved so users never get “empty grading” due to billing issues.
+    stage = "deductcredit";
+    let creditInfo = null;
+
+    try {
+      const linkedUsers = Array.isArray(f.User) ? f.User : [];
+      const userRecordId = linkedUsers?.[0] ? String(linkedUsers[0]) : "";
+
+      if (!userRecordId || !userRecordId.startsWith("rec")) {
+        throw new Error(
+          `Attempt missing linked User record id in {User}. Expected 'rec...'. Got: ${userRecordId || "(none)"}`
+        );
+      }
+
+      // Fetch user record using RECORD_ID() (avoids needing a new airtableGet helper)
+      const userRecs = await airtableListAll({
+        apiKey: usersKey,
+        baseId: usersBase,
+        table: usersTable,
+        params: {
+          filterByFormula: `RECORD_ID()="${escapeFormulaString(userRecordId)}"`,
+          maxRecords: 1,
+        },
+      });
+
+      if (!userRecs?.length) {
+        throw new Error(`Linked user record not found in '${usersTable}' for id=${userRecordId}`);
+      }
+
+      const userFields = userRecs[0].fields || {};
+      const currentCreditsRaw = userFields?.[creditsField];
+      const currentCredits = Number(currentCreditsRaw);
+
+      if (!Number.isFinite(currentCredits)) {
+        throw new Error(
+          `User field '${creditsField}' is not numeric. Got: ${JSON.stringify(currentCreditsRaw)}`
+        );
+      }
+
+      const nextCredits = Math.max(0, currentCredits - 1);
+
+      await airtableUpdate({
+        apiKey: usersKey,
+        baseId: usersBase,
+        table: usersTable,
+        recordId: userRecordId,
+        fields: {
+          [creditsField]: nextCredits,
+        },
+      });
+
+      creditInfo = {
+        ok: true,
+        deducted: 1,
+        userRecordId,
+        field: creditsField,
+        before: currentCredits,
+        after: nextCredits,
+      };
+    } catch (creditErr) {
+      // NON-FATAL: we still return the grade
+      creditInfo = {
+        ok: false,
+        error: creditErr?.message || String(creditErr),
+      };
+    }
 
     return res.json({
       ok: true,
@@ -324,14 +298,9 @@ export default async function handler(req, res) {
       sessionId,
       attemptRecordId,
       caseId,
-      gradingText: gradingTextToSave,
+      gradingText: result.gradingText,
       bands: result.bands,
-      credits: {
-        didDeduct: creditResult.didDeduct,
-        before: creditResult.before,
-        after: creditResult.after,
-        reason: creditResult.reason,
-      },
+      credits: creditInfo, // ✅ NEW (optional for frontend display/logging)
     });
   } catch (e) {
     const msg = e?.message || String(e);
