@@ -1,22 +1,21 @@
-// voice-patient.js (DEBUG - finite grading poll + injected UI)
+// voice-patient.js (DEBUG - finite grading poll + injected UI) + MemberSpace identity passthrough
 (() => {
-  const VERSION = "debug-2026-02-05-finite-poll-1";
+  const VERSION = "debug-2026-02-05-finite-poll-1+ms-identity";
   const API_BASE = "https://voice-patient-web.vercel.app";
   const ALLOWED_ORIGINS = new Set([
-  "https://www.scarevision.co.uk",
-  "https://www.scarevision.ai",
-  // optional (non-www variants):
-  "https://scarevision.co.uk",
-  "https://scarevision.ai",
-]);
-
+    "https://www.scarevision.co.uk",
+    "https://www.scarevision.ai",
+    // optional (non-www variants):
+    "https://scarevision.co.uk",
+    "https://scarevision.ai",
+  ]);
 
   let currentSessionId = null;
   let gradingPollTimer = null;
   let gradingPollTries = 0;
 
-  const GRADING_POLL_INTERVAL_MS = 6000;   // every 2s
-  const GRADING_POLL_MAX_TRIES = 20;       // 60 * 2s = 120s (2 minutes)
+  const GRADING_POLL_INTERVAL_MS = 6000; // every 6s
+  const GRADING_POLL_MAX_TRIES = 20;     // 20 * 6s = 120s (2 minutes)
 
   function $(id) { return document.getElementById(id); }
 
@@ -103,9 +102,13 @@
   function updateMeta(extra = {}) {
     const meta = document.getElementById("vp-meta");
     if (!meta) return;
+
+    const { userId, email } = getIdentity();
+
     meta.textContent =
       `origin=${window.location.origin} | api=${API_BASE} | sessionId=${currentSessionId || "(none)"}` +
       ` | tries=${gradingPollTries}/${GRADING_POLL_MAX_TRIES}` +
+      ` | userId=${userId || "(none)"} | email=${email || "(none)"}` +
       (extra.note ? ` | ${extra.note}` : "");
   }
 
@@ -130,9 +133,9 @@
 
   function setUiConnected(connected) {
     const startBtn = $("startBtn");
-    const stopBtn  = $("stopBtn");
+    const stopBtn = $("stopBtn");
     if (startBtn) startBtn.disabled = connected;
-    if (stopBtn)  stopBtn.disabled = !connected;
+    if (stopBtn) stopBtn.disabled = !connected;
   }
 
   async function fetchJson(url, options) {
@@ -148,6 +151,27 @@
       throw new Error((data && (data.error || data.message)) || `HTTP ${resp.status}`);
     }
     return data;
+  }
+
+  // ---------- MemberSpace identity ----------
+  let msMember = null;
+
+  // MemberSpace dispatches this event when it knows the logged-in member.
+  document.addEventListener("MemberSpace.member.info", (e) => {
+    msMember = e.detail?.memberInfo || e.detail || null;
+
+    // Avoid logging full object; just the fields we care about.
+    log("[MEMBERSPACE] member info received", {
+      id: msMember?.id ?? null,
+      email: msMember?.email ?? null,
+    });
+    updateMeta();
+  });
+
+  function getIdentity() {
+    const userId = msMember?.id != null ? String(msMember.id).trim() : "";
+    const email = msMember?.email ? String(msMember.email).trim().toLowerCase() : "";
+    return { userId, email };
   }
 
   // ---------- Daily iframe ----------
@@ -249,7 +273,6 @@
       return;
     }
 
-    // Only log on manual click or final states
     const shouldLog = manual;
 
     try {
@@ -258,7 +281,6 @@
         { method: "GET", cache: "no-store", mode: "cors" }
       );
 
-      // ✅ Your real API shape: { ok, found, ready, status, gradingText }
       if (!data.found) {
         out.textContent = "No attempt found yet… (waiting for transcript submit)";
         if (shouldLog) log("[GRADING] found=false", data);
@@ -273,7 +295,6 @@
         return;
       }
 
-      // processing
       out.textContent = "Grading in progress…";
       if (shouldLog) log("[GRADING] processing", data);
       setStatus("Stopped. Grading in progress…");
@@ -311,7 +332,6 @@
       }
     }, GRADING_POLL_INTERVAL_MS);
 
-    // first hit immediately
     pollGradingOnce(false);
   }
 
@@ -334,10 +354,21 @@
 
       log("[START] case selected", { caseId });
 
+      // ✅ NEW: include MemberSpace identity in the start request
+      const { userId, email } = getIdentity();
+
+      // Recommended: require login, so Attempts always link to a real Users row.
+      if (!userId && !email) {
+        log("[START] blocked: missing MemberSpace identity");
+        setStatus("Please log in to MemberSpace before starting.");
+        setUiConnected(false);
+        return;
+      }
+
       const data = await fetchJson(`${API_BASE}/api/start-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseId }),
+        body: JSON.stringify({ caseId, userId, email }), // ✅ CHANGED
         mode: "cors",
       });
 
@@ -345,7 +376,7 @@
       if (!data.dailyRoom || !data.dailyToken) throw new Error("Missing dailyRoom/dailyToken");
 
       currentSessionId = data.sessionId || null;
-      log("[START] started", { currentSessionId });
+      log("[START] started", { currentSessionId, userId, email });
       updateMeta();
 
       mountDailyIframe(data.dailyRoom, data.dailyToken);
@@ -387,7 +418,7 @@
     });
 
     const startBtn = $("startBtn");
-    const stopBtn  = $("stopBtn");
+    const stopBtn = $("stopBtn");
     if (startBtn) startBtn.addEventListener("click", startConsultation);
     if (stopBtn) stopBtn.addEventListener("click", stopConsultation);
 
