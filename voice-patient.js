@@ -318,7 +318,114 @@
     return getIdentity();
   }
 
-  // ---------------- Daily custom audio (no iframe) ----------------
+  // ---------- Daily custom (no iframe) ----------
+  function ensureRemoteAudioElement() {
+    if (remoteAudioEl) return remoteAudioEl;
+    remoteAudioEl = document.createElement("audio");
+    remoteAudioEl.autoplay = true;
+    remoteAudioEl.playsInline = true;
+    remoteAudioEl.style.display = "none";
+    document.body.appendChild(remoteAudioEl);
+    return remoteAudioEl;
+  }
+
+  // ---- UI state + emission ----
+  function setUiState(next) {
+    if (uiState === next) return;
+    uiState = next;
+    updateMeta();
+    // minimal log: only on state change
+    log("[UI] state", { uiState });
+    uiEmit({ state: uiState, glow: lastGlow, sessionId: currentSessionId });
+  }
+
+  // ---- Audio level polling (reliable) ----
+  let levelTimer = null;
+  let lastLocalSpeechAt = 0;
+  let lastRemoteSpeechAt = 0;
+
+  // Tuning knobs:
+  const LEVEL_POLL_MS = 120;
+
+  // “Hold” time so we don’t drop to thinking between words/pauses
+  const HOLD_TALK_MS = 700;
+  const HOLD_LISTEN_MS = 500;
+
+  // Noise floor + thresholds (start here, then tune with vpDebugLevels())
+  const NOISE_FLOOR = 0.003;
+  const TALKING_TH = 0.012;   // remote (bot)
+  const LISTENING_TH = 0.014; // local (mic)
+
+  function stopLevelLoop() {
+    if (levelTimer) clearInterval(levelTimer);
+    levelTimer = null;
+  }
+
+  function startLevelLoop() {
+    stopLevelLoop();
+    levelTimer = setInterval(() => {
+      if (!callObject) return;
+
+      // get latest levels from Daily observers
+      let l = 0;
+      let r = 0;
+
+      try {
+        const rawL = callObject.getLocalAudioLevel?.();
+        if (typeof rawL === "number") l = Math.max(0, rawL - NOISE_FLOOR);
+      } catch {}
+
+      try {
+        const map = callObject.getRemoteParticipantsAudioLevel?.() || {};
+        const parts = callObject.participants?.() || {};
+        const localSid = parts?.local?.session_id || null;
+
+        let max = 0;
+        for (const sid in map) {
+          if (localSid && sid === localSid) continue; // exclude local if present
+          const v = Number(map[sid] || 0);
+          if (v > max) max = v;
+        }
+        r = Math.max(0, max - NOISE_FLOOR);
+      } catch {}
+
+      // store raw
+      localLevel = l;
+      remoteLevel = r;
+
+      // smooth
+      smoothLocal += (localLevel - smoothLocal) * SMOOTHING;
+      smoothRemote += (remoteLevel - smoothRemote) * SMOOTHING;
+
+      const now = Date.now();
+
+      // update “speech detected” timestamps
+      if (smoothLocal > LISTENING_TH) lastLocalSpeechAt = now;
+      if (smoothRemote > TALKING_TH) lastRemoteSpeechAt = now;
+
+      // decide state (remote wins)
+      let nextState = "thinking";
+      if (now - lastRemoteSpeechAt < HOLD_TALK_MS) nextState = "talking";
+      else if (now - lastLocalSpeechAt < HOLD_LISTEN_MS) nextState = "listening";
+
+      // glow depends on state
+      let glow = 0.18;
+      if (nextState === "talking") glow = Math.min(1, 0.12 + smoothRemote * 2.6);
+      if (nextState === "listening") glow = Math.min(1, 0.12 + smoothLocal * 2.6);
+
+      lastGlow = clamp01(glow);
+
+      // emit every tick for smooth animation
+      uiEmit({
+        state: nextState,
+        glow: lastGlow,
+        sessionId: currentSessionId,
+      });
+
+      if (nextState !== uiState) setUiState(nextState);
+    }, LEVEL_POLL_MS);
+  }
+
   async function loadDailyJsOnce() {
     if (window.Daily && typeof window.Daily.createCallObject === "function") return;
 
@@ -335,69 +442,9 @@
     });
   }
 
-  function ensureRemoteAudioElement() {
-    if (remoteAudioEl) return remoteAudioEl;
-
-    remoteAudioEl = document.createElement("audio");
-    remoteAudioEl.autoplay = true;
-    remoteAudioEl.playsInline = true;
-    remoteAudioEl.muted = false;
-    remoteAudioEl.volume = 1.0;
-    remoteAudioEl.style.display = "none";
-    document.body.appendChild(remoteAudioEl);
-
-    remoteStream = new MediaStream();
-    remoteAudioEl.srcObject = remoteStream;
-
-    return remoteAudioEl;
-  }
-
-  function startDecayTimer() {
-    stopDecayTimer();
-    decayTimer = setInterval(() => {
-      // If we haven’t seen any speaker activity recently, go back to thinking.
-      if (!callObject) return;
-      if (uiState !== "talking" && uiState !== "listening") return;
-      if (Date.now() - lastSpeakerAt > 900) setUiState("thinking");
-    }, 200);
-  }
-
-  function stopDecayTimer() {
-    if (decayTimer) clearInterval(decayTimer);
-    decayTimer = null;
-  }
-
-  function handleActiveSpeakerChange({ activeSpeaker } = {}) {
-    // activeSpeaker?.peerId is the session_id of the current speaker (can be undefined/null)
-    const peerId = activeSpeaker?.peerId || null;
-
-    // refresh localSid when possible
-    try {
-      const p = callObject?.participants?.();
-      if (p?.local?.session_id) localSid = p.local.session_id;
-    } catch {}
-
-    lastSpeakerAt = Date.now();
-
-    if (!peerId) {
-      setUiState("thinking");
-      return;
-    }
-
-    if (localSid && peerId === localSid) {
-      // user is speaking -> patient is listening
-      setUiState("listening");
-    } else {
-      // remote is speaking -> patient is talking
-      setUiState("talking");
-    }
-  }
-
   async function mountDailyCustomAudio(dailyRoom, dailyToken) {
     await loadDailyJsOnce();
     await unmountDailyCustomAudio();
-
-    ensureRemoteAudioElement();
 
     callObject = window.Daily.createCallObject({
       startVideoOff: true,
@@ -410,110 +457,83 @@
       setStatus("Daily error (see debug panel).");
     });
 
-    callObject.on("joining-meeting", () => log("[DAILY] joining"));
-    callObject.on("joined-meeting", () => log("[DAILY] joined"));
-    callObject.on("left-meeting", () => log("[DAILY] left"));
-
-    // Attach remote audio tracks to our persistent stream
+    // Remote audio (bot) -> <audio>
     callObject.on("track-started", (ev) => {
       try {
         const { track, participant } = ev || {};
         if (!track || track.kind !== "audio") return;
         if (!participant || participant.local) return;
 
-        log("[DAILY] remote audio track started", { session_id: participant.session_id });
-
-        if (!remoteStream) remoteStream = new MediaStream();
-        remoteStream.addTrack(track);
-
-        // Try to start playback (Start click counts as a gesture, so this usually works)
-        remoteAudioEl?.play?.().catch(() => {});
+        const audio = ensureRemoteAudioElement();
+        audio.srcObject = new MediaStream([track]);
+        audio.play?.().catch(() => {});
       } catch (e) {
         log("[DAILY] track-started handler error", { error: e?.message || String(e) });
       }
     });
 
-    callObject.on("track-stopped", (ev) => {
-      try {
-        const { track, participant } = ev || {};
-        if (!track || track.kind !== "audio") return;
-        if (!participant || participant.local) return;
-
-        log("[DAILY] remote audio track stopped", { session_id: participant.session_id });
-
-        try { remoteStream?.removeTrack?.(track); } catch {}
-      } catch {}
-    });
-
-    // ✅ Recommended for audio-only UIs
-    callObject.on("active-speaker-change", handleActiveSpeakerChange);
-
-    // Join
+    // Join first
     await callObject.join({ url: dailyRoom, token: dailyToken });
 
-    // Cache local session id after join
-    try {
-      const p = callObject.participants();
-      localSid = p?.local?.session_id || null;
-    } catch {
-      localSid = null;
-    }
+    // Start observers so getLocalAudioLevel/getRemoteParticipantsAudioLevel work
+    // (Daily docs: observers populate the getter values) :contentReference[oaicite:2]{index=2}
+    callObject.startLocalAudioLevelObserver(100);
+    callObject.startRemoteParticipantsAudioLevelObserver(100);
 
-    startDecayTimer();
+    // reset + start loop
+    localLevel = remoteLevel = 0;
+    smoothLocal = smoothRemote = 0;
+    lastLocalSpeechAt = lastRemoteSpeechAt = 0;
+    lastGlow = 0.18;
 
-    // Default state once connected
     setUiState("thinking");
+    startLevelLoop();
   }
 
   async function unmountDailyCustomAudio() {
-    stopDecayTimer();
+    stopLevelLoop();
 
-    if (callObject) {
-      try { callObject.off("active-speaker-change", handleActiveSpeakerChange); } catch {}
-      try { await callObject.leave(); } catch {}
-      try { callObject.destroy?.(); } catch {}
+    if (!callObject) {
+      uiState = "idle";
+      lastGlow = 0.15;
+      uiEmit({ state: "idle", glow: lastGlow, sessionId: currentSessionId });
+      return;
     }
+
+    try { callObject.stopLocalAudioLevelObserver?.(); } catch {}
+    try { callObject.stopRemoteParticipantsAudioLevelObserver?.(); } catch {}
+
+    try { await callObject.leave(); } catch {}
+    try { callObject.destroy?.(); } catch {}
+
     callObject = null;
-    localSid = null;
 
-    // reset audio
-    if (remoteStream) {
-      try {
-        remoteStream.getTracks().forEach((t) => {
-          try { remoteStream.removeTrack(t); } catch {}
-          try { t.stop?.(); } catch {}
-        });
-      } catch {}
-    }
+    localLevel = remoteLevel = 0;
+    smoothLocal = smoothRemote = 0;
+
+    uiState = "idle";
+    lastGlow = 0.15;
+    uiEmit({ state: "idle", glow: lastGlow, sessionId: currentSessionId });
 
     if (remoteAudioEl) {
-      try { remoteAudioEl.pause?.(); } catch {}
-      try { remoteAudioEl.srcObject = null; } catch {}
-      try { remoteAudioEl.remove(); } catch {}
+      try { remoteAudioEl.srcObject = null; remoteAudioEl.remove(); } catch {}
+      remoteAudioEl = null;
     }
-    remoteAudioEl = null;
-    remoteStream = null;
-
-    setUiState("idle");
-    uiEmit({ state: "idle", status: "Waiting…", sessionId: currentSessionId });
   }
 
-  // On-demand diagnostics (no spam)
-  window.vpDebug = () => {
-    try {
-      const p = callObject?.participants?.() || null;
-      return {
-        version: VERSION,
-        state: uiState,
-        sessionId: currentSessionId,
-        localSid,
-        hasCall: !!callObject,
-        participants: p,
-      };
-    } catch {
-      return { version: VERSION, state: uiState, sessionId: currentSessionId, localSid, hasCall: !!callObject };
-    }
-  };
+  // On-demand debug (no spam)
+  window.vpDebugLevels = () => ({
+    state: uiState,
+    localLevel,
+    remoteLevel,
+    smoothLocal,
+    smoothRemote,
+    TALKING_TH,
+    LISTENING_TH,
+    NOISE_FLOOR,
+    hasCall: !!callObject,
+  });
+
 
   // ---------------- Cases ----------------
   async function populateCaseDropdown() {
