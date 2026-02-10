@@ -1,26 +1,19 @@
-// voice-patient.js (DEBUG - finite grading poll + injected UI)
-// + MemberSpace identity passthrough + 12-min countdown + auto-stop
-// + Daily custom UI (no iframe) + real Listening/Thinking/Talking (audio levels)
-// + emits vp:ui events for a standalone patient card overlay
+// voice-patient.js (CUSTOM UI, no iframe)
+// - MemberSpace identity passthrough
+// - 12-min countdown + auto-stop
+// - Finite grading poll + grading guard
+// - Daily custom audio via callObject (no iframe)
+// - UI state driven by Daily active-speaker-change (recommended for audio-only UIs)
+// - Emits window event: vp:ui  { state: idle|thinking|listening|talking|error, status?, sessionId? }
 //
-// PATCH (quiet):
-// - lower thresholds + noise floor
-// - exclude local participant from remote audio max
-// - start observers after join
-// - call audio.play() on remote track
-// - no periodic logs; add window.vpDebugLevels() for on-demand checks
+// Notes:
+// - "listening" = USER is speaking (patient is listening)
+// - "talking"   = PATIENT (bot) is speaking
 
 (() => {
-  const VERSION = "debug-2026-02-10-dailyjs-customui-quiet-fix-1";
+  const VERSION = "debug-2026-02-10-active-speaker-ui-1";
   const API_BASE = "https://voice-patient-web.vercel.app";
   const DAILY_JS_SRC = "https://unpkg.com/@daily-co/daily-js";
-
-  const ALLOWED_ORIGINS = new Set([
-    "https://www.scarevision.co.uk",
-    "https://www.scarevision.ai",
-    "https://scarevision.co.uk",
-    "https://scarevision.ai",
-  ]);
 
   // ---------------- Session + grading poll ----------------
   let currentSessionId = null;
@@ -40,27 +33,18 @@
 
   // ---------------- Daily custom call state ----------------
   let callObject = null;
+
+  // Remote audio element + persistent stream
   let remoteAudioEl = null;
+  let remoteStream = null;
 
-  let localLevel = 0;
-  let remoteLevel = 0;
-
-  let smoothLocal = 0;
-  let smoothRemote = 0;
-
-  // Daily levels are typically small; smoothing helps avoid flicker
-  const SMOOTHING = 0.25;
-
+  // UI state
   let uiState = "idle"; // idle | thinking | listening | talking | error
-  let lastGlow = 0.15;
 
-  // ✅ Practical defaults for Daily audio levels
-  // If these don’t trigger, reduce slightly (e.g. 0.012–0.015).
-  const TALKING_TH = 0.018;    // bot audio (after noise floor)
-  const LISTENING_TH = 0.020;  // mic audio (after noise floor)
-
-  // ✅ ignore tiny noise so you don’t “talk” on silence
-  const NOISE_FLOOR = 0.003;
+  // active speaker tracking
+  let localSid = null;
+  let lastSpeakerAt = 0;
+  let decayTimer = null;
 
   // ---------------- Helpers ----------------
   function $(id) { return document.getElementById(id); }
@@ -71,11 +55,62 @@
     } catch {}
   }
 
-  function clamp01(x) {
-    return Math.max(0, Math.min(1, Number(x || 0)));
+  // Keep logs minimal (no spam)
+  function log(message, obj) {
+    ensureUiRoot();
+    const line =
+      `[VP ${VERSION}] ${new Date().toISOString()}  ${message}` +
+      (obj ? `\n${JSON.stringify(obj, null, 2)}` : "");
+    console.log(line);
+    const pre = document.getElementById("vp-debug");
+    if (pre) {
+      pre.textContent += line + "\n";
+      pre.scrollTop = pre.scrollHeight;
+    }
   }
 
-  // ---------- Always-visible debug + grading UI ----------
+  function setUiState(next) {
+    if (uiState === next) return;
+    uiState = next;
+    updateMeta();
+
+    uiEmit({
+      state: uiState,
+      sessionId: currentSessionId,
+    });
+  }
+
+  function setStatus(text) {
+    const el = $("status");
+    if (el) el.textContent = text;
+    updateMeta({ note: text });
+
+    uiEmit({ status: text, sessionId: currentSessionId });
+  }
+
+  function setUiConnected(connected) {
+    const startBtn = $("startBtn");
+    const stopBtn = $("stopBtn");
+    if (startBtn) startBtn.disabled = connected;
+    if (stopBtn) stopBtn.disabled = !connected;
+  }
+
+  async function fetchJson(url, options) {
+    const resp = await fetch(url, options);
+    const text = await resp.text();
+
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; }
+    catch {
+      throw new Error(`Non-JSON from ${url} status=${resp.status} body=${text.slice(0, 180)}`);
+    }
+    if (!resp.ok) {
+      throw new Error((data && (data.error || data.message)) || `HTTP ${resp.status}`);
+    }
+    return data;
+  }
+
+  // ---------------- Debug panel + (optional) fallback controls ----------------
   function ensureUiRoot() {
     let root = document.getElementById("vp-root");
     if (root) return root;
@@ -170,55 +205,10 @@
     const { userId, email } = getIdentity();
 
     meta.textContent =
-      `origin=${window.location.origin} | api=${API_BASE} | sessionId=${currentSessionId || "(none)"}` +
-      ` | tries=${gradingPollTries}/${GRADING_POLL_MAX_TRIES}` +
+      `api=${API_BASE} | sessionId=${currentSessionId || "(none)"} | tries=${gradingPollTries}/${GRADING_POLL_MAX_TRIES}` +
       ` | userId=${userId || "(none)"} | email=${email || "(none)"}` +
       ` | state=${uiState}` +
       (extra.note ? ` | ${extra.note}` : "");
-  }
-
-  function log(message, obj) {
-    ensureUiRoot();
-    const line =
-      `[VP ${VERSION}] ${new Date().toISOString()}  ${message}` +
-      (obj ? `\n${JSON.stringify(obj, null, 2)}` : "");
-    console.log(line);
-    const pre = document.getElementById("vp-debug");
-    if (pre) {
-      pre.textContent += line + "\n";
-      pre.scrollTop = pre.scrollHeight;
-    }
-  }
-
-  function setStatus(text) {
-    const el = $("status");
-    if (el) el.textContent = text;
-    updateMeta({ note: text });
-
-    // also inform the standalone patient card
-    uiEmit({ status: text, sessionId: currentSessionId });
-  }
-
-  function setUiConnected(connected) {
-    const startBtn = $("startBtn");
-    const stopBtn = $("stopBtn");
-    if (startBtn) startBtn.disabled = connected;
-    if (stopBtn) stopBtn.disabled = !connected;
-  }
-
-  async function fetchJson(url, options) {
-    const resp = await fetch(url, options);
-    const text = await resp.text();
-
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; }
-    catch {
-      throw new Error(`Non-JSON from ${url} status=${resp.status} body=${text.slice(0, 120)}`);
-    }
-    if (!resp.ok) {
-      throw new Error((data && (data.error || data.message)) || `HTTP ${resp.status}`);
-    }
-    return data;
   }
 
   // ---------------- Countdown helpers ----------------
@@ -255,8 +245,6 @@
 
       if (remainingSec <= 0) {
         stopCountdown("time limit reached");
-        log("[TIMER] reached zero -> auto stop", { currentSessionId });
-
         stopConsultation(true).catch((e) => {
           log("[TIMER] auto stop error", { error: e?.message || String(e) });
         });
@@ -267,7 +255,7 @@
     countdownTimer = setInterval(tick, 250);
   }
 
-  // ---------- MemberSpace identity (robust) ----------
+  // ---------------- MemberSpace identity (robust) ----------------
   let msMember = null;
 
   function setMsMember(mi, source = "unknown") {
@@ -330,54 +318,7 @@
     return getIdentity();
   }
 
-  // ---------- Daily custom (no iframe) ----------
-  function ensureRemoteAudioElement() {
-    if (remoteAudioEl) return remoteAudioEl;
-    remoteAudioEl = document.createElement("audio");
-    remoteAudioEl.autoplay = true;
-    remoteAudioEl.playsInline = true;
-    remoteAudioEl.style.display = "none";
-    document.body.appendChild(remoteAudioEl);
-    return remoteAudioEl;
-  }
-
-  function setUiState(next) {
-    if (uiState === next) return;
-    uiState = next;
-    updateMeta();
-    log("[UI] state", { uiState });
-    uiEmit({ state: uiState, glow: lastGlow, sessionId: currentSessionId });
-  }
-
-  function computeAndEmitUiFromLevels() {
-    if (!callObject) return;
-
-    smoothLocal += (localLevel - smoothLocal) * SMOOTHING;
-    smoothRemote += (remoteLevel - smoothRemote) * SMOOTHING;
-
-    let state = "thinking";
-    let glow = 0.18;
-
-    if (smoothRemote > TALKING_TH) {
-      state = "talking";
-      glow = Math.min(1, 0.10 + smoothRemote * 2.2);
-    } else if (smoothLocal > LISTENING_TH) {
-      state = "listening";
-      glow = Math.min(1, 0.10 + smoothLocal * 2.2);
-    }
-
-    lastGlow = clamp01(glow);
-
-    // emit continuously for animation
-    uiEmit({
-      state,
-      glow: lastGlow,
-      sessionId: currentSessionId,
-    });
-
-    if (state !== uiState) setUiState(state);
-  }
-
+  // ---------------- Daily custom audio (no iframe) ----------------
   async function loadDailyJsOnce() {
     if (window.Daily && typeof window.Daily.createCallObject === "function") return;
 
@@ -394,9 +335,69 @@
     });
   }
 
+  function ensureRemoteAudioElement() {
+    if (remoteAudioEl) return remoteAudioEl;
+
+    remoteAudioEl = document.createElement("audio");
+    remoteAudioEl.autoplay = true;
+    remoteAudioEl.playsInline = true;
+    remoteAudioEl.muted = false;
+    remoteAudioEl.volume = 1.0;
+    remoteAudioEl.style.display = "none";
+    document.body.appendChild(remoteAudioEl);
+
+    remoteStream = new MediaStream();
+    remoteAudioEl.srcObject = remoteStream;
+
+    return remoteAudioEl;
+  }
+
+  function startDecayTimer() {
+    stopDecayTimer();
+    decayTimer = setInterval(() => {
+      // If we haven’t seen any speaker activity recently, go back to thinking.
+      if (!callObject) return;
+      if (uiState !== "talking" && uiState !== "listening") return;
+      if (Date.now() - lastSpeakerAt > 900) setUiState("thinking");
+    }, 200);
+  }
+
+  function stopDecayTimer() {
+    if (decayTimer) clearInterval(decayTimer);
+    decayTimer = null;
+  }
+
+  function handleActiveSpeakerChange({ activeSpeaker } = {}) {
+    // activeSpeaker?.peerId is the session_id of the current speaker (can be undefined/null)
+    const peerId = activeSpeaker?.peerId || null;
+
+    // refresh localSid when possible
+    try {
+      const p = callObject?.participants?.();
+      if (p?.local?.session_id) localSid = p.local.session_id;
+    } catch {}
+
+    lastSpeakerAt = Date.now();
+
+    if (!peerId) {
+      setUiState("thinking");
+      return;
+    }
+
+    if (localSid && peerId === localSid) {
+      // user is speaking -> patient is listening
+      setUiState("listening");
+    } else {
+      // remote is speaking -> patient is talking
+      setUiState("talking");
+    }
+  }
+
   async function mountDailyCustomAudio(dailyRoom, dailyToken) {
     await loadDailyJsOnce();
     await unmountDailyCustomAudio();
+
+    ensureRemoteAudioElement();
 
     callObject = window.Daily.createCallObject({
       startVideoOff: true,
@@ -413,7 +414,7 @@
     callObject.on("joined-meeting", () => log("[DAILY] joined"));
     callObject.on("left-meeting", () => log("[DAILY] left"));
 
-    // Remote audio (bot) -> <audio>
+    // Attach remote audio tracks to our persistent stream
     callObject.on("track-started", (ev) => {
       try {
         const { track, participant } = ev || {};
@@ -422,9 +423,11 @@
 
         log("[DAILY] remote audio track started", { session_id: participant.session_id });
 
-        const audio = ensureRemoteAudioElement();
-        audio.srcObject = new MediaStream([track]);
-        audio.play?.().catch(() => {}); // ✅ helps autoplay in some browsers
+        if (!remoteStream) remoteStream = new MediaStream();
+        remoteStream.addTrack(track);
+
+        // Try to start playback (Start click counts as a gesture, so this usually works)
+        remoteAudioEl?.play?.().catch(() => {});
       } catch (e) {
         log("[DAILY] track-started handler error", { error: e?.message || String(e) });
       }
@@ -438,94 +441,81 @@
 
         log("[DAILY] remote audio track stopped", { session_id: participant.session_id });
 
-        if (remoteAudioEl) remoteAudioEl.srcObject = null;
+        try { remoteStream?.removeTrack?.(track); } catch {}
       } catch {}
     });
 
-    // Audio level events (will fire once observers are started)
-    callObject.on("local-audio-level", (ev) => {
-      const raw = Number(ev?.level || 0);
-      localLevel = Math.max(0, raw - NOISE_FLOOR);
-      computeAndEmitUiFromLevels();
-    });
+    // ✅ Recommended for audio-only UIs
+    callObject.on("active-speaker-change", handleActiveSpeakerChange);
 
-    // ✅ IMPORTANT: remote participants map can include local; exclude it.
-    callObject.on("remote-participants-audio-level", (ev) => {
-      const parts = ev?.participants || {};
-      const p = callObject.participants?.() || {};
-      const localSid = p?.local?.session_id || null;
-
-      let max = 0;
-      for (const sid in parts) {
-        if (localSid && sid === localSid) continue; // exclude local
-        const lvl = Number(parts[sid]?.level || 0);
-        if (lvl > max) max = lvl;
-      }
-
-      remoteLevel = Math.max(0, max - NOISE_FLOOR);
-      computeAndEmitUiFromLevels();
-    });
-
-    // Join first, then start observers (more reliable)
+    // Join
     await callObject.join({ url: dailyRoom, token: dailyToken });
 
-    callObject.startLocalAudioLevelObserver(100);
-    callObject.startRemoteParticipantsAudioLevelObserver(100);
+    // Cache local session id after join
+    try {
+      const p = callObject.participants();
+      localSid = p?.local?.session_id || null;
+    } catch {
+      localSid = null;
+    }
 
-    // Initial UI
-    localLevel = 0;
-    remoteLevel = 0;
-    smoothLocal = 0;
-    smoothRemote = 0;
-    lastGlow = 0.18;
+    startDecayTimer();
+
+    // Default state once connected
     setUiState("thinking");
   }
 
   async function unmountDailyCustomAudio() {
-    if (!callObject) {
-      uiState = "idle";
-      lastGlow = 0.15;
-      uiEmit({ state: "idle", glow: lastGlow, sessionId: currentSessionId });
-      return;
+    stopDecayTimer();
+
+    if (callObject) {
+      try { callObject.off("active-speaker-change", handleActiveSpeakerChange); } catch {}
+      try { await callObject.leave(); } catch {}
+      try { callObject.destroy?.(); } catch {}
     }
-
-    try { callObject.stopLocalAudioLevelObserver?.(); } catch {}
-    try { callObject.stopRemoteParticipantsAudioLevelObserver?.(); } catch {}
-
-    try { await callObject.leave(); } catch {}
-    try { callObject.destroy?.(); } catch {}
-
     callObject = null;
+    localSid = null;
 
-    localLevel = 0;
-    remoteLevel = 0;
-    smoothLocal = 0;
-    smoothRemote = 0;
-
-    uiState = "idle";
-    lastGlow = 0.15;
-    uiEmit({ state: "idle", glow: lastGlow, sessionId: currentSessionId });
+    // reset audio
+    if (remoteStream) {
+      try {
+        remoteStream.getTracks().forEach((t) => {
+          try { remoteStream.removeTrack(t); } catch {}
+          try { t.stop?.(); } catch {}
+        });
+      } catch {}
+    }
 
     if (remoteAudioEl) {
-      try { remoteAudioEl.srcObject = null; remoteAudioEl.remove(); } catch {}
-      remoteAudioEl = null;
+      try { remoteAudioEl.pause?.(); } catch {}
+      try { remoteAudioEl.srcObject = null; } catch {}
+      try { remoteAudioEl.remove(); } catch {}
     }
+    remoteAudioEl = null;
+    remoteStream = null;
+
+    setUiState("idle");
+    uiEmit({ state: "idle", status: "Waiting…", sessionId: currentSessionId });
   }
 
-  // Optional: on-demand single-shot debug (no spam)
-  window.vpDebugLevels = () => ({
-    state: uiState,
-    rawLocal: localLevel,
-    rawRemote: remoteLevel,
-    smoothLocal,
-    smoothRemote,
-    TALKING_TH,
-    LISTENING_TH,
-    NOISE_FLOOR,
-    hasCall: !!callObject,
-  });
+  // On-demand diagnostics (no spam)
+  window.vpDebug = () => {
+    try {
+      const p = callObject?.participants?.() || null;
+      return {
+        version: VERSION,
+        state: uiState,
+        sessionId: currentSessionId,
+        localSid,
+        hasCall: !!callObject,
+        participants: p,
+      };
+    } catch {
+      return { version: VERSION, state: uiState, sessionId: currentSessionId, localSid, hasCall: !!callObject };
+    }
+  };
 
-  // ---------- Cases ----------
+  // ---------------- Cases ----------------
   async function populateCaseDropdown() {
     const sel = $("caseSelect");
     if (!sel) {
@@ -564,7 +554,7 @@
     }
   }
 
-  // ---------- Grading (finite poll) ----------
+  // ---------------- Grading (finite poll) ----------------
   function stopGradingPoll(reason = "") {
     if (gradingPollTimer) clearInterval(gradingPollTimer);
     gradingPollTimer = null;
@@ -583,8 +573,7 @@
     const out = document.getElementById("gradingOutput");
 
     if (!currentSessionId) {
-      out.textContent = "No sessionId yet — start a consultation first.";
-      if (manual) log("[GRADING] no currentSessionId");
+      if (out) out.textContent = "No sessionId yet — start a consultation first.";
       return;
     }
 
@@ -592,18 +581,14 @@
       `${API_BASE}/api/get-grading?sessionId=${encodeURIComponent(currentSessionId)}` +
       (force ? `&force=1` : "");
 
-    if (manual || force) log("[GRADING] request", { url });
-
     try {
       const data = await fetchJson(url, { method: "GET", cache: "no-store", mode: "cors" });
 
       if (!data.found) {
-        out.textContent = "No attempt found yet… (waiting for transcript submit)";
-        if (manual) log("[GRADING] found=false", data);
+        if (out) out.textContent = "No attempt found yet… (waiting for transcript submit)";
         return;
       }
 
-      const status = String(data.status || "");
       const gradingText = String(data.gradingText || "");
       const ready = !!data.ready;
 
@@ -611,40 +596,24 @@
         readyEmptyCount += 1;
         const willForceNext = readyEmptyCount >= 2;
 
-        log("[GRADING] ready=true but gradingText empty", {
-          sessionId: currentSessionId,
-          caseId: data.caseId,
-          status,
-          readyEmptyCount,
-          willForceNext,
-        });
-
-        out.textContent = "Grading finishing…";
+        if (out) out.textContent = "Grading finishing…";
         setStatus("Stopped. Grading finishing…");
 
-        if (willForceNext) {
-          await pollGradingOnce(false, { force: true });
-        }
+        if (willForceNext) await pollGradingOnce(false, { force: true });
         return;
       }
 
       if (ready && gradingText) {
-        out.textContent = gradingText;
+        if (out) out.textContent = gradingText;
         setStatus("Grading ready.");
-        log("[GRADING] READY", {
-          sessionId: currentSessionId,
-          caseId: data.caseId,
-          status,
-          len: gradingText.length,
-        });
         stopGradingPoll("ready");
         return;
       }
 
-      out.textContent = "Grading in progress…";
+      if (out) out.textContent = "Grading in progress…";
       setStatus("Stopped. Grading in progress…");
     } catch (e) {
-      out.textContent = "Error fetching grading: " + (e?.message || String(e));
+      if (out) out.textContent = "Error fetching grading: " + (e?.message || String(e));
       log("[GRADING] fetch error", { error: e?.message || String(e) });
       stopGradingPoll("error");
     }
@@ -656,13 +625,7 @@
     readyEmptyCount = 0;
 
     const out = document.getElementById("gradingOutput");
-    out.textContent = "Grading in progress…";
-
-    log("[GRADING] start finite polling", {
-      sessionId: currentSessionId,
-      intervalMs: GRADING_POLL_INTERVAL_MS,
-      maxTries: GRADING_POLL_MAX_TRIES,
-    });
+    if (out) out.textContent = "Grading in progress…";
 
     gradingPollTimer = setInterval(async () => {
       gradingPollTries++;
@@ -672,7 +635,7 @@
 
       if (gradingPollTries >= GRADING_POLL_MAX_TRIES) {
         const out2 = document.getElementById("gradingOutput");
-        out2.textContent =
+        if (out2) out2.textContent =
           "Still grading… (timed out waiting). Click “Fetch grading now” to try again.";
         stopGradingPoll("timeout");
       }
@@ -681,7 +644,7 @@
     pollGradingOnce(false);
   }
 
-  // ---------- Start/Stop ----------
+  // ---------------- Start/Stop ----------------
   async function startConsultation() {
     ensureUiRoot();
     stopGradingPoll("new session");
@@ -700,12 +663,9 @@
       const sel = $("caseSelect");
       const caseId = Number(sel?.value) || 1;
 
-      log("[START] case selected", { caseId });
-
       const { userId, email } = await ensureIdentity({ timeoutMs: 2500, intervalMs: 150 });
 
       if (!userId && !email) {
-        log("[START] blocked: missing MemberSpace identity (after retry)");
         setStatus("Couldn't detect MemberSpace login. Refresh the page, then try again.");
         setUiConnected(false);
         return;
@@ -722,7 +682,6 @@
       if (!data.dailyRoom || !data.dailyToken) throw new Error("Missing dailyRoom/dailyToken");
 
       currentSessionId = data.sessionId || null;
-      log("[START] started", { currentSessionId, userId, email });
       updateMeta();
 
       setStatus(`Connecting audio (Case ${caseId})…`);
@@ -741,8 +700,6 @@
 
   async function stopConsultation(auto = false) {
     ensureUiRoot();
-    log("[STOP] clicked", { currentSessionId, auto });
-
     stopCountdown(auto ? "auto stop" : "manual stop");
 
     await unmountDailyCustomAudio();
@@ -757,20 +714,9 @@
     }
   }
 
-  // ---------- Boot ----------
+  // ---------------- Boot ----------------
   window.addEventListener("DOMContentLoaded", () => {
     ensureUiRoot();
-
-    log("[BOOT] DOMContentLoaded", {
-      href: window.location.href,
-      origin: window.location.origin,
-      apiBase: API_BASE,
-      originAllowed: ALLOWED_ORIGINS.has(window.location.origin),
-      hasCaseSelect: !!$("caseSelect"),
-      hasStartBtn: !!$("startBtn"),
-      hasStopBtn: !!$("stopBtn"),
-      hasStatus: !!$("status"),
-    });
 
     const startBtn = $("startBtn");
     const stopBtn = $("stopBtn");
@@ -784,7 +730,8 @@
 
     setUiConnected(false);
     setStatus("Not connected");
-    uiEmit({ state: "idle", glow: 0.15, status: "Waiting…", sessionId: null });
+    setUiState("idle");
+    uiEmit({ state: "idle", status: "Waiting…", sessionId: null });
 
     populateCaseDropdown();
     setCountdownText("");
