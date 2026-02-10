@@ -1,19 +1,19 @@
-// voice-patient.js (CUSTOM UI, no iframe)
+// voice-patient.js (CUSTOM UI - no iframe)
 // - MemberSpace identity passthrough
 // - 12-min countdown + auto-stop
-// - Finite grading poll + grading guard
-// - Daily custom audio via callObject (no iframe)
-// - UI state driven by Daily active-speaker-change (recommended for audio-only UIs)
-// - Emits window event: vp:ui  { state: idle|thinking|listening|talking|error, status?, sessionId? }
-//
-// Notes:
-// - "listening" = USER is speaking (patient is listening)
-// - "talking"   = PATIENT (bot) is speaking
+// - finite grading poll
+// - Daily custom call object (audio-only)
+// - Track-based audio meters for Listening/Thinking/Talking
+// - Emits vp:ui events for your standalone patient card overlay
 
 (() => {
-  const VERSION = "debug-v12.4b";
+  const VERSION = "v12.5-2026-02-10";
   const API_BASE = "https://voice-patient-web.vercel.app";
   const DAILY_JS_SRC = "https://unpkg.com/@daily-co/daily-js";
+
+  // Enable debug panel + console logs only when ?vpdebug=1
+  const DEBUG_UI = new URLSearchParams(window.location.search).has("vpdebug");
+  const DEBUG_LOG = DEBUG_UI;
 
   // ---------------- Session + grading poll ----------------
   let currentSessionId = null;
@@ -34,30 +34,51 @@
   // ---------------- Daily custom call state ----------------
   let callObject = null;
 
-  // Remote audio element + persistent stream
+  // Remote audio playback
   let remoteAudioEl = null;
-  let remoteStream = null;
+  let currentRemoteTrack = null;
+
+  // WebAudio metering
+  let audioCtx = null;
+  let localMeter = null;   // { analyser, data, source }
+  let remoteMeter = null;  // { analyser, data, source }
+  let levelTimer = null;
+
+  // Levels
+  let localLevel = 0;
+  let remoteLevel = 0;
+  let smoothLocal = 0;
+  let smoothRemote = 0;
+
+  // Adaptive noise baseline
+  let noiseLocal = 0.0025;
+  let noiseRemote = 0.0025;
+
+  const LEVEL_SAMPLE_MS = 80;
+  const SMOOTHING = 0.18; // 0..1 (higher = more responsive)
+  const BASE_ALPHA = 0.04;
+
+  // Hold state briefly to avoid flicker/missed frames
+  const HOLD_MS = 450;
+  let holdUntilMs = 0;
 
   // UI state
   let uiState = "idle"; // idle | thinking | listening | talking | error
-
-  // active speaker tracking
-  let localSid = null;
-  let lastSpeakerAt = 0;
-  let decayTimer = null;
+  let lastGlow = 0.15;
 
   // ---------------- Helpers ----------------
   function $(id) { return document.getElementById(id); }
 
-  function uiEmit(detail) {
-    try {
-      window.dispatchEvent(new CustomEvent("vp:ui", { detail }));
-    } catch {}
+  function clamp01(x) {
+    return Math.max(0, Math.min(1, Number(x || 0)));
   }
 
-  // Keep logs minimal (no spam)
+  function uiEmit(detail) {
+    try { window.dispatchEvent(new CustomEvent("vp:ui", { detail })); } catch {}
+  }
+
   function log(message, obj) {
-    ensureUiRoot();
+    if (!DEBUG_LOG) return;
     const line =
       `[VP ${VERSION}] ${new Date().toISOString()}  ${message}` +
       (obj ? `\n${JSON.stringify(obj, null, 2)}` : "");
@@ -69,49 +90,10 @@
     }
   }
 
-  function setUiState(next) {
-    if (uiState === next) return;
-    uiState = next;
-    updateMeta();
-
-    uiEmit({
-      state: uiState,
-      sessionId: currentSessionId,
-    });
-  }
-
-  function setStatus(text) {
-    const el = $("status");
-    if (el) el.textContent = text;
-    updateMeta({ note: text });
-
-    uiEmit({ status: text, sessionId: currentSessionId });
-  }
-
-  function setUiConnected(connected) {
-    const startBtn = $("startBtn");
-    const stopBtn = $("stopBtn");
-    if (startBtn) startBtn.disabled = connected;
-    if (stopBtn) stopBtn.disabled = !connected;
-  }
-
-  async function fetchJson(url, options) {
-    const resp = await fetch(url, options);
-    const text = await resp.text();
-
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; }
-    catch {
-      throw new Error(`Non-JSON from ${url} status=${resp.status} body=${text.slice(0, 180)}`);
-    }
-    if (!resp.ok) {
-      throw new Error((data && (data.error || data.message)) || `HTTP ${resp.status}`);
-    }
-    return data;
-  }
-
-  // ---------------- Debug panel + (optional) fallback controls ----------------
+  // ---------- Debug panel (optional) ----------
   function ensureUiRoot() {
+    if (!DEBUG_UI) return null;
+
     let root = document.getElementById("vp-root");
     if (root) return root;
 
@@ -143,7 +125,6 @@
     timer.style.marginTop = "6px";
     timer.style.fontWeight = "700";
     timer.style.color = "#1565C0";
-    timer.textContent = "";
     root.appendChild(timer);
 
     const btnRow = document.createElement("div");
@@ -155,11 +136,6 @@
     btnFetch.textContent = "Fetch grading now";
     btnFetch.onclick = () => pollGradingOnce(true);
     btnRow.appendChild(btnFetch);
-
-    const btnStopPoll = document.createElement("button");
-    btnStopPoll.textContent = "Stop polling";
-    btnStopPoll.onclick = () => stopGradingPoll("manual stop");
-    btnRow.appendChild(btnStopPoll);
 
     const btnClear = document.createElement("button");
     btnClear.textContent = "Clear debug";
@@ -199,16 +175,50 @@
   }
 
   function updateMeta(extra = {}) {
+    if (!DEBUG_UI) return;
+
     const meta = document.getElementById("vp-meta");
     if (!meta) return;
 
     const { userId, email } = getIdentity();
 
     meta.textContent =
-      `api=${API_BASE} | sessionId=${currentSessionId || "(none)"} | tries=${gradingPollTries}/${GRADING_POLL_MAX_TRIES}` +
+      `origin=${window.location.origin} | api=${API_BASE} | sessionId=${currentSessionId || "(none)"}` +
+      ` | tries=${gradingPollTries}/${GRADING_POLL_MAX_TRIES}` +
       ` | userId=${userId || "(none)"} | email=${email || "(none)"}` +
       ` | state=${uiState}` +
       (extra.note ? ` | ${extra.note}` : "");
+  }
+
+  function setCountdownText(text) {
+    if (!DEBUG_UI) return;
+    ensureUiRoot();
+    const el = document.getElementById("vp-timer");
+    if (el) el.textContent = text || "";
+  }
+
+  function setStatus(text) {
+    const el = $("status");
+    if (el) el.textContent = text;
+    updateMeta({ note: text });
+    uiEmit({ status: text, sessionId: currentSessionId });
+  }
+
+  function setUiConnected(connected) {
+    const startBtn = $("startBtn");
+    const stopBtn = $("stopBtn");
+    if (startBtn) startBtn.disabled = connected;
+    if (stopBtn) stopBtn.disabled = !connected;
+  }
+
+  async function fetchJson(url, options) {
+    const resp = await fetch(url, options);
+    const text = await resp.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; }
+    catch { throw new Error(`Non-JSON from ${url} status=${resp.status} body=${text.slice(0, 120)}`); }
+    if (!resp.ok) throw new Error((data && (data.error || data.message)) || `HTTP ${resp.status}`);
+    return data;
   }
 
   // ---------------- Countdown helpers ----------------
@@ -219,18 +229,14 @@
     return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
   }
 
-  function setCountdownText(text) {
-    ensureUiRoot();
-    const el = document.getElementById("vp-timer");
-    if (el) el.textContent = text || "";
-  }
-
   function stopCountdown(reason = "") {
     if (countdownTimer) clearInterval(countdownTimer);
     countdownTimer = null;
     countdownEndsAt = null;
-    if (reason) setCountdownText(`Timer stopped (${reason})`);
-    else setCountdownText("");
+    if (DEBUG_UI) {
+      if (reason) setCountdownText(`Timer stopped (${reason})`);
+      else setCountdownText("");
+    }
   }
 
   function startCountdown(seconds = MAX_SESSION_SECONDS) {
@@ -245,9 +251,7 @@
 
       if (remainingSec <= 0) {
         stopCountdown("time limit reached");
-        stopConsultation(true).catch((e) => {
-          log("[TIMER] auto stop error", { error: e?.message || String(e) });
-        });
+        stopConsultation(true).catch(() => {});
       }
     };
 
@@ -255,7 +259,7 @@
     countdownTimer = setInterval(tick, 250);
   }
 
-  // ---------------- MemberSpace identity (robust) ----------------
+  // ---------- MemberSpace identity (robust) ----------
   let msMember = null;
 
   function setMsMember(mi, source = "unknown") {
@@ -263,10 +267,8 @@
     const id = mi?.id != null ? String(mi.id).trim() : "";
     const email = mi?.email ? String(mi.email).trim().toLowerCase() : "";
     if (!id && !email) return;
-
     msMember = { ...mi, id, email };
     window.__msMemberInfo = msMember;
-
     log("[MEMBERSPACE] identity set", { source, id, email });
     updateMeta();
   }
@@ -275,7 +277,6 @@
     try {
       const MS = window.MemberSpace;
       if (!MS || typeof MS.getMemberInfo !== "function") return false;
-
       const data = MS.getMemberInfo();
       if (data?.isLoggedIn && data?.memberInfo) {
         setMsMember(data.memberInfo, "MemberSpace.getMemberInfo");
@@ -318,121 +319,7 @@
     return getIdentity();
   }
 
-  // ---------- Daily custom (no iframe) ----------
-  function ensureRemoteAudioElement() {
-    if (remoteAudioEl) return remoteAudioEl;
-    remoteAudioEl = document.createElement("audio");
-    remoteAudioEl.autoplay = true;
-    remoteAudioEl.playsInline = true;
-    remoteAudioEl.style.display = "none";
-    document.body.appendChild(remoteAudioEl);
-    return remoteAudioEl;
-  }
-
-  // ---- UI state + emission ----
-  function setUiState(next) {
-    if (uiState === next) return;
-    uiState = next;
-    updateMeta();
-    // minimal log: only on state change
-    log("[UI] state", { uiState });
-    uiEmit({ state: uiState, glow: lastGlow, sessionId: currentSessionId });
-  }
-
-  // ---- Audio level polling (reliable) ----
-  let levelTimer = null;
-  let lastLocalSpeechAt = 0;
-  let lastRemoteSpeechAt = 0;
-
-  // Tuning knobs:
-  const LEVEL_POLL_MS = 120;
-
-  // “Hold” time so we don’t drop to thinking between words/pauses
-  const HOLD_TALK_MS = 700;
-  const HOLD_LISTEN_MS = 500;
-
-  // Noise floor + thresholds (start here, then tune with vpDebugLevels())
-  const NOISE_FLOOR = 0.003;
-  const TALKING_TH = 0.012;   // remote (bot)
-  const LISTENING_TH = 0.014; // local (mic)
-  const SMOOTHING = 0.25;
-
-  function clamp01(x) {
-  const n = Number(x || 0);
-  return Math.max(0, Math.min(1, n));
-}
-
-
-  function stopLevelLoop() {
-    if (levelTimer) clearInterval(levelTimer);
-    levelTimer = null;
-  }
-
-  function startLevelLoop() {
-    stopLevelLoop();
-    levelTimer = setInterval(() => {
-      if (!callObject) return;
-
-      // get latest levels from Daily observers
-      let l = 0;
-      let r = 0;
-
-      try {
-        const rawL = callObject.getLocalAudioLevel?.();
-        if (typeof rawL === "number") l = Math.max(0, rawL - NOISE_FLOOR);
-      } catch {}
-
-      try {
-        const map = callObject.getRemoteParticipantsAudioLevel?.() || {};
-        const parts = callObject.participants?.() || {};
-        const localSid = parts?.local?.session_id || null;
-
-        let max = 0;
-        for (const sid in map) {
-          if (localSid && sid === localSid) continue; // exclude local if present
-          const v = Number(map[sid] || 0);
-          if (v > max) max = v;
-        }
-        r = Math.max(0, max - NOISE_FLOOR);
-      } catch {}
-
-      // store raw
-      localLevel = l;
-      remoteLevel = r;
-
-      // smooth
-      smoothLocal += (localLevel - smoothLocal) * SMOOTHING;
-      smoothRemote += (remoteLevel - smoothRemote) * SMOOTHING;
-
-      const now = Date.now();
-
-      // update “speech detected” timestamps
-      if (smoothLocal > LISTENING_TH) lastLocalSpeechAt = now;
-      if (smoothRemote > TALKING_TH) lastRemoteSpeechAt = now;
-
-      // decide state (remote wins)
-      let nextState = "thinking";
-      if (now - lastRemoteSpeechAt < HOLD_TALK_MS) nextState = "talking";
-      else if (now - lastLocalSpeechAt < HOLD_LISTEN_MS) nextState = "listening";
-
-      // glow depends on state
-      let glow = 0.18;
-      if (nextState === "talking") glow = Math.min(1, 0.12 + smoothRemote * 2.6);
-      if (nextState === "listening") glow = Math.min(1, 0.12 + smoothLocal * 2.6);
-
-      lastGlow = clamp01(glow);
-
-      // emit every tick for smooth animation
-      uiEmit({
-        state: nextState,
-        glow: lastGlow,
-        sessionId: currentSessionId,
-      });
-
-      if (nextState !== uiState) setUiState(nextState);
-    }, LEVEL_POLL_MS);
-  }
-
+  // ---------------- Daily + Track meters ----------------
   async function loadDailyJsOnce() {
     if (window.Daily && typeof window.Daily.createCallObject === "function") return;
 
@@ -449,10 +336,152 @@
     });
   }
 
+  function ensureAudioContext() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
+    return audioCtx;
+  }
+
+  function ensureRemoteAudioElement() {
+    if (remoteAudioEl) return remoteAudioEl;
+    remoteAudioEl = document.createElement("audio");
+    remoteAudioEl.autoplay = true;
+    remoteAudioEl.playsInline = true;
+    remoteAudioEl.style.display = "none";
+    document.body.appendChild(remoteAudioEl);
+    return remoteAudioEl;
+  }
+
+  function destroyMeter(m) {
+    if (!m) return;
+    try { m.source.disconnect(); } catch {}
+    try { m.analyser.disconnect(); } catch {}
+  }
+
+  function makeMeterForTrack(track) {
+    if (!track) return null;
+    const ctx = ensureAudioContext();
+    const stream = new MediaStream([track]);
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.fftSize);
+    return { source, analyser, data };
+  }
+
+  function rmsFromMeter(m) {
+    if (!m) return 0;
+    m.analyser.getByteTimeDomainData(m.data);
+    let sum = 0;
+    for (let i = 0; i < m.data.length; i++) {
+      const v = (m.data[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / m.data.length);
+    return rms; // ~0..1 (usually small)
+  }
+
+  function setUiState(next) {
+    if (uiState === next) return;
+    uiState = next;
+    updateMeta();
+    log("[UI] state", { uiState });
+  }
+
+  function emitUi(state, glow) {
+    lastGlow = clamp01(glow);
+    uiEmit({
+      state,
+      glow: lastGlow,
+      localLevel: clamp01(smoothLocal * 8),  // scaled for debugging display only
+      remoteLevel: clamp01(smoothRemote * 8),
+      sessionId: currentSessionId,
+    });
+  }
+
+  function computeThresholds() {
+    // Adaptive thresholds above baseline noise
+    const localTh = Math.max(0.006, noiseLocal + 0.006);
+    const remoteTh = Math.max(0.005, noiseRemote + 0.005);
+    return { localTh, remoteTh };
+  }
+
+  function startLevelLoop() {
+    stopLevelLoop();
+    levelTimer = setInterval(() => {
+      const lr = rmsFromMeter(localMeter);
+      const rr = rmsFromMeter(remoteMeter);
+
+      localLevel = lr;
+      remoteLevel = rr;
+
+      // Update baselines only when near baseline (avoid learning speech as "noise")
+      if (lr < noiseLocal + 0.010) noiseLocal = noiseLocal * (1 - BASE_ALPHA) + lr * BASE_ALPHA;
+      if (rr < noiseRemote + 0.010) noiseRemote = noiseRemote * (1 - BASE_ALPHA) + rr * BASE_ALPHA;
+
+      smoothLocal += (lr - smoothLocal) * SMOOTHING;
+      smoothRemote += (rr - smoothRemote) * SMOOTHING;
+
+      const { localTh, remoteTh } = computeThresholds();
+
+      const now = Date.now();
+      let state = uiState;
+      let glow = 0.18;
+
+      // Prioritize bot talking over listening to avoid echo picking up
+      if (smoothRemote > remoteTh) {
+        state = "talking";
+        glow = 0.16 + Math.min(0.8, smoothRemote * 10);
+        holdUntilMs = now + HOLD_MS;
+      } else if (smoothLocal > localTh) {
+        state = "listening";
+        glow = 0.14 + Math.min(0.7, smoothLocal * 10);
+        holdUntilMs = now + HOLD_MS;
+      } else if (now < holdUntilMs) {
+        // keep last state briefly
+        state = uiState;
+        glow = lastGlow;
+      } else {
+        state = "thinking";
+        glow = 0.18;
+      }
+
+      if (state !== uiState) setUiState(state);
+      emitUi(state, glow);
+    }, LEVEL_SAMPLE_MS);
+  }
+
+  function stopLevelLoop() {
+    if (levelTimer) clearInterval(levelTimer);
+    levelTimer = null;
+  }
+
+  function tryAttachLocalMeter() {
+    if (!callObject) return false;
+    const parts = callObject.participants?.() || {};
+    const t =
+      parts?.local?.tracks?.audio?.persistentTrack ||
+      parts?.local?.tracks?.audio?.track ||
+      null;
+
+    if (!t) return false;
+
+    destroyMeter(localMeter);
+    localMeter = makeMeterForTrack(t);
+    return !!localMeter;
+  }
+
   async function mountDailyCustomAudio(dailyRoom, dailyToken) {
     await loadDailyJsOnce();
     await unmountDailyCustomAudio();
 
+    // Create call object
     callObject = window.Daily.createCallObject({
       startVideoOff: true,
       startAudioOff: false,
@@ -461,88 +490,123 @@
     callObject.on("error", (e) => {
       log("[DAILY] error", e);
       setUiState("error");
-      setStatus("Daily error (see debug panel).");
+      setStatus("Daily error (add ?vpdebug=1 to see details).");
+      emitUi("error", 0.20);
     });
 
-    // Remote audio (bot) -> <audio>
+    // Track handling: remote audio playback + meter
     callObject.on("track-started", (ev) => {
       try {
         const { track, participant } = ev || {};
         if (!track || track.kind !== "audio") return;
         if (!participant || participant.local) return;
 
+        currentRemoteTrack = track;
+
         const audio = ensureRemoteAudioElement();
         audio.srcObject = new MediaStream([track]);
-        audio.play?.().catch(() => {});
+        audio.play?.().catch(() => {}); // should be allowed (triggered by user Start click)
+
+        destroyMeter(remoteMeter);
+        remoteMeter = makeMeterForTrack(track);
+
+        // If loop was running but remote meter was missing, it will now react
       } catch (e) {
         log("[DAILY] track-started handler error", { error: e?.message || String(e) });
       }
     });
 
-    // Join first
+    callObject.on("track-stopped", (ev) => {
+      try {
+        const { track, participant } = ev || {};
+        if (!track || track.kind !== "audio") return;
+        if (!participant || participant.local) return;
+
+        // Only clear if it is the SAME track we attached (prevents accidental mid-sentence clears)
+        if (currentRemoteTrack && track === currentRemoteTrack) {
+          currentRemoteTrack = null;
+          if (remoteAudioEl) remoteAudioEl.srcObject = null;
+          destroyMeter(remoteMeter);
+          remoteMeter = null;
+        }
+      } catch {}
+    });
+
+    // Join
     await callObject.join({ url: dailyRoom, token: dailyToken });
 
-    // Start observers so getLocalAudioLevel/getRemoteParticipantsAudioLevel work
-    // (Daily docs: observers populate the getter values) :contentReference[oaicite:2]{index=2}
-    callObject.startLocalAudioLevelObserver(100);
-    callObject.startRemoteParticipantsAudioLevelObserver(100);
+    // Make sure audio context is running (must be after user gesture)
+    ensureAudioContext();
 
-    // reset + start loop
+    // Ensure local audio is on
+    try { callObject.setLocalAudio?.(true); } catch {}
+
+    // Attach local meter (or wait until audio track appears)
+    if (!tryAttachLocalMeter()) {
+      const onPU = () => {
+        if (tryAttachLocalMeter()) {
+          callObject.off?.("participant-updated", onPU);
+        }
+      };
+      callObject.on("participant-updated", onPU);
+    }
+
+    // Reset levels and start UI loop
     localLevel = remoteLevel = 0;
     smoothLocal = smoothRemote = 0;
-    lastLocalSpeechAt = lastRemoteSpeechAt = 0;
-    lastGlow = 0.18;
+    noiseLocal = noiseRemote = 0.0025;
+    holdUntilMs = 0;
 
     setUiState("thinking");
+    emitUi("thinking", 0.18);
     startLevelLoop();
   }
 
   async function unmountDailyCustomAudio() {
     stopLevelLoop();
 
-    if (!callObject) {
-      uiState = "idle";
-      lastGlow = 0.15;
-      uiEmit({ state: "idle", glow: lastGlow, sessionId: currentSessionId });
-      return;
-    }
+    destroyMeter(localMeter);
+    destroyMeter(remoteMeter);
+    localMeter = null;
+    remoteMeter = null;
 
-    try { callObject.stopLocalAudioLevelObserver?.(); } catch {}
-    try { callObject.stopRemoteParticipantsAudioLevelObserver?.(); } catch {}
-
-    try { await callObject.leave(); } catch {}
-    try { callObject.destroy?.(); } catch {}
-
-    callObject = null;
-
-    localLevel = remoteLevel = 0;
-    smoothLocal = smoothRemote = 0;
-
-    uiState = "idle";
-    lastGlow = 0.15;
-    uiEmit({ state: "idle", glow: lastGlow, sessionId: currentSessionId });
+    currentRemoteTrack = null;
 
     if (remoteAudioEl) {
       try { remoteAudioEl.srcObject = null; remoteAudioEl.remove(); } catch {}
       remoteAudioEl = null;
     }
+
+    if (callObject) {
+      try { await callObject.leave(); } catch {}
+      try { callObject.destroy?.(); } catch {}
+      callObject = null;
+    }
+
+    uiState = "idle";
+    emitUi("idle", 0.15);
   }
 
-  // On-demand debug (no spam)
-  window.vpDebugLevels = () => ({
-    state: uiState,
-    localLevel,
-    remoteLevel,
-    smoothLocal,
-    smoothRemote,
-    TALKING_TH,
-    LISTENING_TH,
-    NOISE_FLOOR,
-    hasCall: !!callObject,
-  });
+  // On-demand debug — no spam
+  window.vpDebugLevels = () => {
+    const th = computeThresholds();
+    return {
+      state: uiState,
+      localLevel,
+      remoteLevel,
+      smoothLocal,
+      smoothRemote,
+      noiseLocal,
+      noiseRemote,
+      localTh: th.localTh,
+      remoteTh: th.remoteTh,
+      hasCall: !!callObject,
+      hasLocalMeter: !!localMeter,
+      hasRemoteMeter: !!remoteMeter,
+    };
+  };
 
-
-  // ---------------- Cases ----------------
+  // ---------- Cases ----------
   async function populateCaseDropdown() {
     const sel = $("caseSelect");
     if (!sel) {
@@ -572,22 +636,21 @@
       }
 
       if (data.cases.length) sel.value = String(data.cases[data.cases.length - 1]);
-      log("[CASES] loaded", { count: data.cases.length, selected: sel.value });
       setStatus("Cases loaded. Choose a case then Start.");
     } catch (e) {
-      log("[CASES] error", { error: e?.message || String(e) });
-      setStatus("Failed to load cases (see debug panel).");
+      setStatus("Failed to load cases.");
       sel.innerHTML = `<option>Error loading cases</option>`;
+      log("[CASES] error", { error: e?.message || String(e) });
     }
   }
 
-  // ---------------- Grading (finite poll) ----------------
+  // ---------- Grading ----------
   function stopGradingPoll(reason = "") {
     if (gradingPollTimer) clearInterval(gradingPollTimer);
     gradingPollTimer = null;
     gradingPollTries = 0;
-    if (reason) log("[GRADING] polling stopped", { reason });
     updateMeta();
+    log("[GRADING] polling stopped", { reason });
   }
 
   function isMeaningfulText(s) {
@@ -596,8 +659,12 @@
   }
 
   async function pollGradingOnce(manual = false, { force = false } = {}) {
-    ensureUiRoot();
+    if (DEBUG_UI) ensureUiRoot();
+
     const out = document.getElementById("gradingOutput");
+    if (out && !DEBUG_UI) {
+      // If you want grading visible without debug panel, add <pre id="gradingOutput"></pre> to your page.
+    }
 
     if (!currentSessionId) {
       if (out) out.textContent = "No sessionId yet — start a consultation first.";
@@ -626,7 +693,9 @@
         if (out) out.textContent = "Grading finishing…";
         setStatus("Stopped. Grading finishing…");
 
-        if (willForceNext) await pollGradingOnce(false, { force: true });
+        if (willForceNext) {
+          await pollGradingOnce(false, { force: true });
+        }
         return;
       }
 
@@ -641,8 +710,8 @@
       setStatus("Stopped. Grading in progress…");
     } catch (e) {
       if (out) out.textContent = "Error fetching grading: " + (e?.message || String(e));
-      log("[GRADING] fetch error", { error: e?.message || String(e) });
       stopGradingPoll("error");
+      log("[GRADING] fetch error", { error: e?.message || String(e) });
     }
   }
 
@@ -657,13 +726,10 @@
     gradingPollTimer = setInterval(async () => {
       gradingPollTries++;
       updateMeta();
-
       await pollGradingOnce(false);
-
       if (gradingPollTries >= GRADING_POLL_MAX_TRIES) {
-        const out2 = document.getElementById("gradingOutput");
-        if (out2) out2.textContent =
-          "Still grading… (timed out waiting). Click “Fetch grading now” to try again.";
+        if (out) out.textContent =
+          "Still grading… (timed out waiting). Click “Fetch grading now” (with ?vpdebug=1) or refresh.";
         stopGradingPoll("timeout");
       }
     }, GRADING_POLL_INTERVAL_MS);
@@ -671,9 +737,10 @@
     pollGradingOnce(false);
   }
 
-  // ---------------- Start/Stop ----------------
+  // ---------- Start/Stop ----------
   async function startConsultation() {
-    ensureUiRoot();
+    if (DEBUG_UI) ensureUiRoot();
+
     stopGradingPoll("new session");
     stopCountdown("new session");
 
@@ -691,12 +758,14 @@
       const caseId = Number(sel?.value) || 1;
 
       const { userId, email } = await ensureIdentity({ timeoutMs: 2500, intervalMs: 150 });
-
       if (!userId && !email) {
         setStatus("Couldn't detect MemberSpace login. Refresh the page, then try again.");
         setUiConnected(false);
         return;
       }
+
+      // IMPORTANT: this click path is what unlocks autoplay + AudioContext
+      ensureAudioContext();
 
       const data = await fetchJson(`${API_BASE}/api/start-session`, {
         method: "POST",
@@ -717,18 +786,18 @@
       startCountdown(MAX_SESSION_SECONDS);
       setStatus(`Connected (Case ${caseId}). Talk, then press Stop.`);
     } catch (e) {
-      log("[START] error", { error: e?.message || String(e) });
-      setStatus("Error starting (see debug panel).");
+      setStatus("Error starting. Add ?vpdebug=1 for details.");
       setUiConnected(false);
       await unmountDailyCustomAudio();
       stopCountdown("start failed");
+      log("[START] error", { error: e?.message || String(e) });
     }
   }
 
   async function stopConsultation(auto = false) {
-    ensureUiRoot();
-    stopCountdown(auto ? "auto stop" : "manual stop");
+    if (DEBUG_UI) ensureUiRoot();
 
+    stopCountdown(auto ? "auto stop" : "manual stop");
     await unmountDailyCustomAudio();
 
     setUiConnected(false);
@@ -741,15 +810,29 @@
     }
   }
 
-  // ---------------- Boot ----------------
+  // ---------- Boot ----------
   window.addEventListener("DOMContentLoaded", () => {
-    ensureUiRoot();
+    if (DEBUG_UI) ensureUiRoot();
+
+    const hasCaseSelect = !!$("caseSelect");
+    const hasStartBtn = !!$("startBtn");
+    const hasStopBtn = !!$("stopBtn");
+    const hasStatus = !!$("status");
+
+    if (!hasStartBtn || !hasStopBtn || !hasStatus || !hasCaseSelect) {
+      // You said you already have buttons — so we do NOT inject fallback controls.
+      // If any are missing, just show a status message and bail.
+      const msg = "Missing required elements: caseSelect/startBtn/stopBtn/status.";
+      setStatus(msg);
+      log("[BOOT] missing elements", { hasCaseSelect, hasStartBtn, hasStopBtn, hasStatus });
+      return;
+    }
 
     const startBtn = $("startBtn");
     const stopBtn = $("stopBtn");
 
-    if (startBtn) startBtn.addEventListener("click", startConsultation);
-    if (stopBtn) stopBtn.addEventListener("click", () => { stopConsultation(false).catch(() => {}); });
+    startBtn.addEventListener("click", startConsultation);
+    stopBtn.addEventListener("click", () => { stopConsultation(false).catch(() => {}); });
 
     window.addEventListener("beforeunload", () => {
       try { unmountDailyCustomAudio(); } catch {}
@@ -757,8 +840,7 @@
 
     setUiConnected(false);
     setStatus("Not connected");
-    setUiState("idle");
-    uiEmit({ state: "idle", status: "Waiting…", sessionId: null });
+    uiEmit({ state: "idle", glow: 0.15, status: "Waiting…", sessionId: null });
 
     populateCaseDropdown();
     setCountdownText("");
