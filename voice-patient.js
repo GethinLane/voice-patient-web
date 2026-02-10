@@ -2,16 +2,9 @@
 // + MemberSpace identity passthrough + 12-min countdown + auto-stop
 // + Daily custom UI (no iframe) + real Listening/Thinking/Talking (audio levels)
 // + emits vp:ui events for a standalone patient card overlay
-//
-// PATCH 2026-02-10:
-// - Lowered audio thresholds (Daily levels are often tiny)
-// - Start audio observers AFTER join (more reliable)
-// - Ensure remote <audio> calls play()
-// - Add active-speaker fallback
-// - Add 1/sec LEVELS log so you can tune quickly
 
 (() => {
-  const VERSION = "debug-2026-02-10-dailyjs-customui-1+states-2(thresholds+fallback)+finite-poll-1+ms-identity+grading-guard-1+12min-timer";
+  const VERSION = "debug-2026-02-10-dailyjs-customui-1+states-1+finite-poll-1+ms-identity+grading-guard-1+12min-timer";
   const API_BASE = "https://voice-patient-web.vercel.app";
   const DAILY_JS_SRC = "https://unpkg.com/@daily-co/daily-js";
 
@@ -45,25 +38,16 @@
   let localLevel = 0;
   let remoteLevel = 0;
 
-  // smoothed levels (for stable UI)
   let smoothLocal = 0;
   let smoothRemote = 0;
-
-  // ⚠️ Daily audio levels are often small (0.002–0.02 typical)
-  const SMOOTHING = 0.25;
+  const SMOOTHING = 0.20;
 
   let uiState = "idle"; // idle | thinking | listening | talking | error
   let lastGlow = 0.15;
 
-  // ✅ lower thresholds (tune from logs)
-  const TALKING_TH = 0.012;    // bot audio
-  const LISTENING_TH = 0.015;  // mic audio
-
-  // active speaker fallback
-  let lastActiveSpeaker = null; // "local" | <remote session_id> | null
-
-  // level log throttling
-  let lastLevelLogAt = 0;
+  // thresholds (tune)
+  const TALKING_TH = 0.05;
+  const LISTENING_TH = 0.06;
 
   // ---------------- Helpers ----------------
   function $(id) { return document.getElementById(id); }
@@ -198,6 +182,7 @@
     if (el) el.textContent = text;
     updateMeta({ note: text });
 
+    // also inform the standalone patient card
     uiEmit({ status: text, sessionId: currentSessionId });
   }
 
@@ -259,6 +244,7 @@
         stopCountdown("time limit reached");
         log("[TIMER] reached zero -> auto stop", { currentSessionId });
 
+        // avoid unhandled promise
         stopConsultation(true).catch((e) => {
           log("[TIMER] auto stop error", { error: e?.message || String(e) });
         });
@@ -347,7 +333,7 @@
     if (uiState === next) return;
     uiState = next;
     updateMeta();
-    log("[UI] state", { uiState, localLevel, remoteLevel, activeSpeaker: lastActiveSpeaker });
+    log("[UI] state", { uiState, localLevel, remoteLevel });
 
     uiEmit({
       state: uiState,
@@ -356,7 +342,6 @@
     });
   }
 
-  // ✅ patched: lower thresholds + active-speaker fallback + 1/sec level logs
   function computeAndEmitUiFromLevels() {
     if (!callObject) return;
 
@@ -368,19 +353,16 @@
 
     if (smoothRemote > TALKING_TH) {
       state = "talking";
-      glow = Math.min(1, 0.12 + smoothRemote * 2.2);
+      glow = Math.min(1, 0.15 + smoothRemote * 1.2);
     } else if (smoothLocal > LISTENING_TH) {
       state = "listening";
-      glow = Math.min(1, 0.10 + smoothLocal * 2.2);
-    } else {
-      // fallback if levels are tiny but we have an active speaker
-      if (lastActiveSpeaker === "local") state = "listening";
-      else if (lastActiveSpeaker) state = "talking";
+      glow = Math.min(1, 0.12 + smoothLocal * 1.2);
     }
 
     lastGlow = clamp01(glow);
 
-    // emit every tick so the ring can animate continuously
+    if (state !== uiState) setUiState(state);
+
     uiEmit({
       state,
       glow: lastGlow,
@@ -388,21 +370,6 @@
       remoteLevel: clamp01(smoothRemote),
       sessionId: currentSessionId,
     });
-
-    if (state !== uiState) setUiState(state);
-
-    // once-per-second debug log so thresholds can be tuned
-    const now = Date.now();
-    if (now - lastLevelLogAt > 1000) {
-      lastLevelLogAt = now;
-      log("[LEVELS] local/remote", {
-        local: Number(smoothLocal.toFixed(4)),
-        remote: Number(smoothRemote.toFixed(4)),
-        TALKING_TH,
-        LISTENING_TH,
-        activeSpeaker: lastActiveSpeaker,
-      });
-    }
   }
 
   async function loadDailyJsOnce() {
@@ -424,6 +391,7 @@
   async function mountDailyCustomAudio(dailyRoom, dailyToken) {
     await loadDailyJsOnce();
 
+    // Ensure no previous instance exists
     await unmountDailyCustomAudio();
 
     callObject = window.Daily.createCallObject({
@@ -441,22 +409,6 @@
     callObject.on("joined-meeting", () => log("[DAILY] joined"));
     callObject.on("left-meeting", () => log("[DAILY] left"));
 
-    // ✅ Active speaker fallback
-    callObject.on("active-speaker-change", (ev) => {
-      try {
-        const sid = ev?.activeSpeaker?.session_id || ev?.activeSpeaker || null;
-        if (!sid) { lastActiveSpeaker = null; return; }
-
-        // best-effort local session id comparison
-        const p = callObject.participants?.() || {};
-        const localSid = p?.local?.session_id || null;
-
-        lastActiveSpeaker = (localSid && sid === localSid) ? "local" : sid;
-      } catch {
-        // if shape differs, don't break
-      }
-    });
-
     // Remote audio (bot) -> <audio>
     callObject.on("track-started", (ev) => {
       try {
@@ -468,9 +420,6 @@
 
         const audio = ensureRemoteAudioElement();
         audio.srcObject = new MediaStream([track]);
-
-        // ✅ important on some browsers
-        audio.play?.().catch(() => {});
       } catch (e) {
         log("[DAILY] track-started handler error", { error: e?.message || String(e) });
       }
@@ -490,7 +439,7 @@
       } catch {}
     });
 
-    // Audio level events (will start firing once observers are started)
+    // Audio level observers
     callObject.on("local-audio-level", (ev) => {
       localLevel = Number(ev?.level || 0);
       computeAndEmitUiFromLevels();
@@ -507,12 +456,12 @@
       computeAndEmitUiFromLevels();
     });
 
-    // Join FIRST, then start observers (more reliable)
-    await callObject.join({ url: dailyRoom, token: dailyToken });
-
-    // ✅ Start observers AFTER join
+    // Start observers at 100ms
     callObject.startLocalAudioLevelObserver(100);
     callObject.startRemoteParticipantsAudioLevelObserver(100);
+
+    // Join
+    await callObject.join({ url: dailyRoom, token: dailyToken });
 
     // Initial UI
     localLevel = 0;
@@ -520,15 +469,14 @@
     smoothLocal = 0;
     smoothRemote = 0;
     lastGlow = 0.18;
-    lastActiveSpeaker = null;
     setUiState("thinking");
   }
 
   async function unmountDailyCustomAudio() {
     if (!callObject) {
+      // still emit idle for UI consumers
       uiState = "idle";
       lastGlow = 0.15;
-      lastActiveSpeaker = null;
       uiEmit({ state: "idle", glow: lastGlow, sessionId: currentSessionId });
       return;
     }
@@ -545,7 +493,6 @@
     remoteLevel = 0;
     smoothLocal = 0;
     smoothRemote = 0;
-    lastActiveSpeaker = null;
 
     uiState = "idle";
     lastGlow = 0.15;
@@ -781,6 +728,7 @@
 
     stopCountdown(auto ? "auto stop" : "manual stop");
 
+    // IMPORTANT: stop Daily custom call (not iframe)
     await unmountDailyCustomAudio();
 
     setUiConnected(false);
@@ -814,6 +762,7 @@
     if (startBtn) startBtn.addEventListener("click", startConsultation);
     if (stopBtn) stopBtn.addEventListener("click", () => { stopConsultation(false).catch(() => {}); });
 
+    // Clean up if the user navigates away mid-call
     window.addEventListener("beforeunload", () => {
       try { unmountDailyCustomAudio(); } catch {}
     });
