@@ -11,7 +11,7 @@
 // - "talking"   = PATIENT (bot) is speaking
 
 (() => {
-  const VERSION = "debug-v12.4";
+  const VERSION = "debug-v12.4b";
   const API_BASE = "https://voice-patient-web.vercel.app";
   const DAILY_JS_SRC = "https://unpkg.com/@daily-co/daily-js";
 
@@ -356,6 +356,11 @@
   const TALKING_TH = 0.012;   // remote (bot)
   const LISTENING_TH = 0.014; // local (mic)
   const SMOOTHING = 0.25;
+
+  function clamp01(x) {
+  const n = Number(x || 0);
+  return Math.max(0, Math.min(1, n));
+}
 
 
   function stopLevelLoop() {
