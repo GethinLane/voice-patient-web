@@ -2,9 +2,16 @@
 // + MemberSpace identity passthrough + 12-min countdown + auto-stop
 // + Daily custom UI (no iframe) + real Listening/Thinking/Talking (audio levels)
 // + emits vp:ui events for a standalone patient card overlay
+//
+// PATCH (quiet):
+// - lower thresholds + noise floor
+// - exclude local participant from remote audio max
+// - start observers after join
+// - call audio.play() on remote track
+// - no periodic logs; add window.vpDebugLevels() for on-demand checks
 
 (() => {
-  const VERSION = "debug-2026-02-10-dailyjs-customui-1+states-1+finite-poll-1+ms-identity+grading-guard-1+12min-timer";
+  const VERSION = "debug-2026-02-10-dailyjs-customui-quiet-fix-1";
   const API_BASE = "https://voice-patient-web.vercel.app";
   const DAILY_JS_SRC = "https://unpkg.com/@daily-co/daily-js";
 
@@ -40,14 +47,20 @@
 
   let smoothLocal = 0;
   let smoothRemote = 0;
-  const SMOOTHING = 0.20;
+
+  // Daily levels are typically small; smoothing helps avoid flicker
+  const SMOOTHING = 0.25;
 
   let uiState = "idle"; // idle | thinking | listening | talking | error
   let lastGlow = 0.15;
 
-  // thresholds (tune)
-  const TALKING_TH = 0.05;
-  const LISTENING_TH = 0.06;
+  // ✅ Practical defaults for Daily audio levels
+  // If these don’t trigger, reduce slightly (e.g. 0.012–0.015).
+  const TALKING_TH = 0.018;    // bot audio (after noise floor)
+  const LISTENING_TH = 0.020;  // mic audio (after noise floor)
+
+  // ✅ ignore tiny noise so you don’t “talk” on silence
+  const NOISE_FLOOR = 0.003;
 
   // ---------------- Helpers ----------------
   function $(id) { return document.getElementById(id); }
@@ -244,7 +257,6 @@
         stopCountdown("time limit reached");
         log("[TIMER] reached zero -> auto stop", { currentSessionId });
 
-        // avoid unhandled promise
         stopConsultation(true).catch((e) => {
           log("[TIMER] auto stop error", { error: e?.message || String(e) });
         });
@@ -333,13 +345,8 @@
     if (uiState === next) return;
     uiState = next;
     updateMeta();
-    log("[UI] state", { uiState, localLevel, remoteLevel });
-
-    uiEmit({
-      state: uiState,
-      glow: lastGlow,
-      sessionId: currentSessionId,
-    });
+    log("[UI] state", { uiState });
+    uiEmit({ state: uiState, glow: lastGlow, sessionId: currentSessionId });
   }
 
   function computeAndEmitUiFromLevels() {
@@ -353,23 +360,22 @@
 
     if (smoothRemote > TALKING_TH) {
       state = "talking";
-      glow = Math.min(1, 0.15 + smoothRemote * 1.2);
+      glow = Math.min(1, 0.10 + smoothRemote * 2.2);
     } else if (smoothLocal > LISTENING_TH) {
       state = "listening";
-      glow = Math.min(1, 0.12 + smoothLocal * 1.2);
+      glow = Math.min(1, 0.10 + smoothLocal * 2.2);
     }
 
     lastGlow = clamp01(glow);
 
-    if (state !== uiState) setUiState(state);
-
+    // emit continuously for animation
     uiEmit({
       state,
       glow: lastGlow,
-      localLevel: clamp01(smoothLocal),
-      remoteLevel: clamp01(smoothRemote),
       sessionId: currentSessionId,
     });
+
+    if (state !== uiState) setUiState(state);
   }
 
   async function loadDailyJsOnce() {
@@ -390,8 +396,6 @@
 
   async function mountDailyCustomAudio(dailyRoom, dailyToken) {
     await loadDailyJsOnce();
-
-    // Ensure no previous instance exists
     await unmountDailyCustomAudio();
 
     callObject = window.Daily.createCallObject({
@@ -420,6 +424,7 @@
 
         const audio = ensureRemoteAudioElement();
         audio.srcObject = new MediaStream([track]);
+        audio.play?.().catch(() => {}); // ✅ helps autoplay in some browsers
       } catch (e) {
         log("[DAILY] track-started handler error", { error: e?.message || String(e) });
       }
@@ -433,35 +438,39 @@
 
         log("[DAILY] remote audio track stopped", { session_id: participant.session_id });
 
-        if (remoteAudioEl) {
-          remoteAudioEl.srcObject = null;
-        }
+        if (remoteAudioEl) remoteAudioEl.srcObject = null;
       } catch {}
     });
 
-    // Audio level observers
+    // Audio level events (will fire once observers are started)
     callObject.on("local-audio-level", (ev) => {
-      localLevel = Number(ev?.level || 0);
+      const raw = Number(ev?.level || 0);
+      localLevel = Math.max(0, raw - NOISE_FLOOR);
       computeAndEmitUiFromLevels();
     });
 
+    // ✅ IMPORTANT: remote participants map can include local; exclude it.
     callObject.on("remote-participants-audio-level", (ev) => {
       const parts = ev?.participants || {};
+      const p = callObject.participants?.() || {};
+      const localSid = p?.local?.session_id || null;
+
       let max = 0;
       for (const sid in parts) {
+        if (localSid && sid === localSid) continue; // exclude local
         const lvl = Number(parts[sid]?.level || 0);
         if (lvl > max) max = lvl;
       }
-      remoteLevel = max;
+
+      remoteLevel = Math.max(0, max - NOISE_FLOOR);
       computeAndEmitUiFromLevels();
     });
 
-    // Start observers at 100ms
+    // Join first, then start observers (more reliable)
+    await callObject.join({ url: dailyRoom, token: dailyToken });
+
     callObject.startLocalAudioLevelObserver(100);
     callObject.startRemoteParticipantsAudioLevelObserver(100);
-
-    // Join
-    await callObject.join({ url: dailyRoom, token: dailyToken });
 
     // Initial UI
     localLevel = 0;
@@ -474,7 +483,6 @@
 
   async function unmountDailyCustomAudio() {
     if (!callObject) {
-      // still emit idle for UI consumers
       uiState = "idle";
       lastGlow = 0.15;
       uiEmit({ state: "idle", glow: lastGlow, sessionId: currentSessionId });
@@ -503,6 +511,19 @@
       remoteAudioEl = null;
     }
   }
+
+  // Optional: on-demand single-shot debug (no spam)
+  window.vpDebugLevels = () => ({
+    state: uiState,
+    rawLocal: localLevel,
+    rawRemote: remoteLevel,
+    smoothLocal,
+    smoothRemote,
+    TALKING_TH,
+    LISTENING_TH,
+    NOISE_FLOOR,
+    hasCall: !!callObject,
+  });
 
   // ---------- Cases ----------
   async function populateCaseDropdown() {
@@ -592,12 +613,10 @@
 
         log("[GRADING] ready=true but gradingText empty", {
           sessionId: currentSessionId,
-          attemptRecordId: data.attemptRecordId,
           caseId: data.caseId,
           status,
           readyEmptyCount,
           willForceNext,
-          data,
         });
 
         out.textContent = "Grading finishing…";
@@ -614,7 +633,6 @@
         setStatus("Grading ready.");
         log("[GRADING] READY", {
           sessionId: currentSessionId,
-          attemptRecordId: data.attemptRecordId,
           caseId: data.caseId,
           status,
           len: gradingText.length,
@@ -624,7 +642,6 @@
       }
 
       out.textContent = "Grading in progress…";
-      if (manual) log("[GRADING] processing", data);
       setStatus("Stopped. Grading in progress…");
     } catch (e) {
       out.textContent = "Error fetching grading: " + (e?.message || String(e));
@@ -728,7 +745,6 @@
 
     stopCountdown(auto ? "auto stop" : "manual stop");
 
-    // IMPORTANT: stop Daily custom call (not iframe)
     await unmountDailyCustomAudio();
 
     setUiConnected(false);
@@ -762,7 +778,6 @@
     if (startBtn) startBtn.addEventListener("click", startConsultation);
     if (stopBtn) stopBtn.addEventListener("click", () => { stopConsultation(false).catch(() => {}); });
 
-    // Clean up if the user navigates away mid-call
     window.addEventListener("beforeunload", () => {
       try { unmountDailyCustomAudio(); } catch {}
     });
