@@ -276,46 +276,147 @@
     return getIdentity();
   }
 
-  // ---------- Daily iframe ----------
-  let callIframe = null;
+  // ---------- Daily (Custom UI - no iframe) ----------
+let callObject = null;
+let remoteAudioEl = null;
 
-  function mountDailyIframe(dailyRoom, dailyToken) {
-    let container = $("call");
-    if (!container) {
-      container = document.createElement("div");
-      container.id = "call";
-      container.style.marginTop = "12px";
-      document.body.appendChild(container);
+let localLevel = 0;
+let remoteLevel = 0;
+let uiState = "idle"; // idle | listening | thinking | talking | error
+
+function ensureRemoteAudioElement() {
+  if (remoteAudioEl) return remoteAudioEl;
+  remoteAudioEl = document.createElement("audio");
+  remoteAudioEl.autoplay = true;
+  remoteAudioEl.playsInline = true;
+  remoteAudioEl.style.display = "none"; // audio-only, no visible UI
+  document.body.appendChild(remoteAudioEl);
+  return remoteAudioEl;
+}
+
+function setUiState(next) {
+  if (uiState === next) return;
+  uiState = next;
+  // TODO: update your Option-1 overlay here (ring + label)
+  log("[UI] state", { uiState, localLevel, remoteLevel });
+}
+
+function updateStateFromLevels() {
+  // tune these thresholds based on real-world testing
+  const TALKING_TH = 0.05;   // bot audio level
+  const LISTENING_TH = 0.06; // mic audio level
+
+  if (!callObject) return;
+
+  if (remoteLevel > TALKING_TH) setUiState("talking");
+  else if (localLevel > LISTENING_TH) setUiState("listening");
+  else setUiState("thinking");
+}
+
+async function loadDailyJsOnce() {
+  if (window.Daily && typeof window.Daily.createCallObject === "function") return;
+
+  await new Promise((resolve, reject) => {
+    const existing = [...document.scripts].find(s => s.src.includes("@daily-co/daily-js"));
+    if (existing) return resolve();
+
+    const s = document.createElement("script");
+    s.crossOrigin = "anonymous";
+    s.src = "https://unpkg.com/@daily-co/daily-js";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("Failed to load daily-js"));
+    document.head.appendChild(s);
+  });
+}
+
+async function mountDailyCustomAudio(dailyRoom, dailyToken) {
+  await loadDailyJsOnce();
+
+  // Ensure no previous instance exists
+  await unmountDailyCustomAudio();
+
+  // Create the call object (custom UI, no iframe)
+  callObject = window.Daily.createCallObject({
+    // Try to keep it audio-only from the start:
+    startVideoOff: true,
+    startAudioOff: false,
+    // Optional: for audio-only apps, you can control subscriptions manually later.
+    // subscribeToTracksAutomatically: false,
+  });
+
+  // Basic lifecycle logs
+  callObject.on("joining-meeting", () => log("[DAILY] joining"));
+  callObject.on("joined-meeting", () => log("[DAILY] joined"));
+  callObject.on("left-meeting", () => log("[DAILY] left"));
+
+  // Attach remote audio track (bot) to <audio>
+  callObject.on("track-started", (ev) => {
+    try {
+      const { track, participant } = ev || {};
+      if (!track || track.kind !== "audio") return;
+      if (!participant || participant.local) return;
+
+      log("[DAILY] remote audio track started", { session_id: participant.session_id });
+
+      const audio = ensureRemoteAudioElement();
+      audio.srcObject = new MediaStream([track]); // standard Web API
+    } catch (e) {
+      log("[DAILY] track-started handler error", { error: e?.message || String(e) });
     }
+  });
 
-    if (callIframe) {
-      try { callIframe.remove(); } catch {}
-      callIframe = null;
+  // Audio level observers
+  callObject.on("local-audio-level", (ev) => {
+    // ev.level is typically 0..1
+    localLevel = Number(ev?.level || 0);
+    updateStateFromLevels();
+    // TODO: drive ring intensity from localLevel when listening
+  });
+
+  callObject.on("remote-participants-audio-level", (ev) => {
+    // ev.participants is a map of session_id -> { level }
+    const parts = ev?.participants || {};
+    let max = 0;
+    for (const sid in parts) {
+      const lvl = Number(parts[sid]?.level || 0);
+      if (lvl > max) max = lvl;
     }
+    remoteLevel = max;
+    updateStateFromLevels();
+    // TODO: drive ring intensity from remoteLevel when talking
+  });
 
-    const url = `${dailyRoom}?t=${encodeURIComponent(dailyToken)}`;
-    log("[DAILY] mounting iframe", { url });
+  // Start observers at 100ms (smooth animation)
+  callObject.startLocalAudioLevelObserver(100);
+  callObject.startRemoteParticipantsAudioLevelObserver(100);
 
-    callIframe = document.createElement("iframe");
-    callIframe.allow = "microphone; camera; autoplay; display-capture";
-    callIframe.src = url;
-    callIframe.style.width = "100%";
-    callIframe.style.height = "520px";
-    callIframe.style.border = "0";
-    callIframe.style.borderRadius = "12px";
-    callIframe.onload = () => log("[DAILY] iframe loaded");
+  // Join using your Pipecat-provided room + token
+  await callObject.join({ url: dailyRoom, token: dailyToken });
 
-    container.appendChild(callIframe);
+  // Once joined, initial state
+  setUiState("thinking");
+}
+
+async function unmountDailyCustomAudio() {
+  if (!callObject) return;
+
+  try { callObject.stopLocalAudioLevelObserver?.(); } catch {}
+  try { callObject.stopRemoteParticipantsAudioLevelObserver?.(); } catch {}
+
+  try { await callObject.leave(); } catch {}
+  try { callObject.destroy?.(); } catch {}
+
+  callObject = null;
+  localLevel = 0;
+  remoteLevel = 0;
+  setUiState("idle");
+
+  if (remoteAudioEl) {
+    try { remoteAudioEl.srcObject = null; remoteAudioEl.remove(); } catch {}
+    remoteAudioEl = null;
   }
+}
 
-  function unmountDailyIframe() {
-    if (callIframe) {
-      try { callIframe.src = "about:blank"; } catch {}
-      try { callIframe.remove(); } catch {}
-      callIframe = null;
-    }
-    log("[DAILY] iframe unmounted");
-  }
 
   // ---------- Cases ----------
   async function populateCaseDropdown() {
@@ -525,14 +626,16 @@
       log("[START] started", { currentSessionId, userId, email });
       updateMeta();
 
-      mountDailyIframe(data.dailyRoom, data.dailyToken);
+      await mountDailyCustomAudio(data.dailyRoom, data.dailyToken);
+
       startCountdown(MAX_SESSION_SECONDS);
       setStatus(`Connected (Case ${caseId}). Talk, then press Stop.`);
     } catch (e) {
       log("[START] error", { error: e?.message || String(e) });
       setStatus("Error starting (see debug panel).");
       setUiConnected(false);
-      unmountDailyIframe();
+      unmountDailyCustomAudio();
+
       stopCountdown("start failed");
     }
   }
