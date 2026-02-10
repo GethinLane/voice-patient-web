@@ -11,7 +11,7 @@
 // - "talking"   = PATIENT (bot) is speaking
 
 (() => {
-  const VERSION = "debug-2026-02-10-active-speaker-ui-1";
+  const VERSION = "debug-v12.4";
   const API_BASE = "https://voice-patient-web.vercel.app";
   const DAILY_JS_SRC = "https://unpkg.com/@daily-co/daily-js";
 
