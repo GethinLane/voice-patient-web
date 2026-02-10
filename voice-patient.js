@@ -1,31 +1,66 @@
-// voice-patient.js (DEBUG - finite grading poll + injected UI) + MemberSpace identity passthrough + 12-min countdown + auto-stop
+// voice-patient.js (DEBUG - finite grading poll + injected UI)
+// + MemberSpace identity passthrough + 12-min countdown + auto-stop
+// + Daily custom UI (no iframe) + real Listening/Thinking/Talking (audio levels)
+// + emits vp:ui events for a standalone patient card overlay
+
 (() => {
-  const VERSION = "debug-2026-02-05-finite-poll-1+ms-identity+grading-guard-1+12min-timer";
+  const VERSION = "debug-2026-02-10-dailyjs-customui-1+states-1+finite-poll-1+ms-identity+grading-guard-1+12min-timer";
   const API_BASE = "https://voice-patient-web.vercel.app";
+  const DAILY_JS_SRC = "https://unpkg.com/@daily-co/daily-js";
+
   const ALLOWED_ORIGINS = new Set([
     "https://www.scarevision.co.uk",
     "https://www.scarevision.ai",
-    // optional (non-www variants):
     "https://scarevision.co.uk",
     "https://scarevision.ai",
   ]);
 
+  // ---------------- Session + grading poll ----------------
   let currentSessionId = null;
   let gradingPollTimer = null;
   let gradingPollTries = 0;
 
   const GRADING_POLL_INTERVAL_MS = 6000; // every 6s
-  const GRADING_POLL_MAX_TRIES = 20;     // 20 * 6s = 120s (2 minutes)
+  const GRADING_POLL_MAX_TRIES = 20;     // 120s max
 
   // ---------------- Countdown (12 min) ----------------
   const MAX_SESSION_SECONDS = 12 * 60;
   let countdownTimer = null;
   let countdownEndsAt = null;
 
-  // Grading guard (prevents "ready but empty gradingText" looking like success)
+  // Grading guard
   let readyEmptyCount = 0;
 
+  // ---------------- Daily custom call state ----------------
+  let callObject = null;
+  let remoteAudioEl = null;
+
+  let localLevel = 0;
+  let remoteLevel = 0;
+
+  let smoothLocal = 0;
+  let smoothRemote = 0;
+  const SMOOTHING = 0.20;
+
+  let uiState = "idle"; // idle | thinking | listening | talking | error
+  let lastGlow = 0.15;
+
+  // thresholds (tune)
+  const TALKING_TH = 0.05;
+  const LISTENING_TH = 0.06;
+
+  // ---------------- Helpers ----------------
   function $(id) { return document.getElementById(id); }
+
+  function uiEmit(detail) {
+    try {
+      window.dispatchEvent(new CustomEvent("vp:ui", { detail }));
+    } catch {}
+  }
+
+  function clamp01(x) {
+    return Math.max(0, Math.min(1, Number(x || 0)));
+  }
 
   // ---------- Always-visible debug + grading UI ----------
   function ensureUiRoot() {
@@ -55,13 +90,12 @@
     meta.style.opacity = "0.9";
     root.appendChild(meta);
 
-    // Timer row (created once)
     const timer = document.createElement("div");
     timer.id = "vp-timer";
     timer.style.marginTop = "6px";
     timer.style.fontWeight = "700";
     timer.style.color = "#1565C0";
-    timer.textContent = ""; // will be set when session starts
+    timer.textContent = "";
     root.appendChild(timer);
 
     const btnRow = document.createElement("div");
@@ -126,6 +160,7 @@
       `origin=${window.location.origin} | api=${API_BASE} | sessionId=${currentSessionId || "(none)"}` +
       ` | tries=${gradingPollTries}/${GRADING_POLL_MAX_TRIES}` +
       ` | userId=${userId || "(none)"} | email=${email || "(none)"}` +
+      ` | state=${uiState}` +
       (extra.note ? ` | ${extra.note}` : "");
   }
 
@@ -146,6 +181,9 @@
     const el = $("status");
     if (el) el.textContent = text;
     updateMeta({ note: text });
+
+    // also inform the standalone patient card
+    uiEmit({ status: text, sessionId: currentSessionId });
   }
 
   function setUiConnected(connected) {
@@ -205,7 +243,11 @@
       if (remainingSec <= 0) {
         stopCountdown("time limit reached");
         log("[TIMER] reached zero -> auto stop", { currentSessionId });
-        stopConsultation(true); // auto stop
+
+        // avoid unhandled promise
+        stopConsultation(true).catch((e) => {
+          log("[TIMER] auto stop error", { error: e?.message || String(e) });
+        });
       }
     };
 
@@ -276,147 +318,191 @@
     return getIdentity();
   }
 
-  // ---------- Daily (Custom UI - no iframe) ----------
-let callObject = null;
-let remoteAudioEl = null;
-
-let localLevel = 0;
-let remoteLevel = 0;
-let uiState = "idle"; // idle | listening | thinking | talking | error
-
-function ensureRemoteAudioElement() {
-  if (remoteAudioEl) return remoteAudioEl;
-  remoteAudioEl = document.createElement("audio");
-  remoteAudioEl.autoplay = true;
-  remoteAudioEl.playsInline = true;
-  remoteAudioEl.style.display = "none"; // audio-only, no visible UI
-  document.body.appendChild(remoteAudioEl);
-  return remoteAudioEl;
-}
-
-function setUiState(next) {
-  if (uiState === next) return;
-  uiState = next;
-  // TODO: update your Option-1 overlay here (ring + label)
-  log("[UI] state", { uiState, localLevel, remoteLevel });
-}
-
-function updateStateFromLevels() {
-  // tune these thresholds based on real-world testing
-  const TALKING_TH = 0.05;   // bot audio level
-  const LISTENING_TH = 0.06; // mic audio level
-
-  if (!callObject) return;
-
-  if (remoteLevel > TALKING_TH) setUiState("talking");
-  else if (localLevel > LISTENING_TH) setUiState("listening");
-  else setUiState("thinking");
-}
-
-async function loadDailyJsOnce() {
-  if (window.Daily && typeof window.Daily.createCallObject === "function") return;
-
-  await new Promise((resolve, reject) => {
-    const existing = [...document.scripts].find(s => s.src.includes("@daily-co/daily-js"));
-    if (existing) return resolve();
-
-    const s = document.createElement("script");
-    s.crossOrigin = "anonymous";
-    s.src = "https://unpkg.com/@daily-co/daily-js";
-    s.onload = resolve;
-    s.onerror = () => reject(new Error("Failed to load daily-js"));
-    document.head.appendChild(s);
-  });
-}
-
-async function mountDailyCustomAudio(dailyRoom, dailyToken) {
-  await loadDailyJsOnce();
-
-  // Ensure no previous instance exists
-  await unmountDailyCustomAudio();
-
-  // Create the call object (custom UI, no iframe)
-  callObject = window.Daily.createCallObject({
-    // Try to keep it audio-only from the start:
-    startVideoOff: true,
-    startAudioOff: false,
-    // Optional: for audio-only apps, you can control subscriptions manually later.
-    // subscribeToTracksAutomatically: false,
-  });
-
-  // Basic lifecycle logs
-  callObject.on("joining-meeting", () => log("[DAILY] joining"));
-  callObject.on("joined-meeting", () => log("[DAILY] joined"));
-  callObject.on("left-meeting", () => log("[DAILY] left"));
-
-  // Attach remote audio track (bot) to <audio>
-  callObject.on("track-started", (ev) => {
-    try {
-      const { track, participant } = ev || {};
-      if (!track || track.kind !== "audio") return;
-      if (!participant || participant.local) return;
-
-      log("[DAILY] remote audio track started", { session_id: participant.session_id });
-
-      const audio = ensureRemoteAudioElement();
-      audio.srcObject = new MediaStream([track]); // standard Web API
-    } catch (e) {
-      log("[DAILY] track-started handler error", { error: e?.message || String(e) });
-    }
-  });
-
-  // Audio level observers
-  callObject.on("local-audio-level", (ev) => {
-    // ev.level is typically 0..1
-    localLevel = Number(ev?.level || 0);
-    updateStateFromLevels();
-    // TODO: drive ring intensity from localLevel when listening
-  });
-
-  callObject.on("remote-participants-audio-level", (ev) => {
-    // ev.participants is a map of session_id -> { level }
-    const parts = ev?.participants || {};
-    let max = 0;
-    for (const sid in parts) {
-      const lvl = Number(parts[sid]?.level || 0);
-      if (lvl > max) max = lvl;
-    }
-    remoteLevel = max;
-    updateStateFromLevels();
-    // TODO: drive ring intensity from remoteLevel when talking
-  });
-
-  // Start observers at 100ms (smooth animation)
-  callObject.startLocalAudioLevelObserver(100);
-  callObject.startRemoteParticipantsAudioLevelObserver(100);
-
-  // Join using your Pipecat-provided room + token
-  await callObject.join({ url: dailyRoom, token: dailyToken });
-
-  // Once joined, initial state
-  setUiState("thinking");
-}
-
-async function unmountDailyCustomAudio() {
-  if (!callObject) return;
-
-  try { callObject.stopLocalAudioLevelObserver?.(); } catch {}
-  try { callObject.stopRemoteParticipantsAudioLevelObserver?.(); } catch {}
-
-  try { await callObject.leave(); } catch {}
-  try { callObject.destroy?.(); } catch {}
-
-  callObject = null;
-  localLevel = 0;
-  remoteLevel = 0;
-  setUiState("idle");
-
-  if (remoteAudioEl) {
-    try { remoteAudioEl.srcObject = null; remoteAudioEl.remove(); } catch {}
-    remoteAudioEl = null;
+  // ---------- Daily custom (no iframe) ----------
+  function ensureRemoteAudioElement() {
+    if (remoteAudioEl) return remoteAudioEl;
+    remoteAudioEl = document.createElement("audio");
+    remoteAudioEl.autoplay = true;
+    remoteAudioEl.playsInline = true;
+    remoteAudioEl.style.display = "none";
+    document.body.appendChild(remoteAudioEl);
+    return remoteAudioEl;
   }
-}
 
+  function setUiState(next) {
+    if (uiState === next) return;
+    uiState = next;
+    updateMeta();
+    log("[UI] state", { uiState, localLevel, remoteLevel });
+
+    uiEmit({
+      state: uiState,
+      glow: lastGlow,
+      sessionId: currentSessionId,
+    });
+  }
+
+  function computeAndEmitUiFromLevels() {
+    if (!callObject) return;
+
+    smoothLocal += (localLevel - smoothLocal) * SMOOTHING;
+    smoothRemote += (remoteLevel - smoothRemote) * SMOOTHING;
+
+    let state = "thinking";
+    let glow = 0.18;
+
+    if (smoothRemote > TALKING_TH) {
+      state = "talking";
+      glow = Math.min(1, 0.15 + smoothRemote * 1.2);
+    } else if (smoothLocal > LISTENING_TH) {
+      state = "listening";
+      glow = Math.min(1, 0.12 + smoothLocal * 1.2);
+    }
+
+    lastGlow = clamp01(glow);
+
+    if (state !== uiState) setUiState(state);
+
+    uiEmit({
+      state,
+      glow: lastGlow,
+      localLevel: clamp01(smoothLocal),
+      remoteLevel: clamp01(smoothRemote),
+      sessionId: currentSessionId,
+    });
+  }
+
+  async function loadDailyJsOnce() {
+    if (window.Daily && typeof window.Daily.createCallObject === "function") return;
+
+    await new Promise((resolve, reject) => {
+      const existing = [...document.scripts].find((s) => (s.src || "").includes("@daily-co/daily-js"));
+      if (existing) return resolve();
+
+      const s = document.createElement("script");
+      s.crossOrigin = "anonymous";
+      s.src = DAILY_JS_SRC;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("Failed to load daily-js"));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function mountDailyCustomAudio(dailyRoom, dailyToken) {
+    await loadDailyJsOnce();
+
+    // Ensure no previous instance exists
+    await unmountDailyCustomAudio();
+
+    callObject = window.Daily.createCallObject({
+      startVideoOff: true,
+      startAudioOff: false,
+    });
+
+    callObject.on("error", (e) => {
+      log("[DAILY] error", e);
+      setUiState("error");
+      setStatus("Daily error (see debug panel).");
+    });
+
+    callObject.on("joining-meeting", () => log("[DAILY] joining"));
+    callObject.on("joined-meeting", () => log("[DAILY] joined"));
+    callObject.on("left-meeting", () => log("[DAILY] left"));
+
+    // Remote audio (bot) -> <audio>
+    callObject.on("track-started", (ev) => {
+      try {
+        const { track, participant } = ev || {};
+        if (!track || track.kind !== "audio") return;
+        if (!participant || participant.local) return;
+
+        log("[DAILY] remote audio track started", { session_id: participant.session_id });
+
+        const audio = ensureRemoteAudioElement();
+        audio.srcObject = new MediaStream([track]);
+      } catch (e) {
+        log("[DAILY] track-started handler error", { error: e?.message || String(e) });
+      }
+    });
+
+    callObject.on("track-stopped", (ev) => {
+      try {
+        const { track, participant } = ev || {};
+        if (!track || track.kind !== "audio") return;
+        if (!participant || participant.local) return;
+
+        log("[DAILY] remote audio track stopped", { session_id: participant.session_id });
+
+        if (remoteAudioEl) {
+          remoteAudioEl.srcObject = null;
+        }
+      } catch {}
+    });
+
+    // Audio level observers
+    callObject.on("local-audio-level", (ev) => {
+      localLevel = Number(ev?.level || 0);
+      computeAndEmitUiFromLevels();
+    });
+
+    callObject.on("remote-participants-audio-level", (ev) => {
+      const parts = ev?.participants || {};
+      let max = 0;
+      for (const sid in parts) {
+        const lvl = Number(parts[sid]?.level || 0);
+        if (lvl > max) max = lvl;
+      }
+      remoteLevel = max;
+      computeAndEmitUiFromLevels();
+    });
+
+    // Start observers at 100ms
+    callObject.startLocalAudioLevelObserver(100);
+    callObject.startRemoteParticipantsAudioLevelObserver(100);
+
+    // Join
+    await callObject.join({ url: dailyRoom, token: dailyToken });
+
+    // Initial UI
+    localLevel = 0;
+    remoteLevel = 0;
+    smoothLocal = 0;
+    smoothRemote = 0;
+    lastGlow = 0.18;
+    setUiState("thinking");
+  }
+
+  async function unmountDailyCustomAudio() {
+    if (!callObject) {
+      // still emit idle for UI consumers
+      uiState = "idle";
+      lastGlow = 0.15;
+      uiEmit({ state: "idle", glow: lastGlow, sessionId: currentSessionId });
+      return;
+    }
+
+    try { callObject.stopLocalAudioLevelObserver?.(); } catch {}
+    try { callObject.stopRemoteParticipantsAudioLevelObserver?.(); } catch {}
+
+    try { await callObject.leave(); } catch {}
+    try { callObject.destroy?.(); } catch {}
+
+    callObject = null;
+
+    localLevel = 0;
+    remoteLevel = 0;
+    smoothLocal = 0;
+    smoothRemote = 0;
+
+    uiState = "idle";
+    lastGlow = 0.15;
+    uiEmit({ state: "idle", glow: lastGlow, sessionId: currentSessionId });
+
+    if (remoteAudioEl) {
+      try { remoteAudioEl.srcObject = null; remoteAudioEl.remove(); } catch {}
+      remoteAudioEl = null;
+    }
+  }
 
   // ---------- Cases ----------
   async function populateCaseDropdown() {
@@ -468,7 +554,7 @@ async function unmountDailyCustomAudio() {
 
   function isMeaningfulText(s) {
     const t = String(s || "");
-    return t.trim().length >= 20; // avoid "\n" or tiny placeholders
+    return t.trim().length >= 20;
   }
 
   async function pollGradingOnce(manual = false, { force = false } = {}) {
@@ -500,7 +586,6 @@ async function unmountDailyCustomAudio() {
       const gradingText = String(data.gradingText || "");
       const ready = !!data.ready;
 
-      // ✅ If ready but gradingText is empty/whitespace, treat as not ready yet
       if (ready && !isMeaningfulText(gradingText)) {
         readyEmptyCount += 1;
         const willForceNext = readyEmptyCount >= 2;
@@ -518,7 +603,6 @@ async function unmountDailyCustomAudio() {
         out.textContent = "Grading finishing…";
         setStatus("Stopped. Grading finishing…");
 
-        // after 2 empties, force a re-grade on next poll
         if (willForceNext) {
           await pollGradingOnce(false, { force: true });
         }
@@ -539,7 +623,6 @@ async function unmountDailyCustomAudio() {
         return;
       }
 
-      // processing
       out.textContent = "Grading in progress…";
       if (manual) log("[GRADING] processing", data);
       setStatus("Stopped. Grading in progress…");
@@ -578,7 +661,6 @@ async function unmountDailyCustomAudio() {
       }
     }, GRADING_POLL_INTERVAL_MS);
 
-    // first hit immediately
     pollGradingOnce(false);
   }
 
@@ -587,8 +669,9 @@ async function unmountDailyCustomAudio() {
     ensureUiRoot();
     stopGradingPoll("new session");
     stopCountdown("new session");
-    document.getElementById("gradingOutput").textContent =
-      "Grading will appear here after you stop the consultation.";
+
+    const out = document.getElementById("gradingOutput");
+    if (out) out.textContent = "Grading will appear here after you stop the consultation.";
 
     currentSessionId = null;
     updateMeta();
@@ -602,7 +685,6 @@ async function unmountDailyCustomAudio() {
 
       log("[START] case selected", { caseId });
 
-      // include MemberSpace identity in the start request
       const { userId, email } = await ensureIdentity({ timeoutMs: 2500, intervalMs: 150 });
 
       if (!userId && !email) {
@@ -626,6 +708,7 @@ async function unmountDailyCustomAudio() {
       log("[START] started", { currentSessionId, userId, email });
       updateMeta();
 
+      setStatus(`Connecting audio (Case ${caseId})…`);
       await mountDailyCustomAudio(data.dailyRoom, data.dailyToken);
 
       startCountdown(MAX_SESSION_SECONDS);
@@ -634,24 +717,28 @@ async function unmountDailyCustomAudio() {
       log("[START] error", { error: e?.message || String(e) });
       setStatus("Error starting (see debug panel).");
       setUiConnected(false);
-      unmountDailyCustomAudio();
-
+      await unmountDailyCustomAudio();
       stopCountdown("start failed");
     }
   }
 
-  function stopConsultation(auto = false) {
+  async function stopConsultation(auto = false) {
     ensureUiRoot();
     log("[STOP] clicked", { currentSessionId, auto });
 
     stopCountdown(auto ? "auto stop" : "manual stop");
-    unmountDailyIframe();
+
+    // IMPORTANT: stop Daily custom call (not iframe)
+    await unmountDailyCustomAudio();
+
     setUiConnected(false);
     setStatus(auto ? "Time limit reached. Grading in progress…" : "Stopped. Grading in progress…");
 
     if (currentSessionId) startFiniteGradingPoll();
-    else document.getElementById("gradingOutput").textContent =
-      "No sessionId available; cannot fetch grading.";
+    else {
+      const out = document.getElementById("gradingOutput");
+      if (out) out.textContent = "No sessionId available; cannot fetch grading.";
+    }
   }
 
   // ---------- Boot ----------
@@ -671,12 +758,20 @@ async function unmountDailyCustomAudio() {
 
     const startBtn = $("startBtn");
     const stopBtn = $("stopBtn");
+
     if (startBtn) startBtn.addEventListener("click", startConsultation);
-    if (stopBtn) stopBtn.addEventListener("click", () => stopConsultation(false));
+    if (stopBtn) stopBtn.addEventListener("click", () => { stopConsultation(false).catch(() => {}); });
+
+    // Clean up if the user navigates away mid-call
+    window.addEventListener("beforeunload", () => {
+      try { unmountDailyCustomAudio(); } catch {}
+    });
 
     setUiConnected(false);
     setStatus("Not connected");
+    uiEmit({ state: "idle", glow: 0.15, status: "Waiting…", sessionId: null });
+
     populateCaseDropdown();
-    setCountdownText(""); // ensure clean
+    setCountdownText("");
   });
 })();
