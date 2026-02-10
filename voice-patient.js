@@ -355,6 +355,8 @@
   const NOISE_FLOOR = 0.003;
   const TALKING_TH = 0.012;   // remote (bot)
   const LISTENING_TH = 0.014; // local (mic)
+  const SMOOTHING = 0.25;
+
 
   function stopLevelLoop() {
     if (levelTimer) clearInterval(levelTimer);
