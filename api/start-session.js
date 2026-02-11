@@ -1,4 +1,13 @@
 // api/start-session.js (DEBUG)
+
+import { getCaseProfileByCaseId } from "./_airtable.js";
+
+function parseJSONMaybe(s) {
+  if (!s) return null;
+  try { return JSON.parse(s); } catch { return null; }
+}
+
+
 export default async function handler(req, res) {
   const origin = req.headers.origin;
 
@@ -38,21 +47,61 @@ export default async function handler(req, res) {
     if (!userId && !email) {
       return res.status(400).json({ ok: false, error: "Missing userId/email (not logged in)" });
     }
+        // ✅ NEW: standard vs premium mode (from frontend button/link)
+    const mode = (req.body?.mode != null ? String(req.body.mode) : "standard").trim().toLowerCase();
+    const safeMode = mode === "premium" ? "premium" : "standard";
+
+    // ✅ NEW: load case profile from Airtable (CaseProfiles table in the same base)
+    const casesApiKey = process.env.AIRTABLE_API_KEY;
+    const casesBaseId = process.env.AIRTABLE_BASE_ID;
+    if (!casesApiKey) throw new Error("Missing AIRTABLE_API_KEY");
+    if (!casesBaseId) throw new Error("Missing AIRTABLE_BASE_ID");
+
+    let profile = null;
+    try {
+      const rec = await getCaseProfileByCaseId({ apiKey: casesApiKey, baseId: casesBaseId, caseId });
+      profile = rec?.fields || null;
+    } catch (err) {
+      // Don't hard-fail if profile missing — keep Cartesia default behaviour
+      profile = null;
+    }
+
+    // ✅ NEW: pick provider/voice/model/config from profile based on mode
+    const provider = (safeMode === "premium" ? profile?.PremiumProvider : profile?.StandardProvider) || "cartesia";
+    const voice    = (safeMode === "premium" ? profile?.PremiumVoice    : profile?.StandardVoice)    || null;
+    const model    = (safeMode === "premium" ? profile?.PremiumModel    : profile?.StandardModel)    || null;
+
+    const configRaw = (safeMode === "premium" ? profile?.PremiumConfigJSON : profile?.StandardConfigJSON) || "";
+    const configObj = parseJSONMaybe(configRaw) || {};
+
+    const startTone = (profile?.StartTone || "neutral").trim().toLowerCase();
+
+    const tts = {
+      provider: String(provider).trim().toLowerCase(),
+      voice: voice != null ? String(voice).trim() : null,
+      model: model != null ? String(model).trim() : null,
+      config: configObj,
+    };
 
     const agentName = process.env.PIPECAT_AGENT_NAME;
     const apiKey = process.env.PIPECAT_PUBLIC_API_KEY;
     if (!agentName) throw new Error("Missing PIPECAT_AGENT_NAME");
     if (!apiKey) throw new Error("Missing PIPECAT_PUBLIC_API_KEY");
 
-    const sent = {
+        const sent = {
       transport: "webrtc",
       createDailyRoom: true,
       body: {
         caseId,
-        userId, // ✅ forwarded into runner_args.body
-        email,  // ✅ forwarded into runner_args.body
+        userId,
+        email,
+
+        mode: safeMode,
+        startTone,
+        tts,
       },
     };
+
 
     const url = `https://api.pipecat.daily.co/v1/public/${encodeURIComponent(agentName)}/start`;
 
