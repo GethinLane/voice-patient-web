@@ -28,13 +28,13 @@ export default async function handler(req, res) {
     const USERS_TABLE = process.env.AIRTABLE_USERS_TABLE || "Users";
     const ATTEMPTS_TABLE = process.env.AIRTABLE_ATTEMPTS_TABLE || "Attempts";
     const USERS_ID_FIELD = process.env.AIRTABLE_USERS_ID_FIELD || "UserID";
-    const ATTEMPTS_USER_LINK_FIELD = process.env.ATTEMPTS_USER_LINK_FIELD || "User"; // must match field name in Attempts
+    const ATTEMPTS_USER_FIELD = process.env.ATTEMPTS_USER_FIELD || "User"; // field in Attempts
 
     if (!baseId || !apiKey) {
       return res.status(500).json({ error: "Missing AIRTABLE_USERS_BASE_ID / AIRTABLE_USERS_API_KEY" });
     }
 
-    // ---- 1) Find Users record ----
+    // ---- 1) Find Users record (so we know: record ID + actual UserID string) ----
     const userFilterParts = [];
     if (userId) userFilterParts.push(`{${USERS_ID_FIELD}}="${esc(String(userId).trim())}"`);
     if (email) userFilterParts.push(`LOWER({Email})="${esc(normEmail(email))}"`);
@@ -55,7 +55,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Prefer exact email match if provided
+    // prefer exact email match
     let userRec = users[0];
     if (email) {
       const target = normEmail(email);
@@ -63,17 +63,34 @@ export default async function handler(req, res) {
       if (exact) userRec = exact;
     }
 
-    const userRecId = userRec.id;
+    const userRecId = userRec.id; // recXXXX
+    const userIdValue = String(userRec.fields?.[USERS_ID_FIELD] ?? "").trim(); // "7476933"
 
-    // ---- 2) Find Attempts linked to that Users record ID ----
-    const attemptsFilter = `FIND("${userRecId}", ARRAYJOIN({${ATTEMPTS_USER_LINK_FIELD}}))>0`;
+    // ---- 2) Attempt filter method A: treat Attempts.User as linked record field (record IDs) ----
+    const filterA = `FIND("${esc(userRecId)}", ARRAYJOIN({${ATTEMPTS_USER_FIELD}}))>0`;
 
-    const attempts = await airtableListAll({
+    let attempts = await airtableListAll({
       apiKey,
       baseId,
       table: ATTEMPTS_TABLE,
-      params: { filterByFormula: attemptsFilter },
+      params: { filterByFormula: filterA },
     });
+
+    let usedFilter = "recordId_link_match";
+    let attemptsFilter = filterA;
+
+    // ---- 3) Fallback method B: treat Attempts.User as text/lookup/primary-value string ("7476933") ----
+    if (!attempts.length && userIdValue) {
+      const filterB = `{${ATTEMPTS_USER_FIELD}}="${esc(userIdValue)}"`;
+      attempts = await airtableListAll({
+        apiKey,
+        baseId,
+        table: ATTEMPTS_TABLE,
+        params: { filterByFormula: filterB },
+      });
+      usedFilter = "primaryValue_match";
+      attemptsFilter = filterB;
+    }
 
     const cleaned = attempts
       .map((r) => ({
@@ -96,13 +113,14 @@ export default async function handler(req, res) {
         baseId,
         USERS_TABLE,
         ATTEMPTS_TABLE,
-        ATTEMPTS_USER_LINK_FIELD,
+        ATTEMPTS_USER_FIELD,
         userFilter,
         matchedUser: {
           recordId: userRecId,
-          UserID: userRec.fields?.[USERS_ID_FIELD] ?? null,
+          UserID: userIdValue || null,
           Email: userRec.fields?.Email ?? null,
         },
+        usedFilter,
         attemptsFilter,
       },
     });
