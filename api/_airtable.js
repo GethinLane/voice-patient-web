@@ -59,3 +59,23 @@ export async function airtableUpdate({ apiKey, baseId, table, recordId, fields }
   if (!resp.ok) throw new Error(`Airtable update error ${resp.status}: ${text.slice(0, 400)}`);
   return text ? JSON.parse(text) : null;
 }
+/** NEW: fetch the first record matching an Airtable filterByFormula */
+export async function airtableGetFirstByFormula({ apiKey, baseId, table, formula, params = {} }) {
+  const records = await airtableListAll({
+    apiKey,
+    baseId,
+    table,
+    params: {
+      maxRecords: "1",
+      filterByFormula: formula,
+      ...params,
+    },
+  });
+  return records?.[0] || null;
+}
+
+/** NEW: get CaseProfiles row for a given CaseID */
+export async function getCaseProfileByCaseId({ apiKey, baseId, caseId, table = "CaseProfiles" }) {
+  const formula = `{CaseID}=${Number(caseId)}`;
+  return await airtableGetFirstByFormula({ apiKey, baseId, table, formula });
+}
