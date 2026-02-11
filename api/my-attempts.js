@@ -28,19 +28,18 @@ export default async function handler(req, res) {
     const USERS_TABLE = process.env.AIRTABLE_USERS_TABLE || "Users";
     const ATTEMPTS_TABLE = process.env.AIRTABLE_ATTEMPTS_TABLE || "Attempts";
     const USERS_ID_FIELD = process.env.AIRTABLE_USERS_ID_FIELD || "UserID";
-
-    // IMPORTANT: this must match the exact field name in Attempts
-    const ATTEMPTS_USER_LINK_FIELD = process.env.ATTEMPTS_USER_LINK_FIELD || "User";
+    const ATTEMPTS_USER_LINK_FIELD = process.env.ATTEMPTS_USER_LINK_FIELD || "User"; // must match field name in Attempts
 
     if (!baseId || !apiKey) {
       return res.status(500).json({ error: "Missing AIRTABLE_USERS_BASE_ID / AIRTABLE_USERS_API_KEY" });
     }
 
-    // ---- STEP 1: find user record ----
+    // ---- 1) Find Users record ----
     const userFilterParts = [];
     if (userId) userFilterParts.push(`{${USERS_ID_FIELD}}="${esc(String(userId).trim())}"`);
     if (email) userFilterParts.push(`LOWER({Email})="${esc(normEmail(email))}"`);
-    const userFilter = userFilterParts.length === 1 ? userFilterParts[0] : `OR(${userFilterParts.join(",")})`;
+    const userFilter =
+      userFilterParts.length === 1 ? userFilterParts[0] : `OR(${userFilterParts.join(",")})`;
 
     const users = await airtableListAll({
       apiKey,
@@ -52,21 +51,21 @@ export default async function handler(req, res) {
     if (!users.length) {
       return res.status(403).json({
         error: "No matching Users record",
-        diagnostics: { userFilter, USERS_TABLE, baseId },
+        diagnostics: { userFilter, baseId, USERS_TABLE },
       });
     }
 
-    // prefer exact email match if provided
+    // Prefer exact email match if provided
     let userRec = users[0];
     if (email) {
       const target = normEmail(email);
-      const exact = users.find(u => normEmail(u.fields?.Email) === target);
+      const exact = users.find((u) => normEmail(u.fields?.Email) === target);
       if (exact) userRec = exact;
     }
 
     const userRecId = userRec.id;
 
-    // ---- STEP 2: list attempts linked to that user record id ----
+    // ---- 2) Find Attempts linked to that Users record ID ----
     const attemptsFilter = `FIND("${userRecId}", ARRAYJOIN({${ATTEMPTS_USER_LINK_FIELD}}))>0`;
 
     const attempts = await airtableListAll({
@@ -74,14 +73,6 @@ export default async function handler(req, res) {
       baseId,
       table: ATTEMPTS_TABLE,
       params: { filterByFormula: attemptsFilter },
-    });
-
-    // Also fetch a tiny sample of attempts (no filter) to inspect raw {User} values via API
-    const sample = await airtableListAll({
-      apiKey,
-      baseId,
-      table: ATTEMPTS_TABLE,
-      params: { maxRecords: "5", fields: [ATTEMPTS_USER_LINK_FIELD, "SessionID", "CaseID"] },
     });
 
     const cleaned = attempts
@@ -93,7 +84,7 @@ export default async function handler(req, res) {
         sessionId: r.fields?.SessionID ?? null,
         gradingStatus: r.fields?.GradingStatus ?? null,
       }))
-      .filter(x => x.sessionId)
+      .filter((x) => x.sessionId)
       .sort((a, b) => (String(a.createdTime) < String(b.createdTime) ? 1 : -1))
       .slice(0, Math.max(1, Math.min(200, Number(limit) || 100)));
 
@@ -113,15 +104,10 @@ export default async function handler(req, res) {
           Email: userRec.fields?.Email ?? null,
         },
         attemptsFilter,
-        attemptsSampleUserFieldRaw: sample.map(s => ({
-          id: s.id,
-          userField: s.fields?.[ATTEMPTS_USER_LINK_FIELD] ?? null,
-          sessionId: s.fields?.SessionID ?? null,
-          caseId: s.fields?.CaseID ?? null,
-        })),
       },
     });
   } catch (err) {
+    console.error("my-attempts error:", err);
     return res.status(500).json({
       error: "Server error",
       detail: String(err?.message || err),
