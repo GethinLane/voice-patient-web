@@ -487,6 +487,11 @@
       startAudioOff: false,
     });
 
+    // ✅ DEBUG: expose callObject so we can inspect tracks from browser console
+window.__vpCallObject = callObject;
+console.log("[VP] callObject exposed as window.__vpCallObject");
+
+
     callObject.on("error", (e) => {
       log("[DAILY] error", e);
       setUiState("error");
