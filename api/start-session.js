@@ -2,11 +2,14 @@
 
 import { getCaseProfileByCaseId } from "./_airtable.js";
 
+function safeStr(x) {
+  return x == null ? "" : String(x);
+}
+
 function parseJSONMaybe(s) {
   if (!s) return null;
   try { return JSON.parse(s); } catch { return null; }
 }
-
 
 export default async function handler(req, res) {
   const origin = req.headers.origin;
@@ -34,61 +37,78 @@ export default async function handler(req, res) {
     const receivedCaseId = req.body?.caseId;
     const caseId = Number(receivedCaseId);
 
-    // ✅ NEW: accept identity from frontend
-    const userId = req.body?.userId != null ? String(req.body.userId).trim() : "";
-    const email  = req.body?.email  != null ? String(req.body.email).trim().toLowerCase() : "";
+    // Identity
+    const userId = req.body?.userId != null ? safeStr(req.body.userId).trim() : "";
+    const email  = req.body?.email  != null ? safeStr(req.body.email).trim().toLowerCase() : "";
 
     if (!caseId) {
       return res.status(400).json({ ok: false, error: "Missing/invalid caseId", receivedCaseId });
     }
 
-    // 🔒 Optional but recommended: require identity
-    // (If you want to allow free anonymous demo mode, remove this)
+    // Require identity (as you already do)
     if (!userId && !email) {
       return res.status(400).json({ ok: false, error: "Missing userId/email (not logged in)" });
     }
-        // ✅ NEW: standard vs premium mode (from frontend button/link)
-    const mode = (req.body?.mode != null ? String(req.body.mode) : "standard").trim().toLowerCase();
+
+    // Standard vs premium mode
+    const mode = (req.body?.mode != null ? safeStr(req.body.mode) : "standard").trim().toLowerCase();
     const safeMode = mode === "premium" ? "premium" : "standard";
 
-    // ✅ NEW: load case profile from Airtable (CaseProfiles table in the same base)
+    // Airtable Cases base (same env vars you already use)
     const casesApiKey = process.env.AIRTABLE_API_KEY;
     const casesBaseId = process.env.AIRTABLE_BASE_ID;
     if (!casesApiKey) throw new Error("Missing AIRTABLE_API_KEY");
     if (!casesBaseId) throw new Error("Missing AIRTABLE_BASE_ID");
 
-    let profile = null;
+    // Load CaseProfiles row (optional; fall back safely)
+    let profileFields = null;
+    let profileRecordId = null;
+
     try {
-      const rec = await getCaseProfileByCaseId({ apiKey: casesApiKey, baseId: casesBaseId, caseId });
-      profile = rec?.fields || null;
+      const rec = await getCaseProfileByCaseId({
+        apiKey: casesApiKey,
+        baseId: casesBaseId,
+        caseId,
+      });
+      profileRecordId = rec?.id || null;
+      profileFields = rec?.fields || null;
     } catch (err) {
-      // Don't hard-fail if profile missing — keep Cartesia default behaviour
-      profile = null;
+      profileFields = null;
     }
 
-    // ✅ NEW: pick provider/voice/model/config from profile based on mode
-    const provider = (safeMode === "premium" ? profile?.PremiumProvider : profile?.StandardProvider) || "cartesia";
-    const voice    = (safeMode === "premium" ? profile?.PremiumVoice    : profile?.StandardVoice)    || null;
-    const model    = (safeMode === "premium" ? profile?.PremiumModel    : profile?.StandardModel)    || null;
+    // --- Pick provider/voice from profile, using ONLY fields you said you created ---
+    // Expected Airtable fields:
+    // StandardProvider, StandardVoice, PremiumProvider, PremiumVoice, StartTone
+    const providerRaw =
+      (safeMode === "premium" ? profileFields?.PremiumProvider : profileFields?.StandardProvider) || "cartesia";
+    const voiceRaw =
+      (safeMode === "premium" ? profileFields?.PremiumVoice : profileFields?.StandardVoice) || null;
 
-    const configRaw = (safeMode === "premium" ? profile?.PremiumConfigJSON : profile?.StandardConfigJSON) || "";
+    // Optional fields (won’t break if you didn’t create them)
+    const modelRaw =
+      (safeMode === "premium" ? profileFields?.PremiumModel : profileFields?.StandardModel) || null;
+
+    const configRaw =
+      (safeMode === "premium" ? profileFields?.PremiumConfigJSON : profileFields?.StandardConfigJSON) || "";
+
     const configObj = parseJSONMaybe(configRaw) || {};
 
-    const startTone = (profile?.StartTone || "neutral").trim().toLowerCase();
+    const startTone = (profileFields?.StartTone || "neutral").toString().trim().toLowerCase();
 
     const tts = {
-      provider: String(provider).trim().toLowerCase(),
-      voice: voice != null ? String(voice).trim() : null,
-      model: model != null ? String(model).trim() : null,
+      provider: safeStr(providerRaw).trim().toLowerCase(),
+      voice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
+      model: modelRaw != null ? safeStr(modelRaw).trim() : null,
       config: configObj,
     };
 
+    // Pipecat config
     const agentName = process.env.PIPECAT_AGENT_NAME;
     const apiKey = process.env.PIPECAT_PUBLIC_API_KEY;
     if (!agentName) throw new Error("Missing PIPECAT_AGENT_NAME");
     if (!apiKey) throw new Error("Missing PIPECAT_PUBLIC_API_KEY");
 
-        const sent = {
+    const sent = {
       transport: "webrtc",
       createDailyRoom: true,
       body: {
@@ -101,7 +121,6 @@ export default async function handler(req, res) {
         tts,
       },
     };
-
 
     const url = `https://api.pipecat.daily.co/v1/public/${encodeURIComponent(agentName)}/start`;
 
@@ -125,6 +144,12 @@ export default async function handler(req, res) {
         receivedCaseId,
         parsedCaseId: caseId,
         sent,
+
+        // DEBUG: show what we found in Airtable
+        profileFound: !!profileFields,
+        profileRecordId,
+        profileKeys: profileFields ? Object.keys(profileFields) : [],
+
         pipecatStatus: resp.status,
         pipecatRawPreview: raw.slice(0, 400),
       });
@@ -135,6 +160,12 @@ export default async function handler(req, res) {
       receivedCaseId,
       parsedCaseId: caseId,
       sent,
+
+      // DEBUG: show what we found in Airtable
+      profileFound: !!profileFields,
+      profileRecordId,
+      profileKeys: profileFields ? Object.keys(profileFields) : [],
+
       sessionId: data.sessionId,
       dailyRoom: data.dailyRoom,
       dailyToken: data.dailyToken,
