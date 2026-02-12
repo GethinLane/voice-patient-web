@@ -25,24 +25,33 @@ function escapeFormulaString(value) {
   return String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
+function normalizeMode(value) {
+  return String(value != null ? value : "")
+    .trim()
+    .toLowerCase() === "premium"
+    ? "premium"
+    : "standard";
+}
+
+function resolveModeFromPayload(body) {
+  return normalizeMode(
+    body?.mode ?? body?.botMode ?? body?.metadata?.mode ?? body?.meta?.mode ?? body?.context?.mode
+  );
+}
+
 export default async function handler(req, res) {
   cors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
 
   try {
-    const { sessionId, caseId, userId, email, transcript, mode } = req.body || {};
+    const { sessionId, caseId, userId, email, transcript } = req.body || {};
 
     if (!sessionId) return res.status(400).json({ ok: false, error: "Missing sessionId" });
     if (!caseId) return res.status(400).json({ ok: false, error: "Missing caseId" });
     if (!Array.isArray(transcript)) return res.status(400).json({ ok: false, error: "Missing transcript[]" });
 
-    const botMode =
-      String(mode != null ? mode : "standard")
-        .trim()
-        .toLowerCase() === "premium"
-        ? "premium"
-        : "standard";
+    const botMode = resolveModeFromPayload(req.body || {});
 
     // 🔒 IMPORTANT: do NOT allow anonymous sessions to create "fake" users
     const userIdStr = userId != null ? String(userId).trim() : "";
@@ -126,6 +135,7 @@ export default async function handler(req, res) {
       stored: true,
       sessionId,
       caseId: Number(caseId),
+      mode: botMode,
       userId: userIdStr || null,
       email: emailStr || null,
       userRecordId,

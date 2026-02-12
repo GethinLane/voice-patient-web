@@ -40,7 +40,12 @@ function escapeFormulaString(s) {
 }
 
 function parseCreditCost(rawValue, fallback) {
-  const parsed = Number(rawValue);
+  if (rawValue == null) return fallback;
+
+  const normalized = String(rawValue).trim();
+  if (!normalized) return fallback;
+
+  const parsed = Number(normalized);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(0, parsed);
 }
