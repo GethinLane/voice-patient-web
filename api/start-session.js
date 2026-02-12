@@ -37,6 +37,14 @@ function valueFromAirtableField(value) {
   return safeStr(value).trim();
 }
 
+function debugValueMeta(value) {
+  return {
+    type: Array.isArray(value) ? "array" : typeof value,
+    value,
+    normalized: valueFromAirtableField(value),
+  };
+}
+
 export default async function handler(req, res) {
   const origin = req.headers.origin;
 
@@ -105,13 +113,21 @@ export default async function handler(req, res) {
     // --- Pick provider/voice from profile, using ONLY fields you said you created ---
     // Expected Airtable fields:
     // StandardProvider, StandardVoice, PremiumProvider, PremiumVoice, StartTone
-    const providerRaw = firstNonEmpty(
-      safeMode === "premium" ? profileFields?.PremiumProvider : profileFields?.StandardProvider,
-      "cartesia",
-    );
-    const voiceRaw = firstNonEmpty(
-      safeMode === "premium" ? profileFields?.PremiumVoice : profileFields?.StandardVoice,
-    ) || null;
+    const modeProviderField = safeMode === "premium" ? "PremiumProvider" : "StandardProvider";
+    const modeVoiceField = safeMode === "premium" ? "PremiumVoice" : "StandardVoice";
+
+    const providerSource = profileFields?.[modeProviderField];
+    const voiceSource = profileFields?.[modeVoiceField];
+
+    const normalizedProvider = valueFromAirtableField(providerSource);
+    const normalizedVoice = valueFromAirtableField(voiceSource);
+
+    const providerRaw = firstNonEmpty(providerSource, "cartesia");
+    const voiceRaw = firstNonEmpty(voiceSource) || null;
+
+    const providerFallbackReason = normalizedProvider
+      ? null
+      : `No usable value in ${modeProviderField}; defaulted to cartesia`;
 
     // Optional fields (won’t break if you didn’t create them)
     const modelRaw =
@@ -178,6 +194,18 @@ export default async function handler(req, res) {
         profileFound: !!profileFields,
         profileRecordId,
         profileKeys: profileFields ? Object.keys(profileFields) : [],
+        debugTtsSelection: {
+          mode: safeMode,
+          modeProviderField,
+          modeVoiceField,
+          providerSource: debugValueMeta(providerSource),
+          voiceSource: debugValueMeta(voiceSource),
+          normalizedProvider,
+          normalizedVoice,
+          selectedProvider: safeStr(providerRaw).trim().toLowerCase(),
+          selectedVoice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
+          providerFallbackReason,
+        },
 
         pipecatStatus: resp.status,
         pipecatRawPreview: raw.slice(0, 400),
@@ -194,6 +222,18 @@ export default async function handler(req, res) {
       profileFound: !!profileFields,
       profileRecordId,
       profileKeys: profileFields ? Object.keys(profileFields) : [],
+      debugTtsSelection: {
+        mode: safeMode,
+        modeProviderField,
+        modeVoiceField,
+        providerSource: debugValueMeta(providerSource),
+        voiceSource: debugValueMeta(voiceSource),
+        normalizedProvider,
+        normalizedVoice,
+        selectedProvider: safeStr(providerRaw).trim().toLowerCase(),
+        selectedVoice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
+        providerFallbackReason,
+      },
 
       sessionId: data.sessionId,
       dailyRoom: data.dailyRoom,
