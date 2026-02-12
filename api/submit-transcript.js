@@ -31,11 +31,18 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST only" });
 
   try {
-    const { sessionId, caseId, userId, email, transcript } = req.body || {};
+    const { sessionId, caseId, userId, email, transcript, mode } = req.body || {};
 
     if (!sessionId) return res.status(400).json({ ok: false, error: "Missing sessionId" });
     if (!caseId) return res.status(400).json({ ok: false, error: "Missing caseId" });
     if (!Array.isArray(transcript)) return res.status(400).json({ ok: false, error: "Missing transcript[]" });
+
+    const botMode =
+      String(mode != null ? mode : "standard")
+        .trim()
+        .toLowerCase() === "premium"
+        ? "premium"
+        : "standard";
 
     // 🔒 IMPORTANT: do NOT allow anonymous sessions to create "fake" users
     const userIdStr = userId != null ? String(userId).trim() : "";
@@ -108,6 +115,7 @@ export default async function handler(req, res) {
         AttemptNumber: attemptNumber,
         CaseID: Number(caseId),
         SessionID: String(sessionId),
+        Mode: botMode,
         Transcript: JSON.stringify(transcript),
         GradingText: "",
       },
