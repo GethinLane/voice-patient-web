@@ -387,13 +387,13 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-  width: 320px !important;
-  height: 320px !important;
+  width: 420px !important;
+  height: 420px !important;
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-  width: 240px !important;
-  height: 240px !important;
+  width: 320px !important;
+  height: 320px !important;
   border: 7px solid rgba(255,255,255,.92) !important;
 }
 
