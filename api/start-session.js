@@ -11,6 +11,68 @@ function parseJSONMaybe(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    const normalized = valueFromAirtableField(value);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function valueFromAirtableField(value) {
+  if (value == null) return "";
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = valueFromAirtableField(item);
+      if (nested) return nested;
+    }
+    return "";
+  }
+
+  if (typeof value === "object") {
+    return firstNonEmpty(value.name, value.value, value.id);
+  }
+
+  return safeStr(value).trim();
+}
+
+function canonicalizeProvider(value) {
+  const raw = safeStr(value).trim().toLowerCase();
+  if (!raw) return "";
+
+  const compact = raw.replace(/[\s_-]+/g, "");
+  const aliases = new Map([
+    ["cartesia", "cartesia"],
+    ["elevenlabs", "elevenlabs"],
+    ["eleven", "elevenlabs"],
+    ["11labs", "elevenlabs"],
+    ["google", "google"],
+    ["googletts", "google"],
+    ["googlecloud", "google"],
+    ["googlecloudtts", "google"],
+    ["googletexttospeech", "google"],
+    ["googlecloudtexttospeech", "google"],
+    ["gcp", "google"],
+  ]);
+
+  if (aliases.has(compact)) return aliases.get(compact);
+
+  // Airtable single-select labels can vary (e.g. "Google Cloud Text-to-Speech").
+  // If it's clearly a Google label, canonicalize to provider key expected by the bot.
+  if (compact.includes("google")) return "google";
+
+  return raw;
+}
+
+function debugValueMeta(value) {
+  return {
+    type: Array.isArray(value) ? "array" : typeof value,
+    value,
+    normalized: valueFromAirtableField(value),
+  };
+}
+
 export default async function handler(req, res) {
   const origin = req.headers.origin;
 
@@ -79,10 +141,27 @@ export default async function handler(req, res) {
     // --- Pick provider/voice from profile, using ONLY fields you said you created ---
     // Expected Airtable fields:
     // StandardProvider, StandardVoice, PremiumProvider, PremiumVoice, StartTone
-    const providerRaw =
-      (safeMode === "premium" ? profileFields?.PremiumProvider : profileFields?.StandardProvider) || "cartesia";
-    const voiceRaw =
-      (safeMode === "premium" ? profileFields?.PremiumVoice : profileFields?.StandardVoice) || null;
+    const modeProviderField = safeMode === "premium" ? "PremiumProvider" : "StandardProvider";
+    const modeVoiceField = safeMode === "premium" ? "PremiumVoice" : "StandardVoice";
+
+    const providerSource = profileFields?.[modeProviderField];
+    const voiceSource = profileFields?.[modeVoiceField];
+
+    const normalizedProvider = valueFromAirtableField(providerSource);
+    const normalizedVoice = valueFromAirtableField(voiceSource);
+
+    const providerRaw = firstNonEmpty(providerSource, "cartesia");
+    const providerCanonical = canonicalizeProvider(providerRaw);
+    const voiceRaw = firstNonEmpty(voiceSource) || null;
+
+    const providerFallbackReason = normalizedProvider
+      ? null
+      : `No usable value in ${modeProviderField}; defaulted to cartesia`;
+
+    const providerCanonicalizationNote =
+      providerCanonical !== safeStr(providerRaw).trim().toLowerCase()
+        ? `Canonicalized provider "${safeStr(providerRaw).trim()}" -> "${providerCanonical}"`
+        : null;
 
     // Optional fields (won’t break if you didn’t create them)
     const modelRaw =
@@ -96,7 +175,7 @@ export default async function handler(req, res) {
     const startTone = (profileFields?.StartTone || "neutral").toString().trim().toLowerCase();
 
     const tts = {
-      provider: safeStr(providerRaw).trim().toLowerCase(),
+      provider: providerCanonical,
       voice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
       model: modelRaw != null ? safeStr(modelRaw).trim() : null,
       config: configObj,
@@ -149,6 +228,20 @@ export default async function handler(req, res) {
         profileFound: !!profileFields,
         profileRecordId,
         profileKeys: profileFields ? Object.keys(profileFields) : [],
+        debugTtsSelection: {
+          mode: safeMode,
+          modeProviderField,
+          modeVoiceField,
+          providerSource: debugValueMeta(providerSource),
+          voiceSource: debugValueMeta(voiceSource),
+          normalizedProvider,
+          normalizedVoice,
+          selectedProviderRaw: safeStr(providerRaw).trim().toLowerCase(),
+          selectedProvider: providerCanonical,
+          selectedVoice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
+          providerFallbackReason,
+          providerCanonicalizationNote,
+        },
 
         pipecatStatus: resp.status,
         pipecatRawPreview: raw.slice(0, 400),
@@ -165,6 +258,20 @@ export default async function handler(req, res) {
       profileFound: !!profileFields,
       profileRecordId,
       profileKeys: profileFields ? Object.keys(profileFields) : [],
+      debugTtsSelection: {
+        mode: safeMode,
+        modeProviderField,
+        modeVoiceField,
+        providerSource: debugValueMeta(providerSource),
+        voiceSource: debugValueMeta(voiceSource),
+        normalizedProvider,
+        normalizedVoice,
+        selectedProviderRaw: safeStr(providerRaw).trim().toLowerCase(),
+        selectedProvider: providerCanonical,
+        selectedVoice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
+        providerFallbackReason,
+        providerCanonicalizationNote,
+      },
 
       sessionId: data.sessionId,
       dailyRoom: data.dailyRoom,
