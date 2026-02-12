@@ -37,6 +37,27 @@ function valueFromAirtableField(value) {
   return safeStr(value).trim();
 }
 
+function canonicalizeProvider(value) {
+  const raw = safeStr(value).trim().toLowerCase();
+  if (!raw) return "";
+
+  const compact = raw.replace(/[\s_-]+/g, "");
+  const aliases = new Map([
+    ["cartesia", "cartesia"],
+    ["elevenlabs", "elevenlabs"],
+    ["eleven", "elevenlabs"],
+    ["11labs", "elevenlabs"],
+    ["google", "google"],
+    ["googletts", "google"],
+    ["googlecloud", "google"],
+    ["googlecloudtts", "google"],
+    ["googletexttospeech", "google"],
+    ["gcp", "google"],
+  ]);
+
+  return aliases.get(compact) || raw;
+}
+
 function debugValueMeta(value) {
   return {
     type: Array.isArray(value) ? "array" : typeof value,
@@ -123,11 +144,17 @@ export default async function handler(req, res) {
     const normalizedVoice = valueFromAirtableField(voiceSource);
 
     const providerRaw = firstNonEmpty(providerSource, "cartesia");
+    const providerCanonical = canonicalizeProvider(providerRaw);
     const voiceRaw = firstNonEmpty(voiceSource) || null;
 
     const providerFallbackReason = normalizedProvider
       ? null
       : `No usable value in ${modeProviderField}; defaulted to cartesia`;
+
+    const providerCanonicalizationNote =
+      providerCanonical !== safeStr(providerRaw).trim().toLowerCase()
+        ? `Canonicalized provider "${safeStr(providerRaw).trim()}" -> "${providerCanonical}"`
+        : null;
 
     // Optional fields (won’t break if you didn’t create them)
     const modelRaw =
@@ -141,7 +168,7 @@ export default async function handler(req, res) {
     const startTone = (profileFields?.StartTone || "neutral").toString().trim().toLowerCase();
 
     const tts = {
-      provider: safeStr(providerRaw).trim().toLowerCase(),
+      provider: providerCanonical,
       voice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
       model: modelRaw != null ? safeStr(modelRaw).trim() : null,
       config: configObj,
@@ -202,9 +229,11 @@ export default async function handler(req, res) {
           voiceSource: debugValueMeta(voiceSource),
           normalizedProvider,
           normalizedVoice,
-          selectedProvider: safeStr(providerRaw).trim().toLowerCase(),
+          selectedProviderRaw: safeStr(providerRaw).trim().toLowerCase(),
+          selectedProvider: providerCanonical,
           selectedVoice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
           providerFallbackReason,
+          providerCanonicalizationNote,
         },
 
         pipecatStatus: resp.status,
@@ -230,9 +259,11 @@ export default async function handler(req, res) {
         voiceSource: debugValueMeta(voiceSource),
         normalizedProvider,
         normalizedVoice,
-        selectedProvider: safeStr(providerRaw).trim().toLowerCase(),
+        selectedProviderRaw: safeStr(providerRaw).trim().toLowerCase(),
+        selectedProvider: providerCanonical,
         selectedVoice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
         providerFallbackReason,
+        providerCanonicalizationNote,
       },
 
       sessionId: data.sessionId,
