@@ -69,6 +69,11 @@
 // ---------------- Helpers ----------------
 function $(id) { return document.getElementById(id); }
 
+function getSelectedMode() {
+  const el = document.querySelector('input[name="vpMode"]:checked');
+  return el ? String(el.value || "").trim().toLowerCase() : "standard";
+}
+
 function clamp01(x) {
   return Math.max(0, Math.min(1, Number(x || 0)));
 }
@@ -800,7 +805,7 @@ const caseId = urlCase || 1;
       const data = await fetchJson(`${API_BASE}/api/start-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseId, userId, email }),
+        body: JSON.stringify({ caseId, userId, email, mode }), // ✅ include mode
         mode: "cors",
       });
 
