@@ -52,10 +52,17 @@ function canonicalizeProvider(value) {
     ["googlecloud", "google"],
     ["googlecloudtts", "google"],
     ["googletexttospeech", "google"],
+    ["googlecloudtexttospeech", "google"],
     ["gcp", "google"],
   ]);
 
-  return aliases.get(compact) || raw;
+  if (aliases.has(compact)) return aliases.get(compact);
+
+  // Airtable single-select labels can vary (e.g. "Google Cloud Text-to-Speech").
+  // If it's clearly a Google label, canonicalize to provider key expected by the bot.
+  if (compact.includes("google")) return "google";
+
+  return raw;
 }
 
 function debugValueMeta(value) {
