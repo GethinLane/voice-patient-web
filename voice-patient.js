@@ -66,29 +66,52 @@
   let uiState = "idle"; // idle | thinking | listening | talking | error
   let lastGlow = 0.15;
 
-  // ---------------- Helpers ----------------
-  function $(id) { return document.getElementById(id); }
+// ---------------- Helpers ----------------
+function $(id) { return document.getElementById(id); }
 
-  function clamp01(x) {
-    return Math.max(0, Math.min(1, Number(x || 0)));
-  }
+function clamp01(x) {
+  return Math.max(0, Math.min(1, Number(x || 0)));
+}
 
-  function uiEmit(detail) {
-    try { window.dispatchEvent(new CustomEvent("vp:ui", { detail })); } catch {}
-  }
+// ✅ Add this
+function getCaseIdFromUrl() {
+  try {
+    const url = new URL(window.location.href);
 
-  function log(message, obj) {
-    if (!DEBUG_LOG) return;
-    const line =
-      `[VP ${VERSION}] ${new Date().toISOString()}  ${message}` +
-      (obj ? `\n${JSON.stringify(obj, null, 2)}` : "");
-    console.log(line);
-    const pre = document.getElementById("vp-debug");
-    if (pre) {
-      pre.textContent += line + "\n";
-      pre.scrollTop = pre.scrollHeight;
+    const caseParam = url.searchParams.get("case");
+    if (caseParam && /^\d+$/.test(caseParam)) return Number(caseParam);
+
+    // support bare ?341
+    if (!caseParam && url.search) {
+      const bare = url.search.replace(/^\?/, "");
+      if (bare && /^\d+$/.test(bare)) return Number(bare);
     }
+  } catch {}
+  return null;
+}
+
+  function getCaseLabel() {
+  const n = getCaseIdFromUrl();
+  return n ? `Case ${n}` : "No case selected";
+}
+
+function uiEmit(detail) {
+  try { window.dispatchEvent(new CustomEvent("vp:ui", { detail })); } catch {}
+}
+
+function log(message, obj) {
+  if (!DEBUG_LOG) return;
+  const line =
+    `[VP ${VERSION}] ${new Date().toISOString()}  ${message}` +
+    (obj ? `\n${JSON.stringify(obj, null, 2)}` : "");
+  console.log(line);
+  const pre = document.getElementById("vp-debug");
+  if (pre) {
+    pre.textContent += line + "\n";
+    pre.scrollTop = pre.scrollHeight;
   }
+}
+
 
   // ---------- Debug panel (optional) ----------
   function ensureUiRoot() {
@@ -742,6 +765,7 @@ console.log("[VP] callObject exposed as window.__vpCallObject");
     pollGradingOnce(false);
   }
 
+
   // ---------- Start/Stop ----------
   async function startConsultation() {
     if (DEBUG_UI) ensureUiRoot();
@@ -757,10 +781,11 @@ console.log("[VP] callObject exposed as window.__vpCallObject");
 
     try {
       setUiConnected(true);
-      setStatus("Starting session…");
+      setStatus(`Starting session (${getCaseLabel()})…`);
 
-      const sel = $("caseSelect");
-      const caseId = Number(sel?.value) || 1;
+const urlCase = getCaseIdFromUrl();
+const caseId = urlCase || 1;
+
 
       const { userId, email } = await ensureIdentity({ timeoutMs: 2500, intervalMs: 150 });
       if (!userId && !email) {
@@ -785,11 +810,11 @@ console.log("[VP] callObject exposed as window.__vpCallObject");
       currentSessionId = data.sessionId || null;
       updateMeta();
 
-      setStatus(`Connecting audio (Case ${caseId})…`);
+      setStatus(`Connecting audio (${getCaseLabel()})…`);
       await mountDailyCustomAudio(data.dailyRoom, data.dailyToken);
 
       startCountdown(MAX_SESSION_SECONDS);
-      setStatus(`Connected (Case ${caseId}). Talk, then press Stop.`);
+      setStatus(`Connected (${getCaseLabel()}). Talk, then press Stop.`);
     } catch (e) {
       setStatus("Error starting. Add ?vpdebug=1 for details.");
       setUiConnected(false);
@@ -824,14 +849,12 @@ console.log("[VP] callObject exposed as window.__vpCallObject");
     const hasStopBtn = !!$("stopBtn");
     const hasStatus = !!$("status");
 
-    if (!hasStartBtn || !hasStopBtn || !hasStatus || !hasCaseSelect) {
-      // You said you already have buttons — so we do NOT inject fallback controls.
-      // If any are missing, just show a status message and bail.
-      const msg = "Missing required elements: caseSelect/startBtn/stopBtn/status.";
-      setStatus(msg);
-      log("[BOOT] missing elements", { hasCaseSelect, hasStartBtn, hasStopBtn, hasStatus });
-      return;
-    }
+if (!hasStartBtn || !hasStopBtn || !hasStatus) {
+  const msg = "Missing required elements: startBtn/stopBtn/status.";
+  setStatus(msg);
+  log("[BOOT] missing elements", { hasStartBtn, hasStopBtn, hasStatus });
+  return;
+}
 
     const startBtn = $("startBtn");
     const stopBtn = $("stopBtn");
