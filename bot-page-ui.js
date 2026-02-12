@@ -65,11 +65,6 @@
             <div id="scaAvatarSlot"></div>
 
             <div class="sca-heroMeta">
-              <div class="sca-heroTitle">
-                <div class="sca-heroName" data-bind="name">Loading…</div>
-                <div class="sca-heroAge">Age: <span data-bind="age">…</span></div>
-              </div>
-
               <div class="sca-callout" id="scaCalloutSlot"></div>
             </div>
           </div>
