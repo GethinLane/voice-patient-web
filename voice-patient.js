@@ -799,6 +799,8 @@ const caseId = urlCase || 1;
         return;
       }
 
+      const mode = getSelectedMode();
+
       // IMPORTANT: this click path is what unlocks autoplay + AudioContext
       ensureAudioContext();
 
