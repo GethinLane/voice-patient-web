@@ -65,6 +65,25 @@ function canonicalizeProvider(value) {
   return raw;
 }
 
+
+function buildTtsPreflightWarnings({ provider, voice, config }) {
+  const warnings = [];
+
+  if (provider === "google") {
+    if (!voice) {
+      warnings.push("Google TTS selected but no voice is set in Airtable (StandardVoice/PremiumVoice).");
+    }
+
+    const hasAnyConfig = !!(config && typeof config === "object" && Object.keys(config).length > 0);
+    if (!hasAnyConfig) {
+      warnings.push(
+        "Google TTS selected with empty config. If Pipecat logs show 'No valid credentials provided', configure Google credentials in the bot runtime environment (not this Vercel start-session API).",
+      );
+    }
+  }
+
+  return warnings;
+}
 function debugValueMeta(value) {
   return {
     type: Array.isArray(value) ? "array" : typeof value,
@@ -181,6 +200,8 @@ export default async function handler(req, res) {
       config: configObj,
     };
 
+    const ttsPreflightWarnings = buildTtsPreflightWarnings(tts);
+
     // Pipecat config
     const agentName = process.env.PIPECAT_AGENT_NAME;
     const apiKey = process.env.PIPECAT_PUBLIC_API_KEY;
@@ -241,6 +262,7 @@ export default async function handler(req, res) {
           selectedVoice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
           providerFallbackReason,
           providerCanonicalizationNote,
+          ttsPreflightWarnings,
         },
 
         pipecatStatus: resp.status,
@@ -271,6 +293,7 @@ export default async function handler(req, res) {
         selectedVoice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
         providerFallbackReason,
         providerCanonicalizationNote,
+        ttsPreflightWarnings,
       },
 
       sessionId: data.sessionId,
