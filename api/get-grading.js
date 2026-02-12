@@ -39,6 +39,12 @@ function escapeFormulaString(s) {
   return String(s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+function parseCreditCost(rawValue, fallback) {
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, parsed);
+}
+
 export default async function handler(req, res) {
   cors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -52,9 +58,10 @@ export default async function handler(req, res) {
   const usersBase = process.env.AIRTABLE_USERS_BASE_ID;
   const attemptsTable = process.env.AIRTABLE_ATTEMPTS_TABLE || "Attempts";
 
-  // ✅ NEW (defaults only; doesn’t break existing env)
   const usersTable = process.env.AIRTABLE_USERS_TABLE || "Users";
   const creditsField = process.env.AIRTABLE_USERS_CREDITS_FIELD || "CreditsRemaining";
+  const standardCreditCost = parseCreditCost(process.env.STANDARD_BOT_COST, 2);
+  const premiumCreditCost = parseCreditCost(process.env.PREMIUM_BOT_COST, 1);
 
   if (!usersKey) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_API_KEY" });
   if (!usersBase) return res.status(500).json({ ok: false, error: "Missing AIRTABLE_USERS_BASE_ID" });
@@ -222,7 +229,7 @@ export default async function handler(req, res) {
       },
     });
 
-    // ✅ NEW: Deduct 1 credit (NON-FATAL; never breaks grading)
+    // ✅ NEW: Deduct credits by mode (NON-FATAL; never breaks grading)
     // This runs AFTER grade is saved so users never get “empty grading” due to billing issues.
     stage = "deductcredit";
     let creditInfo = null;
@@ -262,7 +269,9 @@ export default async function handler(req, res) {
         );
       }
 
-      const nextCredits = Math.max(0, currentCredits - 1);
+      const mode = String(f.Mode || "standard").trim().toLowerCase() === "premium" ? "premium" : "standard";
+      const deduction = mode === "premium" ? premiumCreditCost : standardCreditCost;
+      const nextCredits = Math.max(0, currentCredits - deduction);
 
       await airtableUpdate({
         apiKey: usersKey,
@@ -276,7 +285,8 @@ export default async function handler(req, res) {
 
       creditInfo = {
         ok: true,
-        deducted: 1,
+        deducted: deduction,
+        mode,
         userRecordId,
         field: creditsField,
         before: currentCredits,
