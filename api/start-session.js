@@ -11,6 +11,32 @@ function parseJSONMaybe(s) {
   try { return JSON.parse(s); } catch { return null; }
 }
 
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    const normalized = valueFromAirtableField(value);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function valueFromAirtableField(value) {
+  if (value == null) return "";
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = valueFromAirtableField(item);
+      if (nested) return nested;
+    }
+    return "";
+  }
+
+  if (typeof value === "object") {
+    return firstNonEmpty(value.name, value.value, value.id);
+  }
+
+  return safeStr(value).trim();
+}
+
 export default async function handler(req, res) {
   const origin = req.headers.origin;
 
@@ -79,10 +105,13 @@ export default async function handler(req, res) {
     // --- Pick provider/voice from profile, using ONLY fields you said you created ---
     // Expected Airtable fields:
     // StandardProvider, StandardVoice, PremiumProvider, PremiumVoice, StartTone
-    const providerRaw =
-      (safeMode === "premium" ? profileFields?.PremiumProvider : profileFields?.StandardProvider) || "cartesia";
-    const voiceRaw =
-      (safeMode === "premium" ? profileFields?.PremiumVoice : profileFields?.StandardVoice) || null;
+    const providerRaw = firstNonEmpty(
+      safeMode === "premium" ? profileFields?.PremiumProvider : profileFields?.StandardProvider,
+      "cartesia",
+    );
+    const voiceRaw = firstNonEmpty(
+      safeMode === "premium" ? profileFields?.PremiumVoice : profileFields?.StandardVoice,
+    ) || null;
 
     // Optional fields (won’t break if you didn’t create them)
     const modelRaw =
