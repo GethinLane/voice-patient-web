@@ -11,7 +11,7 @@
 
   const $ = (id) => document.getElementById(id);
 
-  function addAccItem(acc, { title, icon, contentNode, open }) {
+  function addAccItem(acc, { title, contentNode, open }) {
     const item = document.createElement("section");
     item.className = "sca-accItem";
 
@@ -20,7 +20,6 @@
     header.className = "sca-accHeader";
     header.setAttribute("aria-expanded", open ? "true" : "false");
     header.innerHTML = `
-      <span class="sca-accIcon" aria-hidden="true">${icon}</span>
       <span class="sca-accTitle">${title}</span>
       <span class="sca-accChevron" aria-hidden="true">›</span>
     `;
@@ -62,10 +61,9 @@
       <div class="sca-grid">
         <div class="sca-left">
           <div class="sca-heroRow">
-            <div id="scaAvatarSlot"></div>
-
-            <div class="sca-heroMeta">
+            <div class="sca-heroMedia">
               <div class="sca-callout" id="scaCalloutSlot"></div>
+              <div id="scaAvatarSlot"></div>
             </div>
           </div>
 
@@ -77,7 +75,6 @@
 
           <div class="sca-botUpdate">
             <div class="sca-botUpdateHeader">
-              <span class="sca-botIcon" aria-hidden="true">🤖</span>
               <div class="sca-botUpdateTitle">Bot update</div>
             </div>
             <ul class="sca-botUpdateList" id="scaBotUpdateList"></ul>
@@ -89,7 +86,6 @@
         <aside class="sca-right">
           <div class="sca-infoCard">
             <div class="sca-infoHeader">
-              <span aria-hidden="true">🗂️</span>
               <div class="sca-infoHeaderTitle">Patient Information</div>
             </div>
             <div class="sca-accordion" id="scaAccordion"></div>
@@ -151,10 +147,10 @@
       if (pmhx) pmhx.classList.add("sca-cleanList");
       if (dhx) dhx.classList.add("sca-cleanList");
 
-      if (pmhx) addAccItem(acc, { title: "Medical History", icon: "🩺", contentNode: pmhx, open: true });
-      if (dhx) addAccItem(acc, { title: "Medication", icon: "💊", contentNode: dhx, open: true });
-      if (notesBox) addAccItem(acc, { title: "Medical Notes", icon: "📝", contentNode: notesBox, open: true });
-      if (resultsBox) addAccItem(acc, { title: "Investigation Results", icon: "🧪", contentNode: resultsBox, open: false });
+      if (pmhx) addAccItem(acc, { title: "Medical History", contentNode: pmhx, open: true });
+      if (dhx) addAccItem(acc, { title: "Medication", contentNode: dhx, open: true });
+      if (notesBox) addAccItem(acc, { title: "Medical Notes", contentNode: notesBox, open: true });
+      if (resultsBox) addAccItem(acc, { title: "Investigation Results", contentNode: resultsBox, open: false });
     }
 
     // Hide original patientDataBox (keep in DOM so your existing scripts still work)

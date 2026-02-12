@@ -14,10 +14,10 @@ body.sca-botpage #scaBotPageRoot,
 body.sca-botpage #scaBotPageRoot * { box-sizing: border-box; }
 
 body.sca-botpage #scaBotPageRoot{
-  --sca-ink: #1f2937;
-  --sca-muted: rgba(31,41,55,.72);
-  --sca-faint: rgba(31,41,55,.55);
-  --sca-border: rgba(31,41,55,.10);
+  --sca-ink: #253551;
+  --sca-muted: rgba(37,53,81,.72);
+  --sca-faint: rgba(37,53,81,.55);
+  --sca-border: rgba(37,53,81,.12);
   --sca-surface: rgba(255,255,255,.68);
   --sca-surface-2: rgba(255,255,255,.58);
   --sca-shadow: 0 18px 55px rgba(17, 24, 39, .10);
@@ -54,8 +54,7 @@ body.sca-botpage #scaBotPageRoot .sca-left{
 
 body.sca-botpage #scaBotPageRoot .sca-heroRow{
   display: flex;
-  gap: 22px;
-  align-items: center;
+  align-items: flex-start;
   padding: 8px 6px;
 }
 
@@ -66,12 +65,11 @@ body.sca-botpage #scaBotPageRoot .sca-heroRow{
   }
 }
 
-body.sca-botpage #scaBotPageRoot .sca-heroMeta{
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
+body.sca-botpage #scaBotPageRoot .sca-heroMedia{
+  position: relative;
   width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-heroTitle{
@@ -95,20 +93,26 @@ body.sca-botpage #scaBotPageRoot .sca-heroAge{
 }
 
 body.sca-botpage #scaBotPageRoot .sca-callout{
-  min-width: 260px;
-  max-width: 360px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 240px;
+  max-width: 320px;
   background: var(--sca-surface-2);
   border: 1px solid var(--sca-border);
   border-radius: 16px;
   padding: 12px 14px;
   color: var(--sca-muted);
   box-shadow: 0 10px 30px rgba(17,24,39,.06);
+  z-index: 2;
 }
 
 @media (max-width: 720px){
   body.sca-botpage #scaBotPageRoot .sca-callout{
+    position: static;
     width: 100%;
     max-width: none;
+    margin-bottom: 12px;
   }
 }
 
@@ -129,7 +133,7 @@ body.sca-botpage #scaBotPageRoot .sca-mainAge{
   color: var(--sca-muted);
   font-weight: 650;
   font-size: 18px;
-  margin-top: 4px;
+  margin-top: 14px;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-mainDesc{
@@ -158,15 +162,6 @@ body.sca-botpage #scaBotPageRoot .sca-botUpdateTitle{
   color: var(--sca-ink);
 }
 
-body.sca-botpage #scaBotPageRoot .sca-botIcon{
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  background: rgba(71,108,103,.12);
-}
-
 body.sca-botpage #scaBotPageRoot .sca-botUpdateList{
   margin: 0;
   padding-left: 18px;
@@ -188,7 +183,7 @@ body.sca-botpage #scaBotPageRoot #status{
 body.sca-botpage #scaBotPageRoot .sca-seg{
   display: flex;
   width: 100%;
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
   border: 1px solid var(--sca-border);
   background: rgba(31,41,55,.05);
@@ -197,18 +192,18 @@ body.sca-botpage #scaBotPageRoot .sca-seg{
 body.sca-botpage #scaBotPageRoot #startBtn,
 body.sca-botpage #scaBotPageRoot #stopBtn{
   flex: 1;
-  height: 58px;
+  height: 74px;
   border: none !important;
   outline: none !important;
   background: transparent;
-  font-size: 26px;
+  font-size: 32px;
   font-weight: 850;
   cursor: pointer;
   color: var(--sca-ink);
 }
 
 body.sca-botpage #scaBotPageRoot #startBtn:not(:disabled){
-  background: var(--sca-accent);
+  background: #253551;
   color: white;
 }
 
@@ -232,7 +227,7 @@ body.sca-botpage #scaBotPageRoot #stopBtn:disabled{
 
 /* ---------------- Right column (Patient Information) ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-infoCard{
-  background: rgba(255,255,255,.60);
+  background: #d6dde9;
   border: 1px solid var(--sca-border);
   border-radius: 20px;
   overflow: hidden;
@@ -278,15 +273,6 @@ body.sca-botpage #scaBotPageRoot .sca-accTitle{
   font-weight: 900;
   color: var(--sca-ink);
   font-size: 18px;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-accIcon{
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  background: rgba(31,41,55,.06);
 }
 
 body.sca-botpage #scaBotPageRoot .sca-accChevron{
@@ -375,7 +361,7 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-card{
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header{
   margin: 0 0 10px !important;
-  justify-content: flex-end !important;
+  justify-content: flex-start !important;
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-title{ display: none !important; }
@@ -387,13 +373,13 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-  width: 420px !important;
-  height: 420px !important;
+  width: 500px !important;
+  height: 500px !important;
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-  width: 320px !important;
-  height: 320px !important;
+  width: 380px !important;
+  height: 380px !important;
   border: 7px solid rgba(255,255,255,.92) !important;
 }
 
