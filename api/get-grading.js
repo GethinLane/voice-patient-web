@@ -35,6 +35,16 @@ function parseLockTime(text) {
   return Number.isFinite(t) ? t : null;
 }
 
+function isMeaningfulGradeText(text) {
+  const t = String(text || "").trim();
+  // Treat empty/whitespace as “not graded yet”
+  if (!t) return false;
+  // Treat the lock text as “not graded yet”
+  if (t.startsWith("⏳")) return false;
+  // Optional: require some minimum length so tiny accidental strings don't block grading
+  return t.length >= 20;
+}
+
 function escapeFormulaString(s) {
   return String(s || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -99,34 +109,39 @@ export default async function handler(req, res) {
     const currentText = String(f.GradingText || "");
     const currentStatus = String(f.GradingStatus || "").toLowerCase().trim();
 
-    // 2) If already graded (either by status or by text), return it
-    if (!force) {
-      if (currentStatus === "done" && currentText && !currentText.startsWith("⏳")) {
-        return res.json({
-          ok: true,
-          found: true,
-          ready: true,
-          status: "done",
-          sessionId,
-          attemptRecordId,
-          caseId,
-          gradingText: currentText,
-        });
-      }
+// 2) If already graded, return it (ONLY when text is meaningful)
+if (!force) {
+  const hasGrade = isMeaningfulGradeText(currentText);
 
-      if (currentText && !currentText.startsWith("⏳") && currentStatus !== "processing") {
-        return res.json({
-          ok: true,
-          found: true,
-          ready: true,
-          status: currentStatus || "done",
-          sessionId,
-          attemptRecordId,
-          caseId,
-          gradingText: currentText,
-        });
-      }
-    }
+  if (currentStatus === "done" && hasGrade) {
+    return res.json({
+      ok: true,
+      found: true,
+      ready: true,
+      status: "done",
+      sessionId,
+      attemptRecordId,
+      caseId,
+      gradingText: currentText,
+    });
+  }
+
+  // If status is done but text isn't meaningful, fall through and regenerate
+  // If status is queued but text is blank/whitespace, fall through and grade
+  if (hasGrade && currentStatus !== "processing") {
+    return res.json({
+      ok: true,
+      found: true,
+      ready: true,
+      status: currentStatus || "done",
+      sessionId,
+      attemptRecordId,
+      caseId,
+      gradingText: currentText,
+    });
+  }
+}
+
 
     // 3) If locked, return processing unless stale/force
     if (!force && currentText.startsWith("⏳")) {
