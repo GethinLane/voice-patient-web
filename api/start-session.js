@@ -219,6 +219,17 @@ export default async function handler(req, res) {
       profileFields = null;
     }
 
+    // --- PatientImage (Airtable attachment) ---
+const patientImageAttachment = profileFields?.PatientImage;
+const patientImageUrl =
+  Array.isArray(patientImageAttachment) && patientImageAttachment.length
+    ? (patientImageAttachment[0]?.thumbnails?.large?.url ||
+       patientImageAttachment[0]?.thumbnails?.full?.url ||
+       patientImageAttachment[0]?.url ||
+       null)
+    : null;
+
+
     // --- Pick provider/voice from profile, using ONLY fields you said you created ---
     // Expected Airtable fields:
     // StandardProvider, StandardVoice, PremiumProvider, PremiumVoice, StartTone
@@ -357,6 +368,13 @@ export default async function handler(req, res) {
         providerCanonicalizationNote,
         ttsPreflightWarnings,
       },
+
+        // ✅ Optional debug for image (handy while testing)
+  debugPatientImage: {
+    hasField: !!profileFields?.PatientImage,
+    isArray: Array.isArray(profileFields?.PatientImage),
+    url: patientImageUrl,
+  },
 
       sessionId: data.sessionId,
       dailyRoom: data.dailyRoom,
