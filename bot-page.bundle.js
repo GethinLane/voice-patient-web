@@ -130,11 +130,13 @@ function setAvatar(url) {
 
   if (url) {
     img.src = url;
+    img.classList.remove("is-empty");
   } else {
-    // no default image: remove src so nothing flashes
-    img.removeAttribute("src");
+    img.src = "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
+    img.classList.add("is-empty");
   }
 }
+
 
 
 
