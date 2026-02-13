@@ -467,3 +467,7 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
 body.sca-botpage #patientDataBox[data-sca-hidden="true"]{
   display: none !important;
 }
+
+/* Hide broken-image fallback + alt text */
+#sca-avatar-img { display: none; }
+#sca-avatar-img.is-loaded { display: block; }
