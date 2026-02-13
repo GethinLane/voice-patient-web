@@ -460,18 +460,29 @@
     const records = data.records || [];
     window.airtableData = records;
 
-    // ✅ Avatar on page load:
-    // 0) Prefer CaseProfiles image returned by /api/case (because /api/case.js already includes it now)
-    let avatarUrl = findPatientImageFromApiPayload(data);
+    // Avatar on page load:
+    // 1) try PatientImage stored in Case table rows (only works if you put it there)
+    let avatarUrl = findPatientImageFromCaseRecords(records);
 
-    // 1) Fallback: image stored directly in Case table rows (only if you ever add it there)
-    if (!avatarUrl) avatarUrl = findPatientImageFromCaseRecords(records);
+    // 2) ✅ NEW: your /api/case returns CaseProfiles data as { profile: { patientImageUrl: "..." } }
+    if (!avatarUrl) {
+      avatarUrl =
+        (typeof data?.profile?.patientImageUrl === "string" && data.profile.patientImageUrl) ||
+        null;
+    }
+
+    // 3) optional old path (only if you later enable a separate profile endpoint)
+    if (!avatarUrl) {
+      const caseId = getCaseIdFromUrl();
+      avatarUrl = await fetchCaseProfileImage(caseId);
+    }
 
     // Update UI via vp:ui so the card updates even if it mounted earlier/later
     uiEmit({ avatarUrl: avatarUrl || null });
 
     document.dispatchEvent(new Event("airtableDataFetched"));
   }
+
 
 
   // ---------------- Patient info rendering ----------------
