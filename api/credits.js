@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     // Airtable config (align to your other endpoints)
     const baseId = requireEnv("AIRTABLE_USERS_BASE_ID");
     const apiKey = requireEnv("AIRTABLE_USERS_API_KEY");
-    const table = process.env.AIRTABLE_USERS_TABLE || "Users";
+    const table = requireEnv("USERS_AI_USERS_TABLE");
     const idField = process.env.AIRTABLE_USERS_ID_FIELD || "UserID";
     const creditsField = process.env.AIRTABLE_USERS_CREDITS_FIELD || "CreditsRemaining";
 
