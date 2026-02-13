@@ -10,8 +10,6 @@
 (() => {
   // ---------------- Config ----------------
   const DEFAULT_SUBTITLE = "Follow-up appointment for ongoing health and medication review";
-  const DEFAULT_AVATAR_URL =
-    "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=500&q=60";
 
   // Existing proxy (kept)
   const PROXY_BASE_URL =
@@ -76,7 +74,7 @@
         <div class="sca-avatarWrap">
           <div class="sca-ring" id="sca-ring">
             <div class="sca-avatar">
-              <img id="sca-avatar-img" src="${DEFAULT_AVATAR_URL}" alt="Patient avatar" />
+              <img id="sca-avatar-img" alt="Patient avatar" />
             </div>
           </div>
         </div>
@@ -196,8 +194,8 @@
   function setAvatar(url) {
     const img = $("sca-avatar-img");
     if (!img) return;
-    img.src = url || DEFAULT_AVATAR_URL;
-  }
+    if (url) img.src = url;
+
 
   // Listen for voice-patient.js updates
   window.addEventListener("vp:ui", (e) => {
