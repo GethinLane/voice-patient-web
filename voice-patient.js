@@ -804,6 +804,18 @@ const caseId = urlCase || 1;
       // IMPORTANT: this click path is what unlocks autoplay + AudioContext
       ensureAudioContext();
 
+      const credits = await fetchJson(
+  `${API_BASE}/api/credits?userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(email)}&mode=${encodeURIComponent(mode)}`,
+  { method: "GET", cache: "no-store", mode: "cors" }
+);
+
+if (!credits?.canStart) {
+  setStatus(`Not enough credits for ${mode}. You have ${credits.creditsRemaining}, need ${credits.required}.`);
+  setUiConnected(false);
+  return;
+}
+
+
       const data = await fetchJson(`${API_BASE}/api/start-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
