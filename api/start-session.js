@@ -1,6 +1,6 @@
 // api/start-session.js (DEBUG)
 
-import { getCaseProfileByCaseId } from "./_airtable.js";
+import { getCaseProfileByCaseId, airtableListAll } from "./_airtable.js";
 
 function safeStr(x) {
   return x == null ? "" : String(x);
@@ -92,6 +92,15 @@ function debugValueMeta(value) {
   };
 }
 
+function escapeFormulaString(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function parseCreditCost(rawValue, fallback) {
+  const n = Number(String(rawValue ?? "").trim());
+  return Number.isFinite(n) ? Math.max(0, n) : fallback;
+}
+
 export default async function handler(req, res) {
   const origin = req.headers.origin;
 
@@ -134,6 +143,59 @@ export default async function handler(req, res) {
     // Standard vs premium mode
     const mode = (req.body?.mode != null ? safeStr(req.body.mode) : "standard").trim().toLowerCase();
     const safeMode = mode === "premium" ? "premium" : "standard";
+
+    // ---------------- CREDIT GATE (BLOCK START IF INSUFFICIENT) ----------------
+    const usersKey = process.env.AIRTABLE_USERS_API_KEY;
+    const usersBase = process.env.AIRTABLE_USERS_BASE_ID;
+    const usersTable = process.env.USERS_AI_USERS_TABLE; // keep your existing env naming
+
+    if (!usersKey) throw new Error("Missing AIRTABLE_USERS_API_KEY");
+    if (!usersBase) throw new Error("Missing AIRTABLE_USERS_BASE_ID");
+    if (!usersTable) throw new Error("Missing USERS_AI_USERS_TABLE");
+
+    const idField = "UserID";
+    const creditsField = "CreditsRemaining";
+
+    // Prefer userId match when present; otherwise use email
+    const filterByFormula = userId
+      ? `{${idField}}='${escapeFormulaString(userId)}'`
+      : `LOWER({Email})='${escapeFormulaString(email)}'`;
+
+    const userRecs = await airtableListAll({
+      apiKey: usersKey,
+      baseId: usersBase,
+      table: usersTable,
+      params: { filterByFormula, maxRecords: 2 },
+    });
+
+    if (!userRecs?.length) {
+      return res.status(404).json({ ok: false, error: "User not found (cannot start session)" });
+    }
+
+    if (userRecs.length > 1) {
+      return res.status(409).json({ ok: false, error: "Multiple Users matched; fix duplicates in Airtable." });
+    }
+
+    const userFields = userRecs[0].fields || {};
+    const available = Number(userFields?.[creditsField]);
+
+    if (!Number.isFinite(available)) {
+      return res.status(500).json({ ok: false, error: `User field '${creditsField}' is not numeric.` });
+    }
+
+    const standardCost = parseCreditCost(process.env.STANDARD_BOT_COST, 2);
+    const premiumCost = parseCreditCost(process.env.PREMIUM_BOT_COST, 1);
+    const required = safeMode === "premium" ? premiumCost : standardCost;
+
+    if (available < required) {
+      return res.status(402).json({
+        ok: false,
+        error: `Insufficient credits for ${safeMode} bot`,
+        credits: { available, required, mode: safeMode },
+      });
+    }
+    // --------------------------------------------------------------------------
+
 
     // Airtable Cases base (same env vars you already use)
     const casesApiKey = process.env.AIRTABLE_API_KEY;
