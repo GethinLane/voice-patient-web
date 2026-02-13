@@ -239,15 +239,25 @@ function log(message, obj) {
     if (stopBtn) stopBtn.disabled = !connected;
   }
 
-  async function fetchJson(url, options) {
-    const resp = await fetch(url, options);
-    const text = await resp.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; }
-    catch { throw new Error(`Non-JSON from ${url} status=${resp.status} body=${text.slice(0, 120)}`); }
-    if (!resp.ok) throw new Error((data && (data.error || data.message)) || `HTTP ${resp.status}`);
-    return data;
+async function fetchJson(url, options) {
+  const resp = await fetch(url, options);
+  const text = await resp.text();
+
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch {}
+
+  if (!resp.ok) {
+    const msg = (data && (data.error || data.message)) || `HTTP ${resp.status}`;
+    const err = new Error(msg);
+    err.status = resp.status;
+    err.data = data;
+    err.url = url;
+    throw err;
   }
+
+  return data;
+}
+
 
   // ---------------- Countdown helpers ----------------
   function formatMMSS(totalSeconds) {
@@ -834,13 +844,31 @@ if (!credits?.canStart) {
 
       startCountdown(MAX_SESSION_SECONDS);
       setStatus(`Connected (${getCaseLabel()}). Talk, then press Stop.`);
-    } catch (e) {
-      setStatus("Error starting. Add ?vpdebug=1 for details.");
-      setUiConnected(false);
-      await unmountDailyCustomAudio();
-      stopCountdown("start failed");
-      log("[START] error", { error: e?.message || String(e) });
-    }
+} catch (e) {
+  // ✅ Credits gate from /api/start-session
+  if (e?.status === 402) {
+    const available = e?.data?.credits?.available;
+    const required  = e?.data?.credits?.required;
+    const mode      = e?.data?.credits?.mode || getSelectedMode();
+
+    const msg =
+      `Unable to start: insufficient credits. Please top up before beginning.` +
+      (Number.isFinite(available) && Number.isFinite(required)
+        ? ` (You have ${available}, need ${required} for ${mode}.)`
+        : "");
+
+    setStatus(msg);          // <- this automatically updates your #sca-status via vp:ui
+    setUiConnected(false);
+    return;
+  }
+
+  setStatus("Error starting. Add ?vpdebug=1 for details.");
+  setUiConnected(false);
+  await unmountDailyCustomAudio();
+  stopCountdown("start failed");
+  log("[START] error", { error: e?.message || String(e), status: e?.status, data: e?.data });
+}
+
   }
 
   async function stopConsultation(auto = false) {
