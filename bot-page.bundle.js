@@ -74,7 +74,7 @@
         <div class="sca-avatarWrap">
           <div class="sca-ring" id="sca-ring">
             <div class="sca-avatar">
-              <img id="sca-avatar-img" alt="Patient avatar" />
+              <img id="sca-avatar-img" alt="" />
             </div>
           </div>
         </div>
