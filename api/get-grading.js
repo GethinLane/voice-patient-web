@@ -224,10 +224,24 @@ if (!force) {
     });
 
     // 7) Grade via OpenAI
-    stage = "openai";
-    const openaiKey = process.env.OPENAI_API_KEY;
-    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-    if (!openaiKey) throw new Error("Missing OPENAI_API_KEY");
+stage = "openai";
+const openaiKey = process.env.OPENAI_API_KEY;
+if (!openaiKey) throw new Error("Missing OPENAI_API_KEY");
+
+// No fallback: MUST be set in Vercel
+const standardModel = process.env.GRADING_OPENAI_MODEL_STANDARD;
+const premiumModel  = process.env.GRADING_OPENAI_MODEL_PREMIUM;
+
+if (!standardModel) throw new Error("Missing GRADING_OPENAI_MODEL_STANDARD");
+if (!premiumModel)  throw new Error("Missing GRADING_OPENAI_MODEL_PREMIUM");
+
+const modeForGrading =
+  String(f.Mode || "standard").trim().toLowerCase() === "premium"
+    ? "premium"
+    : "standard";
+
+const model = modeForGrading === "premium" ? premiumModel : standardModel;
+
 
     const result = await gradeTranscriptWithIndicators({
       openaiKey,
