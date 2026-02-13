@@ -401,6 +401,30 @@
     return null;
   }
 
+     // ✅ NEW: read profile image out of /api/case payload (because you updated /api/case.js already)
+  function findPatientImageFromApiPayload(data) {
+    if (!data) return null;
+
+    // 1) direct URL field (if you added it)
+    if (typeof data.profilePatientImageUrl === "string" && data.profilePatientImageUrl) {
+      return data.profilePatientImageUrl;
+    }
+
+    // 2) profile object with PatientImage attachment (common shape)
+    const prof = data.profile || data.caseProfile || data.profileFields || null;
+    if (prof) {
+      const url = pickAttachmentUrl(prof.PatientImage);
+      if (url) return url;
+    }
+
+    // 3) debug object shape (if present)
+    if (data.debugPatientImage && typeof data.debugPatientImage.url === "string") {
+      return data.debugPatientImage.url || null;
+    }
+
+    return null;
+  }
+
   // Try to find PatientImage in the Case table rows (only works if you put it there)
   function findPatientImageFromCaseRecords(records) {
     for (const r of records || []) {
@@ -436,21 +460,19 @@
     const records = data.records || [];
     window.airtableData = records;
 
-    // Avatar on page load:
-    // 1) try PatientImage stored in Case table rows
-    let avatarUrl = findPatientImageFromCaseRecords(records);
+    // ✅ Avatar on page load:
+    // 0) Prefer CaseProfiles image returned by /api/case (because /api/case.js already includes it now)
+    let avatarUrl = findPatientImageFromApiPayload(data);
 
-    // 2) optionally try CaseProfiles endpoint
-    if (!avatarUrl) {
-      const caseId = getCaseIdFromUrl();
-      avatarUrl = await fetchCaseProfileImage(caseId);
-    }
+    // 1) Fallback: image stored directly in Case table rows (only if you ever add it there)
+    if (!avatarUrl) avatarUrl = findPatientImageFromCaseRecords(records);
 
     // Update UI via vp:ui so the card updates even if it mounted earlier/later
     uiEmit({ avatarUrl: avatarUrl || null });
 
     document.dispatchEvent(new Event("airtableDataFetched"));
   }
+
 
   // ---------------- Patient info rendering ----------------
   function getAirtableRecordsOrExit(contextLabel) {
