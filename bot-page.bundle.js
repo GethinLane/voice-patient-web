@@ -191,10 +191,18 @@
     ring.style.setProperty("--glow", String(clamp01(glow01)));
   }
 
-  function setAvatar(url) {
-    const img = $("sca-avatar-img");
-    if (!img) return;
-    if (url) img.src = url;
+function setAvatar(url) {
+  const img = $("sca-avatar-img");
+  if (!img) return;
+
+  if (url) {
+    img.src = url;
+  } else {
+    // no default image: remove src so nothing flashes
+    img.removeAttribute("src");
+  }
+}
+
 
 
   // Listen for voice-patient.js updates
