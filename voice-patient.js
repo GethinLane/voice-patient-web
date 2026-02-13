@@ -833,6 +833,15 @@ if (!credits?.canStart) {
         mode: "cors",
       });
 
+      // Tell the Squarespace overlay which avatar to show (if provided)
+if (data?.patientImageUrl) {
+  uiEmit({ avatarUrl: data.patientImageUrl, sessionId: data.sessionId || null });
+} else {
+  // optional: if no image, you could emit null to keep default
+  uiEmit({ avatarUrl: null });
+}
+
+
       if (!data?.ok) throw new Error(data?.error || "Start failed");
       if (!data.dailyRoom || !data.dailyToken) throw new Error("Missing dailyRoom/dailyToken");
 
