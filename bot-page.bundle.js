@@ -74,7 +74,12 @@
         <div class="sca-avatarWrap">
           <div class="sca-ring" id="sca-ring">
             <div class="sca-avatar">
-              <img id="sca-avatar-img" alt="" />
+              <img id="sca-avatar-img"
+     alt=""
+     src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="
+     class="is-empty"
+/>
+
             </div>
           </div>
         </div>
