@@ -39,6 +39,21 @@ function resolveModeFromPayload(body) {
   );
 }
 
+// ✅ NEW: "kick" grading server-side so it doesn't depend on the browser polling.
+// No env vars required.
+function kickGrading(sessionId) {
+  try {
+    const base = "https://voice-patient-web.vercel.app"; // <-- keep your prod base here
+    const url = `${base}/api/get-grading?sessionId=${encodeURIComponent(String(sessionId))}`;
+
+    // Fire-and-forget; do not await.
+    fetch(url, { method: "GET" }).catch(() => {});
+  } catch {
+    // never break submit-transcript
+  }
+}
+
+
 export default async function handler(req, res) {
   cors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -126,9 +141,17 @@ export default async function handler(req, res) {
         SessionID: String(sessionId),
         Mode: botMode,
         Transcript: JSON.stringify(transcript),
+
+        // ✅ NEW: mark as queued so it isn't blank if user leaves
+        GradingStatus: "queued",
+
+        // Keep existing behavior
         GradingText: "",
       },
     });
+
+    // ✅ NEW: server-side grading kick (does NOT block response; does NOT use force=1)
+    kickGrading(sessionId);
 
     return res.json({
       ok: true,
@@ -141,6 +164,9 @@ export default async function handler(req, res) {
       userRecordId,
       attemptRecordId: attempt?.id,
       attemptNumber,
+
+      // optional debug flag so you can confirm the kick is live
+      gradingKick: true,
     });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
