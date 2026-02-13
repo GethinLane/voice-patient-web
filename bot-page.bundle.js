@@ -1,0 +1,610 @@
+/* bot-page.bundle.js
+   Merged:
+   - Patient card overlay (avatar + ring + badge + status + vp:ui listener)
+   - bot-page-ui shell + accordion + bindings
+   - Case fetch (proxy) -> window.airtableData -> airtableDataFetched
+   - Patient/Notes/Results population
+   - Case indicator sync
+   - Avatar loads on page load (from Airtable records; optional profile endpoint support)
+*/
+(() => {
+  // ---------------- Config ----------------
+  const DEFAULT_SUBTITLE = "Follow-up appointment for ongoing health and medication review";
+  const DEFAULT_AVATAR_URL =
+    "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=500&q=60";
+
+  // Existing proxy (kept)
+  const PROXY_BASE_URL =
+    window.PROXY_BASE_URL || "https://scarevision-airtable-proxy.vercel.app";
+
+  // OPTIONAL: if you later add a profile endpoint (CaseProfiles) in your proxy, set this true
+  // and implement /api/case-profile?caseId=123 returning { profile: { PatientImage: [...] } }.
+  const ENABLE_PROFILE_FETCH = false;
+  const PROFILE_ENDPOINT = "/api/case-profile?caseId=";
+
+  const $ = (id) => document.getElementById(id);
+  const clamp01 = (x) => Math.max(0, Math.min(1, Number(x || 0)));
+
+  function uiEmit(detail) {
+    try { window.dispatchEvent(new CustomEvent("vp:ui", { detail })); } catch {}
+  }
+
+  // ---------------- Case ID helpers ----------------
+  function getCaseIdFromUrl() {
+    try {
+      const url = new URL(window.location.href);
+      const caseParam = url.searchParams.get("case");
+      if (caseParam && /^\d+$/.test(caseParam)) return Number(caseParam);
+
+      // support bare ?341
+      if (!caseParam && url.search) {
+        const bare = url.search.replace(/^\?/, "");
+        if (bare && /^\d+$/.test(bare)) return Number(bare);
+      }
+    } catch {}
+    return null;
+  }
+
+  function getCaseTableName() {
+    const n = getCaseIdFromUrl();
+    return n ? `Case ${n}` : null;
+  }
+
+  function renderCaseIndicator() {
+    const el = $("caseIndicatorValue");
+    if (!el) return;
+    const n = getCaseIdFromUrl();
+    el.textContent = n ? `Case ${n}` : "None (add ?case=###)";
+  }
+
+  // ---------------- Patient card overlay ----------------
+  function mountPatientCard() {
+    const host = $("sca-patient-card");
+    if (!host) return;
+
+    // Avoid double-mount
+    if (host.__scaMounted) return;
+    host.__scaMounted = true;
+
+    host.innerHTML = `
+      <div class="sca-card">
+        <div class="sca-header">
+          <div class="sca-title">Patient</div>
+          <div id="sca-badge" class="sca-badge sca-badge-idle">Idle</div>
+        </div>
+
+        <div class="sca-avatarWrap">
+          <div class="sca-ring" id="sca-ring">
+            <div class="sca-avatar">
+              <img id="sca-avatar-img" src="${DEFAULT_AVATAR_URL}" alt="Patient avatar" />
+            </div>
+          </div>
+        </div>
+
+        <div id="sca-status" class="sca-status">Waiting…</div>
+      </div>
+    `;
+
+    const style = document.createElement("style");
+    style.textContent = `
+      #sca-patient-card { margin: 12px 0; }
+      .sca-card{
+        max-width: 520px;
+        border: 1px solid rgba(0,0,0,.12);
+        border-radius: 16px;
+        padding: 14px 14px 16px;
+        background: #fff;
+        box-shadow: 0 10px 30px rgba(0,0,0,.06);
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      }
+      .sca-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; }
+      .sca-title{ font-weight: 800; }
+      .sca-badge{
+        font-size: 12px; font-weight: 800;
+        padding: 6px 10px; border-radius: 999px;
+        border: 1px solid rgba(0,0,0,.12);
+      }
+      .sca-badge-idle{ background:#f5f5f5; color:#444; }
+      .sca-badge-thinking{ background:#eef4ff; color:#1c4fb8; border-color: rgba(28,79,184,.25); }
+      .sca-badge-listening{ background:#eaf8f0; color:#0c6a3b; border-color: rgba(12,106,59,.25); }
+      .sca-badge-talking{ background:#fff1f3; color:#b0123a; border-color: rgba(176,18,58,.25); }
+
+      .sca-avatarWrap{ display:flex; justify-content:center; align-items:center; padding: 10px 0 6px; }
+      .sca-ring{
+        --glow: 0.15;
+        width: 240px; height: 240px;
+        border-radius: 50%;
+        display:flex; justify-content:center; align-items:center;
+        background:
+          radial-gradient(circle at center, rgba(255,255,255,1) 0 55%, rgba(255,255,255,0) 56%),
+          conic-gradient(
+            rgba(120, 80, 255, calc(0.15 + var(--glow))) 0deg,
+            rgba(90, 210, 255, calc(0.10 + var(--glow))) 120deg,
+            rgba(255, 90, 190, calc(0.12 + var(--glow))) 240deg,
+            rgba(120, 80, 255, calc(0.15 + var(--glow))) 360deg
+          );
+        box-shadow:
+          0 0 calc(26px * (0.2 + var(--glow))) rgba(120,80,255, calc(0.25 + var(--glow))),
+          0 0 calc(18px * (0.2 + var(--glow))) rgba(90,210,255, calc(0.18 + var(--glow))),
+          0 0 calc(14px * (0.2 + var(--glow))) rgba(255,90,190, calc(0.15 + var(--glow)));
+        transition: box-shadow .08s linear;
+        position: relative;
+      }
+      .sca-ring.thinking::after{
+        content:"";
+        position:absolute; inset: -10px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(120,80,255,.18), rgba(120,80,255,0) 60%);
+        animation: scaBreath 1.6s ease-in-out infinite;
+        pointer-events:none;
+        opacity: .8;
+      }
+      @keyframes scaBreath{
+        0%{ transform: scale(0.96); opacity: .35; }
+        50%{ transform: scale(1.04); opacity: .85; }
+        100%{ transform: scale(0.96); opacity: .35; }
+      }
+      .sca-avatar{
+        width: 176px; height: 176px;
+        border-radius: 50%;
+        overflow:hidden;
+        background:#fff;
+        border: 6px solid rgba(255,255,255,.9);
+        box-shadow: 0 12px 28px rgba(0,0,0,.12);
+      }
+      .sca-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
+      .sca-status{ font-size: 13px; font-weight: 700; margin-top: 6px; }
+    `;
+    host.appendChild(style);
+  }
+
+  function setStatus(text) {
+    const el = $("sca-status");
+    if (el) el.textContent = text || "";
+  }
+
+  function setBadge(state) {
+    const badge = $("sca-badge");
+    const ring = $("sca-ring");
+    if (!badge || !ring) return;
+
+    badge.className = "sca-badge";
+    ring.classList.remove("thinking");
+
+    if (state === "idle") {
+      badge.textContent = "Idle";
+      badge.classList.add("sca-badge-idle");
+    } else if (state === "thinking") {
+      badge.textContent = "Thinking";
+      badge.classList.add("sca-badge-thinking");
+      ring.classList.add("thinking");
+    } else if (state === "listening") {
+      badge.textContent = "Listening";
+      badge.classList.add("sca-badge-listening");
+    } else if (state === "talking") {
+      badge.textContent = "Talking";
+      badge.classList.add("sca-badge-talking");
+    }
+  }
+
+  function setGlow(glow01) {
+    const ring = $("sca-ring");
+    if (!ring) return;
+    ring.style.setProperty("--glow", String(clamp01(glow01)));
+  }
+
+  function setAvatar(url) {
+    const img = $("sca-avatar-img");
+    if (!img) return;
+    img.src = url || DEFAULT_AVATAR_URL;
+  }
+
+  // Listen for voice-patient.js updates
+  window.addEventListener("vp:ui", (e) => {
+    const d = e.detail || {};
+    if (d.status) setStatus(d.status);
+    if (d.state) setBadge(d.state);
+    if (typeof d.glow === "number") setGlow(d.glow);
+    if ("avatarUrl" in d) setAvatar(d.avatarUrl);
+  });
+
+  // ---------------- bot-page-ui shell + accordion ----------------
+  function addAccItem(acc, { title, contentNode, open }) {
+    const item = document.createElement("section");
+    item.className = "sca-accItem";
+
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = "sca-accHeader";
+    header.setAttribute("aria-expanded", open ? "true" : "false");
+    header.innerHTML = `
+      <span class="sca-accTitle">${title}</span>
+      <span class="sca-accChevron" aria-hidden="true">›</span>
+    `;
+
+    const body = document.createElement("div");
+    body.className = "sca-accBody";
+    body.hidden = !open;
+
+    const wrap = document.createElement("div");
+    wrap.className = "sca-accContent";
+    wrap.appendChild(contentNode);
+    body.appendChild(wrap);
+
+    header.addEventListener("click", () => {
+      const expanded = header.getAttribute("aria-expanded") === "true";
+      header.setAttribute("aria-expanded", expanded ? "false" : "true");
+      body.hidden = expanded;
+    });
+
+    item.appendChild(header);
+    item.appendChild(body);
+    acc.appendChild(item);
+  }
+
+  function mountPageShell() {
+    if (window.__scaBotPageUiMounted) return;
+    window.__scaBotPageUiMounted = true;
+
+    const anchor = $("sca-patient-card") || $("patientDataBox") || $("startBtn");
+    if (!anchor || !anchor.parentNode) return;
+
+    document.body.classList.add("sca-botpage");
+
+    const root = document.createElement("div");
+    root.id = "scaBotPageRoot";
+    root.innerHTML = `
+      <div class="sca-grid">
+        <div class="sca-left">
+          <div class="sca-heroRow">
+            <div class="sca-heroMedia">
+              <div class="sca-callout" id="scaCalloutSlot"></div>
+              <div id="scaAvatarSlot"></div>
+            </div>
+          </div>
+
+          <div class="sca-mainMeta">
+            <div class="sca-mainName" data-bind="name">Loading…</div>
+            <div class="sca-mainAge">Age: <span data-bind="age">…</span></div>
+            <div class="sca-mainDesc" id="scaMainDesc"></div>
+          </div>
+
+          <div class="sca-botUpdate">
+            <div class="sca-botUpdateHeader">
+              <div class="sca-botUpdateTitle">Bot update</div>
+            </div>
+            <ul class="sca-botUpdateList" id="scaBotUpdateList"></ul>
+          </div>
+
+          <div class="sca-seg" id="scaSegSlot"></div>
+        </div>
+
+        <aside class="sca-right">
+          <div class="sca-infoCard">
+            <div class="sca-infoHeader">
+              <div class="sca-infoHeaderTitle">Patient Information</div>
+            </div>
+            <div class="sca-accordion" id="scaAccordion"></div>
+          </div>
+        </aside>
+      </div>
+    `;
+
+    anchor.parentNode.insertBefore(root, anchor);
+
+    // Move patient card host into avatar slot
+    const avatarSlot = root.querySelector("#scaAvatarSlot");
+    const cardHost = $("sca-patient-card");
+    if (avatarSlot && cardHost) avatarSlot.appendChild(cardHost);
+
+    // Callout: prefer existing caseIndicator; otherwise subtitle
+    const calloutSlot = root.querySelector("#scaCalloutSlot");
+    const caseIndicator = $("caseIndicator");
+    if (calloutSlot) {
+      if (caseIndicator) calloutSlot.appendChild(caseIndicator);
+      else calloutSlot.textContent = DEFAULT_SUBTITLE;
+    }
+
+    const mainDesc = root.querySelector("#scaMainDesc");
+    if (mainDesc) mainDesc.textContent = DEFAULT_SUBTITLE;
+
+    // Bot update list contains #status from voice-patient.js
+    const updateList = root.querySelector("#scaBotUpdateList");
+    const statusEl = $("status");
+    if (updateList) {
+      if (statusEl) {
+        const li = document.createElement("li");
+        li.appendChild(statusEl);
+        updateList.appendChild(li);
+      } else {
+        updateList.innerHTML = `<li>Status element (#status) not found.</li>`;
+      }
+    }
+
+    // Start/Stop into seg
+    const segSlot = root.querySelector("#scaSegSlot");
+    const startBtn = $("startBtn");
+    const stopBtn = $("stopBtn");
+    if (segSlot) {
+      if (startBtn) segSlot.appendChild(startBtn);
+      if (stopBtn) segSlot.appendChild(stopBtn);
+    }
+
+    // Accordion
+    const acc = root.querySelector("#scaAccordion");
+    if (acc) {
+      const pmhx = $("patientPMHx");
+      const dhx = $("patientDHx");
+      const notesBox = $("medicalNotesBox");
+      const resultsBox = $("resultsBox");
+
+      if (pmhx) pmhx.classList.add("sca-cleanList");
+      if (dhx) dhx.classList.add("sca-cleanList");
+
+      if (pmhx) addAccItem(acc, { title: "Medical History", contentNode: pmhx, open: true });
+      if (dhx) addAccItem(acc, { title: "Medication", contentNode: dhx, open: true });
+      if (notesBox) addAccItem(acc, { title: "Medical Notes", contentNode: notesBox, open: true });
+      if (resultsBox) addAccItem(acc, { title: "Investigation Results", contentNode: resultsBox, open: false });
+    }
+
+    // Hide original patientDataBox but keep it in DOM
+    const patientDataBox = $("patientDataBox");
+    if (patientDataBox) patientDataBox.setAttribute("data-sca-hidden", "true");
+
+    // Bind name/age (Airtable script writes #patientName/#patientAge)
+    const nameSpan = $("patientName");
+    const ageSpan = $("patientAge");
+
+    const sync = () => {
+      const name = (nameSpan?.textContent || "").trim();
+      const age = (ageSpan?.textContent || "").trim();
+
+      root.querySelectorAll("[data-bind='name']").forEach((el) => { el.textContent = name || "Loading…"; });
+      root.querySelectorAll("[data-bind='age']").forEach((el) => { el.textContent = age || "…"; });
+    };
+
+    sync();
+
+    const mo = new MutationObserver(sync);
+    if (nameSpan) mo.observe(nameSpan, { childList: true, subtree: true, characterData: true });
+    if (ageSpan) mo.observe(ageSpan, { childList: true, subtree: true, characterData: true });
+  }
+
+  // ---------------- Airtable fetch (proxy) ----------------
+  async function fetchJson(url) {
+    const resp = await fetch(url, { cache: "no-store" });
+    const text = await resp.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch {}
+    if (!resp.ok) {
+      const msg = (data && (data.error || data.message)) || `HTTP ${resp.status}`;
+      const err = new Error(msg);
+      err.status = resp.status;
+      err.data = data;
+      err.url = url;
+      throw err;
+    }
+    return data;
+  }
+
+  // Attachment -> best URL
+  function pickAttachmentUrl(att) {
+    if (!att) return null;
+    if (Array.isArray(att) && att.length) {
+      const a = att[0];
+      return a?.thumbnails?.large?.url || a?.thumbnails?.full?.url || a?.url || null;
+    }
+    if (typeof att === "object") {
+      return att?.thumbnails?.large?.url || att?.thumbnails?.full?.url || att?.url || null;
+    }
+    if (typeof att === "string") return att;
+    return null;
+  }
+
+  // Try to find PatientImage in the Case table rows (only works if you put it there)
+  function findPatientImageFromCaseRecords(records) {
+    for (const r of records || []) {
+      const url = pickAttachmentUrl(r?.fields?.PatientImage);
+      if (url) return url;
+    }
+    return null;
+  }
+
+  async function fetchCaseProfileImage(caseId) {
+    if (!ENABLE_PROFILE_FETCH) return null;
+    if (!caseId) return null;
+    try {
+      const url = `${PROXY_BASE_URL}${PROFILE_ENDPOINT}${encodeURIComponent(caseId)}`;
+      const data = await fetchJson(url);
+      const prof = data?.profile || data?.fields || data || null;
+      const urlFromProf = pickAttachmentUrl(prof?.PatientImage);
+      return urlFromProf || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchAirtableCaseData() {
+    const table = getCaseTableName();
+    if (!table) return;
+
+    window.airtableData = window.airtableData || null;
+
+    const url = `${PROXY_BASE_URL}/api/case?table=${encodeURIComponent(table)}`;
+    const data = await fetchJson(url);
+
+    const records = data.records || [];
+    window.airtableData = records;
+
+    // Avatar on page load:
+    // 1) try PatientImage stored in Case table rows
+    let avatarUrl = findPatientImageFromCaseRecords(records);
+
+    // 2) optionally try CaseProfiles endpoint
+    if (!avatarUrl) {
+      const caseId = getCaseIdFromUrl();
+      avatarUrl = await fetchCaseProfileImage(caseId);
+    }
+
+    // Update UI via vp:ui so the card updates even if it mounted earlier/later
+    uiEmit({ avatarUrl: avatarUrl || null });
+
+    document.dispatchEvent(new Event("airtableDataFetched"));
+  }
+
+  // ---------------- Patient info rendering ----------------
+  function getAirtableRecordsOrExit(contextLabel) {
+    const records = window.airtableData;
+    if (!records || records.length === 0) {
+      console.error(`No records found or failed to fetch records (${contextLabel}).`);
+      return null;
+    }
+    return records;
+  }
+
+  function collectAndSortValues(records, fieldName) {
+    const values = [];
+    for (const record of records) {
+      const order = record.fields?.Order;
+      const value = record.fields?.[fieldName];
+      if (value && order !== undefined) values.push({ order, value });
+    }
+    values.sort((a, b) => a.order - b.order);
+    return values.map((item) => item.value);
+  }
+
+  function renderList(listEl, items) {
+    if (!listEl) return;
+    listEl.innerHTML = "";
+    items.forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      listEl.appendChild(li);
+    });
+  }
+
+  function populatePatientData(records) {
+    const names = collectAndSortValues(records, "Name");
+    const ages  = collectAndSortValues(records, "Age");
+    const pmHx  = collectAndSortValues(records, "PMHx Record");
+    const dHx   = collectAndSortValues(records, "DHx");
+
+    const nameEl = $("patientName");
+    const ageEl  = $("patientAge");
+
+    if (nameEl) nameEl.textContent = names.join(", ") || "N/A";
+    if (ageEl)  ageEl.textContent  = ages.join(", ") || "N/A";
+
+    renderList($("patientPMHx"), pmHx);
+    renderList($("patientDHx"), dHx);
+  }
+
+  function populateMedicalNotes(records) {
+    const medicalNotes        = collectAndSortValues(records, "Medical Notes");
+    const medicalNotesContent = collectAndSortValues(records, "Medical Notes Content");
+    const medicalNotesPhotos  = collectAndSortValues(records, "Notes Photo"); // attachments per row
+
+    const medicalNotesDiv = $("medicalNotes");
+    if (!medicalNotesDiv) return;
+    medicalNotesDiv.innerHTML = "";
+
+    for (let i = 0; i < medicalNotes.length; i++) {
+      const note = medicalNotes[i];
+      const content = medicalNotesContent[i] || "";
+      const photos = medicalNotesPhotos[i]; // array of attachments for this row
+
+      const noteElement = document.createElement("div");
+      const contentElement = document.createElement("div");
+
+      noteElement.classList.add("underline");
+      contentElement.classList.add("quote-box", "quote-box-medical");
+
+      noteElement.textContent = (i > 0 ? "\n" : "") + note;
+      contentElement.innerHTML = content.replace(/\n/g, "<br>") + "<br>";
+
+      medicalNotesDiv.appendChild(noteElement);
+      medicalNotesDiv.appendChild(contentElement);
+
+      if (photos && Array.isArray(photos) && photos.length > 0) {
+        photos.forEach((photo) => {
+          if (!photo || !photo.url) return;
+          const img = document.createElement("img");
+          img.src = photo.url;
+          img.alt = "Medical Notes Image";
+          img.loading = "lazy";
+          img.style.width = "100%";
+          img.style.maxWidth = "800px";
+          img.style.height = "auto";
+          img.style.display = "block";
+          img.style.margin = "10px auto";
+          medicalNotesDiv.appendChild(img);
+        });
+      }
+    }
+  }
+
+  function populateResults(records) {
+    const results        = collectAndSortValues(records, "Results");
+    const resultsContent = collectAndSortValues(records, "Results Content");
+
+    const resultsDiv = $("resultsContent");
+    if (!resultsDiv) return;
+    resultsDiv.innerHTML = "";
+
+    for (let i = 0; i < results.length; i++) {
+      const title = results[i];
+      const content = resultsContent[i] || "";
+
+      const titleEl = document.createElement("div");
+      const contentEl = document.createElement("div");
+
+      titleEl.classList.add("underline");
+      contentEl.classList.add("quote-box", "quote-box-results");
+
+      titleEl.textContent = (i > 0 ? "\n" : "") + title;
+      contentEl.innerHTML = content.replace(/\n/g, "<br>") + "<br>";
+
+      resultsDiv.appendChild(titleEl);
+      resultsDiv.appendChild(contentEl);
+    }
+  }
+
+  function populateAllThree() {
+    const records = getAirtableRecordsOrExit("Bot page (patient + notes + results)");
+    if (!records) return;
+    populatePatientData(records);
+    populateMedicalNotes(records);
+    populateResults(records);
+  }
+
+  // ---------------- Boot ----------------
+  function boot() {
+    // 1) Mount patient card early so avatar can be set
+    mountPatientCard();
+
+    // 2) Build shell & move nodes
+    mountPageShell();
+
+    // 3) Case indicator
+    renderCaseIndicator();
+
+    // 4) Load Airtable data
+    fetchAirtableCaseData().catch((e) => {
+      console.error("[SCA] fetchAirtableCaseData failed:", e);
+      uiEmit({ avatarUrl: null });
+    });
+
+    // 5) Populate patient info when data arrives
+    document.addEventListener("airtableDataFetched", populateAllThree);
+
+    // Fallback if something pre-set airtableData
+    if (window.airtableData && Array.isArray(window.airtableData) && window.airtableData.length) {
+      populateAllThree();
+    }
+
+    // Keep indicator updated for back/forward nav
+    window.addEventListener("popstate", renderCaseIndicator);
+  }
+
+  window.addEventListener("DOMContentLoaded", boot);
+})();
