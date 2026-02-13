@@ -23,10 +23,6 @@
   const $ = (id) => document.getElementById(id);
   const clamp01 = (x) => Math.max(0, Math.min(1, Number(x || 0)));
 
-  function uiEmit(detail) {
-    try { window.dispatchEvent(new CustomEvent("vp:ui", { detail })); } catch {}
-  }
-
   // ---------------- Case ID helpers ----------------
   function getCaseIdFromUrl() {
     try {
@@ -146,7 +142,6 @@ function setAvatar(url) {
     if (d.status) setStatus(d.status);
     if (d.state) setBadge(d.state);
     if (typeof d.glow === "number") setGlow(d.glow);
-    if ("avatarUrl" in d) setAvatar(d.avatarUrl);
   });
 
   // ---------------- bot-page-ui shell + accordion ----------------
@@ -412,14 +407,14 @@ function setAvatar(url) {
         null;
     }
 
+     setAvatar(avatarUrl);
+
+
     // 3) optional old path (only if you later enable a separate profile endpoint)
     if (!avatarUrl) {
       const caseId = getCaseIdFromUrl();
       avatarUrl = await fetchCaseProfileImage(caseId);
     }
-
-    // Update UI via vp:ui so the card updates even if it mounted earlier/later
-    uiEmit({ avatarUrl: avatarUrl || null });
 
     document.dispatchEvent(new Event("airtableDataFetched"));
   }
