@@ -9,8 +9,6 @@
 */
 (() => {
   // ---------------- Config ----------------
-  const DEFAULT_SUBTITLE = "Follow-up appointment for ongoing health and medication review";
-
   // Existing proxy (kept)
   const PROXY_BASE_URL =
     window.PROXY_BASE_URL || "https://scarevision-airtable-proxy.vercel.app";
@@ -42,13 +40,6 @@
   function getCaseTableName() {
     const n = getCaseIdFromUrl();
     return n ? `Case ${n}` : null;
-  }
-
-  function renderCaseIndicator() {
-    const el = $("caseIndicatorValue");
-    if (!el) return;
-    const n = getCaseIdFromUrl();
-    el.textContent = n ? `Case ${n}` : "None (add ?case=###)";
   }
 
   // ---------------- Patient card overlay ----------------
@@ -194,7 +185,6 @@ function setAvatar(url) {
         <div class="sca-left">
           <div class="sca-heroRow">
             <div class="sca-heroMedia">
-              <div class="sca-callout" id="scaCalloutSlot"></div>
               <div id="scaAvatarSlot"></div>
             </div>
           </div>
@@ -202,7 +192,6 @@ function setAvatar(url) {
           <div class="sca-mainMeta">
             <div class="sca-mainName" data-bind="name">Loading…</div>
             <div class="sca-mainAge">Age: <span data-bind="age">…</span></div>
-            <div class="sca-mainDesc" id="scaMainDesc"></div>
           </div>
 
           <div class="sca-botUpdate">
@@ -233,16 +222,7 @@ function setAvatar(url) {
     const cardHost = $("sca-patient-card");
     if (avatarSlot && cardHost) avatarSlot.appendChild(cardHost);
 
-    // Callout: prefer existing caseIndicator; otherwise subtitle
-    const calloutSlot = root.querySelector("#scaCalloutSlot");
-    const caseIndicator = $("caseIndicator");
-    if (calloutSlot) {
-      if (caseIndicator) calloutSlot.appendChild(caseIndicator);
-      else calloutSlot.textContent = DEFAULT_SUBTITLE;
-    }
-
-    const mainDesc = root.querySelector("#scaMainDesc");
-    if (mainDesc) mainDesc.textContent = DEFAULT_SUBTITLE;
+    // Keep caseIndicator hidden (it remains in the original hidden box for compatibility)
 
     // Bot update list contains #status from voice-patient.js
     const updateList = root.querySelector("#scaBotUpdateList");
@@ -554,16 +534,13 @@ function setAvatar(url) {
     // 2) Build shell & move nodes
     mountPageShell();
 
-    // 3) Case indicator
-    renderCaseIndicator();
-
-    // 4) Load Airtable data
+    // 3) Load Airtable data
     fetchAirtableCaseData().catch((e) => {
       console.error("[SCA] fetchAirtableCaseData failed:", e);
       uiEmit({ avatarUrl: null });
     });
 
-    // 5) Populate patient info when data arrives
+    // 4) Populate patient info when data arrives
     document.addEventListener("airtableDataFetched", populateAllThree);
 
     // Fallback if something pre-set airtableData
@@ -571,8 +548,6 @@ function setAvatar(url) {
       populateAllThree();
     }
 
-    // Keep indicator updated for back/forward nav
-    window.addEventListener("popstate", renderCaseIndicator);
   }
 
   window.addEventListener("DOMContentLoaded", boot);

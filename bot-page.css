@@ -92,29 +92,6 @@ body.sca-botpage #scaBotPageRoot .sca-heroAge{
   font-size: 16px;
 }
 
-body.sca-botpage #scaBotPageRoot .sca-callout{
-  position: absolute;
-  top: 0;
-  left: 0;
-  min-width: 240px;
-  max-width: 320px;
-  background: var(--sca-surface-2);
-  border: 1px solid var(--sca-border);
-  border-radius: 16px;
-  padding: 12px 14px;
-  color: var(--sca-muted);
-  box-shadow: 0 10px 30px rgba(17,24,39,.06);
-  z-index: 2;
-}
-
-@media (max-width: 720px){
-  body.sca-botpage #scaBotPageRoot .sca-callout{
-    position: static;
-    width: 100%;
-    max-width: none;
-    margin-bottom: 12px;
-  }
-}
 
 /* Big name block */
 body.sca-botpage #scaBotPageRoot .sca-mainMeta{
@@ -136,11 +113,6 @@ body.sca-botpage #scaBotPageRoot .sca-mainAge{
   margin-top: 14px;
 }
 
-body.sca-botpage #scaBotPageRoot .sca-mainDesc{
-  color: var(--sca-muted);
-  font-size: 16px;
-  margin-top: 10px;
-}
 
 /* Bot update box */
 body.sca-botpage #scaBotPageRoot .sca-botUpdate{
@@ -364,8 +336,8 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
 #sca-patient-card .sca-title{ font-weight: 800; }
 
 #sca-patient-card .sca-badge{
-  font-size: 12px; font-weight: 800;
-  padding: 6px 10px; border-radius: 999px;
+  font-size: 14px; font-weight: 800;
+  padding: 8px 12px; border-radius: 999px;
   border: 1px solid rgba(0,0,0,.12);
 }
 
