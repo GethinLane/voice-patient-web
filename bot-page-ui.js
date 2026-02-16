@@ -7,8 +7,6 @@
 */
 
 (() => {
-  const DEFAULT_SUBTITLE = "Follow-up appointment for ongoing health and medication review";
-
   const $ = (id) => document.getElementById(id);
 
   function addAccItem(acc, { title, contentNode, open }) {
@@ -62,7 +60,6 @@
         <div class="sca-left">
           <div class="sca-heroRow">
             <div class="sca-heroMedia">
-              <div class="sca-callout" id="scaCalloutSlot"></div>
               <div id="scaAvatarSlot"></div>
             </div>
           </div>
@@ -70,7 +67,6 @@
           <div class="sca-mainMeta">
             <div class="sca-mainName" data-bind="name">Loading…</div>
             <div class="sca-mainAge">Age: <span data-bind="age">…</span></div>
-            <div class="sca-mainDesc" id="scaMainDesc"></div>
           </div>
 
           <div class="sca-botUpdate">
@@ -102,17 +98,7 @@
     const cardHost = $("sca-patient-card");
     if (avatarSlot && cardHost) avatarSlot.appendChild(cardHost);
 
-    // Callout: prefer the existing caseIndicator block; otherwise show subtitle
-    const calloutSlot = root.querySelector("#scaCalloutSlot");
-    const caseIndicator = $("caseIndicator");
-    if (calloutSlot) {
-      if (caseIndicator) calloutSlot.appendChild(caseIndicator);
-      else calloutSlot.textContent = DEFAULT_SUBTITLE;
-    }
-
-    // Main subtitle text
-    const mainDesc = root.querySelector("#scaMainDesc");
-    if (mainDesc) mainDesc.textContent = DEFAULT_SUBTITLE;
+    // Keep caseIndicator hidden (it remains in the original hidden box for compatibility)
 
     // Bot update list contains your existing #status (voice-patient.js updates it)
     const updateList = root.querySelector("#scaBotUpdateList");
