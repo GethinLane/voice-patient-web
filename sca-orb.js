@@ -29,7 +29,7 @@
   };
    
   // --- Spread controls ---
-  const ORB_INNER_NORM  = 0.92;   // allow slightly inside
+  const ORB_INNER_NORM  = 0.8;   // allow slightly inside
   const ORB_CENTER_NORM = 1.05;   // where most particles cluster
   const ORB_OUTER_NORM  = 1.20;   // allow slightly outside
   const ORB_CENTER_BIAS = 2.6;    // higher = more clustered around center
