@@ -350,11 +350,12 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
 
 #sca-patient-card .sca-ring{
   --glow: 0.15;
-  width: 260px; height: 260px;
+  --orb-bleed: 14px;
+  width: 176px; height: 176px;
   border-radius: 50%;
   display:flex; justify-content:center; align-items:center;
   background: transparent;
-  box-shadow: none;
+  box-shadow: 0 0 0 2px #253551;
   transition: box-shadow .08s linear;
   position: relative;
   overflow: visible;
@@ -362,9 +363,9 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
 
 #sca-patient-card .sca-orbCanvas{
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: calc(var(--orb-bleed) * -1);
+  width: calc(100% + (var(--orb-bleed) * 2));
+  height: calc(100% + (var(--orb-bleed) * 2));
   pointer-events: none;
   z-index: 3;
 }
@@ -382,8 +383,8 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
   border-radius: 50%;
   overflow:hidden;
   background:#fff;
-  border: 6px solid rgba(255,255,255,.9);
-  box-shadow: 0 12px 28px rgba(0,0,0,.12);
+  border: 0;
+  box-shadow: none;
   position: relative;
   z-index: 1;
 }
@@ -419,14 +420,15 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-  width: 430px !important;
-  height: 430px !important;
+  --orb-bleed: 24px;
+  width: 380px !important;
+  height: 380px !important;
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
   width: 380px !important;
   height: 380px !important;
-  border: 7px solid rgba(255,255,255,.92) !important;
+  border: 0 !important;
 }
 
 /* ---------------- Hide the original patientDataBox but keep it in DOM for your existing JS ---------------- */
