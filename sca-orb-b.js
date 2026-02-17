@@ -213,19 +213,31 @@ function resize() {
       }
     }
 
-    function setState(m) {
-      mode = m;
-      if (mode === "talking") {
-        scaleTarget = 1.0;
-        colorTarget = { r: 21, g: 101, b: 192 };
-      } else if (mode === "listening") {
-        scaleTarget = 0.7;
-        colorTarget = { r: 111, g: 174, b: 230 };
-      } else {
-        scaleTarget = 0.52;
-        colorTarget = { r: 140, g: 196, b: 242 };
-      }
-    }
+function setState(m) {
+  const state = String(m || "").toLowerCase();
+
+  if (state === "talking") {
+    mode = "talking";
+    scaleTarget = 1.0;
+    colorTarget = { r: 21, g: 101, b: 192 };
+  } 
+  else if (state === "thinking") {
+    mode = "thinking";
+    scaleTarget = 0.85;   // slightly expanded but not full talking
+    colorTarget = { r: 80, g: 140, b: 255 };  // brighter thinking blue
+  } 
+  else if (state === "listening") {
+    mode = "listening";
+    scaleTarget = 0.70;
+    colorTarget = { r: 111, g: 174, b: 230 };
+  } 
+  else {
+    mode = "idle";
+    scaleTarget = 0.52;
+    colorTarget = { r: 140, g: 196, b: 242 };
+  }
+}
+
 
     return { start, setState };
   }
@@ -242,6 +254,11 @@ function resize() {
     orb.start();
     orb.setState("idle");
   }
+window.addEventListener("vp:ui", (e) => {
+  if (e?.detail?.state) {
+    window.setAIState(e.detail.state);
+  }
+});
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
