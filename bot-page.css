@@ -519,3 +519,29 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
   position: relative;
   z-index: 2;
 }
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::before{
+  content:"";
+  position:absolute;
+  inset:-24px;
+  border-radius:50%;
+  pointer-events:none;
+  z-index: 2; /* between avatar(1) and blobs(3) if you want */
+  background: radial-gradient(circle,
+    rgba(120,190,255,0) 0%,
+    rgba(120,190,255,.10) 55%,
+    rgba(120,190,255,.18) 70%,
+    rgba(120,190,255,0) 100%
+  );
+  filter: blur(18px);
+  opacity: .9;
+  -webkit-mask-image: radial-gradient(circle,
+    rgba(0,0,0,0) 52%,
+    rgba(0,0,0,1) 62%,
+    rgba(0,0,0,1) 78%,
+    rgba(0,0,0,0) 100%);
+  mask-image: radial-gradient(circle,
+    rgba(0,0,0,0) 52%,
+    rgba(0,0,0,1) 62%,
+    rgba(0,0,0,1) 78%,
+    rgba(0,0,0,0) 100%);
+}
