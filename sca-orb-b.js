@@ -57,9 +57,9 @@
     let orbW = 300, orbH = 300, orbCx = 150, orbCy = 150;
 
     // Radii derived from size (keeps same proportions as your snippet)
-    let ORB_RADIUS = 150;
+    let ORB_RADIUS = 300;
     let INNER_MAX = ORB_RADIUS * 0.8;
-    let MAX_RADIUS = 200;
+    let MAX_RADIUS = 400;
 
     const PARTICLE_COUNT = 400;
 
