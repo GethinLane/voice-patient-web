@@ -26,24 +26,34 @@
     });
   }
 
-  function ensureCanvas(ring) {
-    let canvas = ring.querySelector("canvas.sca-orbCanvas");
-    if (!canvas) {
-      canvas = document.createElement("canvas");
-      canvas.className = "sca-orbCanvas";
-      ring.appendChild(canvas);
-    }
-
-    // Force layering from JS (no CSS edits needed)
-    canvas.style.zIndex = "0";
-    canvas.style.position = "absolute";
-    canvas.style.pointerEvents = "none";
-
-    const avatar = ring.querySelector(".sca-avatar");
-    if (avatar) avatar.style.zIndex = "2";
-
-    return canvas;
+function ensureCanvas(ring) {
+  let canvas = ring.querySelector("canvas.sca-orbCanvas");
+  if (!canvas) {
+    canvas = document.createElement("canvas");
+    canvas.className = "sca-orbCanvas";
+    ring.appendChild(canvas);
   }
+
+  // Force stacking order entirely from JS
+  ring.style.position = "relative";
+  ring.style.zIndex = "3";
+
+  const avatar = ring.querySelector(".sca-avatar");
+  if (avatar) {
+    avatar.style.position = "relative";
+    avatar.style.zIndex = "2";
+  }
+
+  canvas.style.position = "absolute";
+  canvas.style.left = "50%";
+  canvas.style.top = "50%";
+  canvas.style.transform = "translate(-50%, -50%)";
+  canvas.style.pointerEvents = "none";
+  canvas.style.zIndex = "1";
+
+  return canvas;
+}
+
 
   function createOrb(canvas) {
     const ctx = canvas.getContext("2d");
@@ -70,8 +80,13 @@
     let colorTarget = { r: 140, g: 196, b: 242 };
 
     function resize() {
-      const rect = canvas.getBoundingClientRect();
-      const size = Math.max(rect.width, rect.height);
+const ringRect = canvas.parentElement.getBoundingClientRect();
+const avatar = canvas.parentElement.querySelector(".sca-avatar");
+const avatarRect = avatar ? avatar.getBoundingClientRect() : ringRect;
+
+// Make orb significantly bigger than avatar
+const size = Math.max(avatarRect.width, avatarRect.height) * 1.6;
+
       const dpr = window.devicePixelRatio || 1;
 
       canvas.width = size * dpr;
