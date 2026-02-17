@@ -798,10 +798,15 @@ function setAvatar(url) {
     mountPageShell();
 
     // 3) Load Airtable data
-    fetchAirtableCaseData().catch((e) => {
-      console.error("[SCA] fetchAirtableCaseData failed:", e);
-      uiEmit({ avatarUrl: null });
-    });
+fetchAirtableCaseData().catch((e) => {
+  console.error("[SCA] fetchAirtableCaseData failed:", e);
+
+  // keep uiEmit behaviour (but don't crash if it's missing)
+  if (typeof window.uiEmit === "function") {
+    window.uiEmit({ avatarUrl: null });
+  }
+});
+§
 
     // 4) Populate patient info when data arrives
     document.addEventListener("airtableDataFetched", populateAllThree);
