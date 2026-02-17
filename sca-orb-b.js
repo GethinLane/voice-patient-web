@@ -54,12 +54,12 @@
     const ctx = canvas.getContext("2d");
 
     // Will be set on resize
-    let orbW = 300, orbH = 300, orbCx = 150, orbCy = 150;
+    let orbW = 400, orbH = 400, orbCx = 200, orbCy = 200;
 
     // Radii derived from size (keeps same proportions as your snippet)
-    let ORB_RADIUS = 300;
+    let ORB_RADIUS = 400;
     let INNER_MAX = ORB_RADIUS * 0.8;
-    let MAX_RADIUS = 400;
+    let MAX_RADIUS = 500;
 
     const PARTICLE_COUNT = 400;
 
