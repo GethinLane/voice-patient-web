@@ -220,73 +220,86 @@ export async function gradeTranscriptWithIndicators({
     },
   };
 
-  async function callOpenAI({ retryMode = false } = {}) {
-    const payload = {
-      model,
-      input: [
-        {
-          role: "system",
-          content:
-            "You are an OSCE examiner. Use the marking criteria as a GUIDE, not a strict word-for-word checklist.\n" +
-            "Be fair: give PARTIAL credit when the intent is present but incomplete.\n" +
-            "Do NOT require exact wording.\n\n" +
-            "Return ONLY valid JSON. No markdown.\n\n" +
-            "SCORING OUTPUT (critical):\n" +
-            "- For each POSITIVE criteria list, return an array of scores 0..2 in the SAME ORDER and SAME LENGTH as provided:\n" +
-            "  0 = not addressed, 1 = partially addressed, 2 = clearly addressed.\n" +
-            "- For each NEGATIVE criteria list, return severity 0..2 in the SAME ORDER and SAME LENGTH:\n" +
-            "  0 = not present, 1 = mild issue, 2 = major issue.\n" +
-            "- Keep per-criterion output VERY short (numbers only). Do NOT repeat or rewrite the indicator text.\n\n" +
-            "NARRATIVE OUTPUT (critical):\n" +
-            "- For EACH domain (DG/CM/RTO) write ONE substantial paragraph (about 120–200 words) that includes BOTH:\n" +
-            "  (a) what was done well tied to criteria that scored 2 (clear), AND\n" +
-            "  (b) what to improve tied to criteria that scored 0 or 1 (missed/partial).\n" +
-            "- Include 2–4 short example phrases the candidate used (from CLINICIAN lines) per domain.\n" +
-            "- Even if the domain is PASS, you MUST still give at least 2 concrete improvement points (growth points).\n" +
-            "- Do NOT say 'no improvements needed' or 'no significant omissions'.\n" +
-            (retryMode
-              ? "\nRETRY MODE: Your last output was too generic or invalid JSON. Be more specific, and keep JSON compact."
-              : ""),
-        },
-        {
-          role: "user",
-          content: JSON.stringify(
-            {
-              transcript: transcriptText,
-              note: "CLINICIAN lines are the candidate; PATIENT lines are the simulator.",
-              criteria,
-              output_schema_hint: outputSchemaHint,
-            },
-            null,
-            2
-          ),
-        },
-      ],
-      text: { format: { type: "json_object" } },
-      temperature: 0.2,
-      max_output_tokens: 6000,
-    };
+async function callOpenAI({ retryMode = false } = {}) {
+  // Reasoning models don't support temperature. (e.g. o1/o3/o4/gpt-5 families)
+  const isReasoningModel =
+    model.startsWith("o1") ||
+    model.startsWith("o3") ||
+    model.startsWith("o4") ||
+    model.startsWith("gpt-5");
 
-    const resp = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openaiKey}`,
-        "Content-Type": "application/json",
+  const payload = {
+    model,
+    input: [
+      {
+        role: "system",
+        content:
+          "You are an OSCE examiner. Use the marking criteria as a GUIDE, not a strict word-for-word checklist.\n" +
+          "Be fair: give PARTIAL credit when the intent is present but incomplete.\n" +
+          "Do NOT require exact wording.\n\n" +
+          "Return ONLY valid JSON. No markdown.\n\n" +
+          "SCORING OUTPUT (critical):\n" +
+          "- For each POSITIVE criteria list, return an array of scores 0..2 in the SAME ORDER and SAME LENGTH as provided:\n" +
+          "  0 = not addressed, 1 = partially addressed, 2 = clearly addressed.\n" +
+          "- For each NEGATIVE criteria list, return severity 0..2 in the SAME ORDER and SAME LENGTH:\n" +
+          "  0 = not present, 1 = mild issue, 2 = major issue.\n" +
+          "- Keep per-criterion output VERY short (numbers only). Do NOT repeat or rewrite the indicator text.\n\n" +
+          "NARRATIVE OUTPUT (critical):\n" +
+          "- For EACH domain (DG/CM/RTO) write ONE substantial paragraph (about 120–200 words) that includes BOTH:\n" +
+          "  (a) what was done well tied to criteria that scored 2 (clear), AND\n" +
+          "  (b) what to improve tied to criteria that scored 0 or 1 (missed/partial).\n" +
+          "- Include 2–4 short example phrases the candidate used (from CLINICIAN lines) per domain.\n" +
+          "- Even if the domain is PASS, you MUST still give at least 2 concrete improvement points (growth points).\n" +
+          "- Do NOT say 'no improvements needed' or 'no significant omissions'.\n" +
+          (retryMode
+            ? "\nRETRY MODE: Your last output was too generic or invalid JSON. Be more specific, and keep JSON compact."
+            : ""),
       },
-      body: JSON.stringify(payload),
-    });
+      {
+        role: "user",
+        content: JSON.stringify(
+          {
+            transcript: transcriptText,
+            note: "CLINICIAN lines are the candidate; PATIENT lines are the simulator.",
+            criteria,
+            output_schema_hint: outputSchemaHint,
+          },
+          null,
+          2
+        ),
+      },
+    ],
+    text: { format: { type: "json_object" } },
+    // Only include temperature when supported
+    ...(isReasoningModel ? {} : { temperature: 0.2 }),
+    max_output_tokens: 6000,
+  };
 
-    const raw = await resp.text();
-    if (!resp.ok) throw new Error(`OpenAI error ${resp.status}: ${raw.slice(0, 400)}`);
+  const resp = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openaiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
 
-    const data = raw ? JSON.parse(raw) : null;
-    const outText = collectAllAssistantText(data);
-    const parsed = safeJsonParseAny(outText);
-    if (!parsed) {
-      throw new Error(`OpenAI returned non-JSON. Preview: ${String(outText).slice(0, 260)}`);
-    }
-    return parsed;
+  const raw = await resp.text();
+  if (!resp.ok) throw new Error(`OpenAI error ${resp.status}: ${raw.slice(0, 400)}`);
+
+  const data = raw ? JSON.parse(raw) : null;
+  const outText = collectAllAssistantText(data);
+  const parsed = safeJsonParseAny(outText);
+
+  if (!parsed) {
+    throw new Error(
+      `OpenAI returned non-JSON. Preview: ${String(outText).slice(0, 260)}`
+    );
   }
+
+  return parsed;
+}
+
 
   let parsed;
   try {
