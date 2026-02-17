@@ -806,7 +806,6 @@ fetchAirtableCaseData().catch((e) => {
     window.uiEmit({ avatarUrl: null });
   }
 });
-§
 
     // 4) Populate patient info when data arrives
     document.addEventListener("airtableDataFetched", populateAllThree);
