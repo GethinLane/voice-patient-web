@@ -160,14 +160,14 @@ function setAvatar(url) {
 
     // fade lifecycle: t goes 0→1, alpha uses sin(pi*t), then respawn
     p.t = 0;
-    p.tSpeed = 0.006 + Math.random() * 0.012;
+    p.tSpeed = 0.0015 + Math.random() * 0.0025;
 
     // delay controls “gaps” where particle is not visible
     const delayMax =
-      ORB_STATE.mode === "idle" ? 140 :
-      ORB_STATE.mode === "listening" ? 90 :
-      ORB_STATE.mode === "thinking" ? 70 :
-      55; // talking = most active
+      ORB_STATE.mode === "idle" ? 520 :
+      ORB_STATE.mode === "listening" ? 260 :
+      ORB_STATE.mode === "thinking" ? 200 :
+      160; // talking = most active
     p.delay = Math.floor(Math.random() * delayMax);
   }
 
@@ -203,24 +203,27 @@ function setAvatar(url) {
     // keep orb size constant always (no diameter pumping)
     ORB_STATE.baseScaleTarget = 0.86;
 
-    if (mode === "talking") {
-      // more in/out activity, but no overall scale-up
-      ORB_STATE.pulseTarget = 0.985 + Math.random() * 0.03;
-      ORB_STATE.pulseFrames = 10 + Math.floor(Math.random() * 10);
+        if (mode === "talking") {
+      // bigger per-particle in/out variation (still no orb scaling)
+      ORB_STATE.pulseTarget = 0.97 + Math.random() * 0.07;  // 0.97–1.04
+      ORB_STATE.pulseFrames = 8 + Math.floor(Math.random() * 10);
       return;
     }
+
 
     if (mode === "thinking") {
-      ORB_STATE.pulseTarget = 0.99 + Math.random() * 0.03;
-      ORB_STATE.pulseFrames = 16 + Math.floor(Math.random() * 14);
+      ORB_STATE.pulseTarget = 0.98 + Math.random() * 0.05;  // 0.98–1.03
+      ORB_STATE.pulseFrames = 14 + Math.floor(Math.random() * 16);
       return;
     }
 
+
     if (mode === "listening") {
-      ORB_STATE.pulseTarget = 0.995 + Math.random() * 0.01;
-      ORB_STATE.pulseFrames = 28 + Math.floor(Math.random() * 22);
+      ORB_STATE.pulseTarget = 0.99 + Math.random() * 0.03;  // 0.99–1.02
+      ORB_STATE.pulseFrames = 24 + Math.floor(Math.random() * 26);
       return;
     }
+
 
     // idle
     ORB_STATE.pulseTarget = 1;
@@ -276,6 +279,7 @@ function setAvatar(url) {
 
     if (!ORB_STATE.particles.length) createEdgeParticles();
     updateOrbDynamics();
+    ORB_STATE.tick = (ORB_STATE.tick || 0) + 1;
 
     const cx = width / 2;
     const cy = height / 2;
@@ -294,9 +298,20 @@ function setAvatar(url) {
       p.angle += p.speed * movementBoost;
 
       const pulseDelta = ORB_STATE.pulseValue - 1;
-      const radialShift = p.radialDir * pulseDelta * 0.9;
-      const effectiveNorm = p.baseRadiusNorm + radialShift;
+
+      // stronger per-particle in/out when talking
+      const pulseAmp = talking ? 2.2 : thinking ? 1.5 : listening ? 1.2 : 0.9;
+
+      // extra "bouncy" wobble using time + angle (doesn't change orb diameter)
+      const wobble =
+        Math.sin((ORB_STATE.tick || 0) * (talking ? 0.10 : 0.07) + p.angle * 4.2) *
+        (talking ? 0.020 : thinking ? 0.013 : listening ? 0.010 : 0.006);
+
+      const radialShift = p.radialDir * pulseDelta * pulseAmp;
+      const effectiveNorm = p.baseRadiusNorm + radialShift + wobble;
+
       p.radiusNorm = Math.max(0.995, Math.min(1.11, effectiveNorm));
+
 
       const radius = ringCenter * p.radiusNorm * ORB_STATE.baseScaleCurrent;
       const x = cx + Math.cos(p.angle) * radius;
@@ -308,7 +323,14 @@ function setAvatar(url) {
       const thinking = ORB_STATE.mode === "thinking";
       const listening = ORB_STATE.mode === "listening";
 
-      const twinkleFactor = idle ? 0.75 : talking ? 1.55 : (thinking ? 1.25 : (listening ? 1.05 : 1.1));
+            // MUCH slower in idle; longer life in every mode
+      const twinkleFactor =
+        idle ? 0.12 :
+        listening ? 0.35 :
+        thinking ? 0.50 :
+        talking ? 0.75 :
+        0.35;
+
 
       if (p.delay > 0) {
         p.delay -= 1;
