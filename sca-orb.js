@@ -278,13 +278,20 @@ ctx.restore();
       const pulseAmp = talking ? 2.2 : thinking ? 1.5 : listening ? 1.2 : 0.9;
 
 // NEW: organic variation — some particles respond more/less to pulse
+// Idle still moves, but much slower + smaller than other modes.
+const isIdle = ORB.mode === "idle";
+const wobbleAmpMul  = isIdle ? 0.18 : 1.0;  // 18% amplitude in idle
+const wobbleFreqMul = isIdle ? 0.25 : 1.0;  // 4x slower in idle
+
 const wobble =
-  Math.sin(ORB.tick * p.wobbleFreq + p.wobblePhase + p.angle * 3.7) * p.wobbleAmp;
+  Math.sin(ORB.tick * (p.wobbleFreq * wobbleFreqMul) + p.wobblePhase + p.angle * 3.7) *
+  (p.wobbleAmp * wobbleAmpMul);
 
 const effectiveNorm =
   p.baseRadiusNorm +
   (p.radialDir * pulseDelta * pulseAmp * p.radialAmp) +
   wobble;
+
 
 
       p.radiusNorm = Math.max(ORB_INNER_NORM, Math.min(ORB_OUTER_NORM, effectiveNorm));
