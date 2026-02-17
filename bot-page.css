@@ -449,3 +449,63 @@ body.sca-botpage #patientDataBox[data-sca-hidden="true"]{
   border: 0;
   outline: 0;
 }
+
+/*---- New Added ADditions for Glow----*/
+/* --- Premium aura behind avatar --- */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+  position: relative;
+  isolation: isolate; /* keeps glow layering predictable */
+}
+
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::before{
+  content: "";
+  position: absolute;
+  inset: -42px;               /* glow size */
+  border-radius: 50%;
+  z-index: 0;
+  background: radial-gradient(circle,
+    rgba(108,220,255,.24) 0%,
+    rgba(171,129,255,.16) 38%,
+    rgba(255,160,210,.10) 62%,
+    rgba(255,255,255,0) 76%
+  );
+  filter: blur(10px);
+  opacity: .9;
+  pointer-events: none;
+}
+/* --- Soft edge fade on avatar image --- */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 50%;
+
+  /* the magic */
+  -webkit-mask-image: radial-gradient(circle,
+    rgba(0,0,0,1) 66%,
+    rgba(0,0,0,.85) 72%,
+    rgba(0,0,0,0) 100%);
+  mask-image: radial-gradient(circle,
+    rgba(0,0,0,1) 66%,
+    rgba(0,0,0,.85) 72%,
+    rgba(0,0,0,0) 100%);
+}
+/* --- Make the bubble ring feel atmospheric --- */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
+  z-index: 2;                 /* between glow and avatar */
+  filter: blur(.6px);
+  opacity: .85;
+
+  /* fade the dots at the edges */
+  -webkit-mask-image: radial-gradient(circle,
+    rgba(0,0,0,0) 52%,
+    rgba(0,0,0,1) 62%,
+    rgba(0,0,0,1) 76%,
+    rgba(0,0,0,0) 100%);
+  mask-image: radial-gradient(circle,
+    rgba(0,0,0,0) 52%,
+    rgba(0,0,0,1) 62%,
+    rgba(0,0,0,1) 76%,
+    rgba(0,0,0,0) 100%);
+}
+
