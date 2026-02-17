@@ -350,14 +350,14 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
 
 #sca-patient-card .sca-ring{
   --glow: 0.15;
-  width: 240px; height: 240px;
+  width: 260px; height: 260px;
   border-radius: 50%;
   display:flex; justify-content:center; align-items:center;
   background: transparent;
   box-shadow: none;
   transition: box-shadow .08s linear;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 #sca-patient-card .sca-orbCanvas{
@@ -419,8 +419,8 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-  width: 380px !important;
-  height: 380px !important;
+  width: 430px !important;
+  height: 430px !important;
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{

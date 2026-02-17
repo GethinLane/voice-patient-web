@@ -144,7 +144,7 @@ function setAvatar(url) {
     for (let i = 0; i < count; i += 1) {
       const angle = Math.random() * Math.PI * 2;
       const depth = Math.random();
-      const radiusNorm = 0.9 + depth * 0.16;
+      const radiusNorm = 1.01 + depth * 0.1;
       parts.push({
         angle,
         radiusNorm,
@@ -160,20 +160,20 @@ function setAvatar(url) {
   function chooseOrbPulse() {
     const mode = ORB_STATE.mode;
     if (mode === "talking") {
-      ORB_STATE.pulseTarget = 0.88 + Math.random() * 0.26;
-      ORB_STATE.pulseFrames = 6 + Math.floor(Math.random() * 10);
+      ORB_STATE.pulseTarget = 0.96 + Math.random() * 0.1;
+      ORB_STATE.pulseFrames = 10 + Math.floor(Math.random() * 10);
       ORB_STATE.baseScaleTarget = 1;
       return;
     }
     if (mode === "thinking") {
-      ORB_STATE.pulseTarget = 0.95 + Math.random() * 0.08;
-      ORB_STATE.pulseFrames = 12 + Math.floor(Math.random() * 14);
-      ORB_STATE.baseScaleTarget = 0.9;
+      ORB_STATE.pulseTarget = 0.99 + Math.random() * 0.03;
+      ORB_STATE.pulseFrames = 18 + Math.floor(Math.random() * 16);
+      ORB_STATE.baseScaleTarget = 0.86;
       return;
     }
     ORB_STATE.pulseTarget = 1;
-    ORB_STATE.pulseFrames = 45;
-    ORB_STATE.baseScaleTarget = 0.82;
+    ORB_STATE.pulseFrames = 60;
+    ORB_STATE.baseScaleTarget = 0.86;
   }
 
   function updateOrbDynamics() {
@@ -181,8 +181,15 @@ function setAvatar(url) {
     ORB_STATE.pulseFrames -= 1;
 
     const talking = ORB_STATE.mode === "talking";
-    const pulseLerp = talking ? 0.16 : 0.05;
-    const scaleLerp = talking ? 0.11 : 0.05;
+    const idle = ORB_STATE.mode === "idle";
+    const pulseLerp = talking ? 0.08 : 0.04;
+    const scaleLerp = talking ? 0.07 : 0.04;
+
+    if (idle) {
+      ORB_STATE.pulseValue = 1;
+      ORB_STATE.baseScaleCurrent += (ORB_STATE.baseScaleTarget - ORB_STATE.baseScaleCurrent) * 0.03;
+      return;
+    }
 
     ORB_STATE.pulseValue += (ORB_STATE.pulseTarget - ORB_STATE.pulseValue) * pulseLerp;
     ORB_STATE.baseScaleCurrent += (ORB_STATE.baseScaleTarget - ORB_STATE.baseScaleCurrent) * scaleLerp;
@@ -221,20 +228,22 @@ function setAvatar(url) {
     const cx = width / 2;
     const cy = height / 2;
     const avatarRadius = Math.min(width, height) * 0.5;
-    const ringCenter = avatarRadius * 0.9;
+    const ringCenter = avatarRadius * 1.02;
 
     const talking = ORB_STATE.mode === "talking";
     const thinking = ORB_STATE.mode === "thinking";
-    const movementBoost = talking ? 1.5 : thinking ? 1.15 : 0.65;
-    const alphaBoost = talking ? 0.22 : thinking ? 0.08 : -0.06;
+    const listening = ORB_STATE.mode === "listening";
+    const idle = ORB_STATE.mode === "idle";
+    const movementBoost = idle ? 0 : talking ? 0.75 : (thinking || listening) ? 0.65 : 0.65;
+    const alphaBoost = talking ? 0.1 : (thinking || listening) ? 0.02 : -0.04;
     const tint = 112 + Math.round(40 * ORB_STATE.glow);
 
     for (const p of ORB_STATE.particles) {
       p.angle += p.speed * movementBoost;
       p.radiusNorm += p.drift * movementBoost;
 
-      if (p.radiusNorm < 0.88 || p.radiusNorm > 1.08) {
-        p.radiusNorm = 0.9 + Math.random() * 0.16;
+      if (p.radiusNorm < 0.99 || p.radiusNorm > 1.13) {
+        p.radiusNorm = 1.01 + Math.random() * 0.1;
       }
 
       const radius = ringCenter * p.radiusNorm * ORB_STATE.baseScaleCurrent * ORB_STATE.pulseValue;
@@ -244,7 +253,7 @@ function setAvatar(url) {
       let alpha = p.alpha + alphaBoost;
       alpha = Math.max(0.07, Math.min(0.92, alpha));
 
-      const dotRadius = p.size * (talking ? 1.15 : 1);
+      const dotRadius = p.size * (talking ? 1.02 : 1);
       const grad = ctx.createRadialGradient(x, y, 0, x, y, dotRadius * 3.6);
       grad.addColorStop(0, `rgba(20, 101, 192, ${alpha})`);
       grad.addColorStop(0.6, `rgba(85, ${tint}, 230, ${alpha * 0.55})`);
@@ -272,6 +281,11 @@ function setAvatar(url) {
     if (d.state) {
       setBadge(d.state);
       ORB_STATE.mode = d.state;
+      chooseOrbPulse();
+    }
+
+    if (!d.state && typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) {
+      ORB_STATE.mode = "idle";
       chooseOrbPulse();
     }
     if (typeof d.glow === "number") {
