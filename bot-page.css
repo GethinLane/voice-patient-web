@@ -562,3 +562,20 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
   z-index: 2;          /* mist + blobs */
   pointer-events: none;
 }
+/* Ensure the ring is a stacking context */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+  position: relative !important;
+}
+
+/* Put the image behind */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* Put the canvas (mist + blobs) above the image */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
+  position: absolute !important;
+  z-index: 5 !important;
+  pointer-events: none;
+}
