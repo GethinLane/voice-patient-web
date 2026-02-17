@@ -55,6 +55,13 @@
     p.radiusNorm = radiusNorm;
 
     p.radialDir = Math.random() < 0.5 ? -1 : 1;
+    // NEW: per-particle movement personality (makes talking organic)
+    // Most particles move modestly, a few move a lot.
+    const r = Math.random();
+    p.radialAmp = 0.55 + (r * r) * 1.75;     // ~0.55–2.30 (skewed toward smaller)
+    p.wobbleAmp = 0.004 + Math.random() * 0.018; // 0.004–0.022
+    p.wobbleFreq = 0.05 + Math.random() * 0.10;  // per-particle speed
+    p.wobblePhase = Math.random() * Math.PI * 2;
 
     p.speed = 0.0008 + Math.random() * 0.002;
     p.size = 1.2 + Math.random() * 1.8;
@@ -270,7 +277,15 @@ ctx.restore();
       const pulseDelta = ORB.pulseValue - 1;
       const pulseAmp = talking ? 2.2 : thinking ? 1.5 : listening ? 1.2 : 0.9;
 
-const effectiveNorm = p.baseRadiusNorm + (p.radialDir * pulseDelta * pulseAmp);
+// NEW: organic variation — some particles respond more/less to pulse
+const wobble =
+  Math.sin(ORB.tick * p.wobbleFreq + p.wobblePhase + p.angle * 3.7) * p.wobbleAmp;
+
+const effectiveNorm =
+  p.baseRadiusNorm +
+  (p.radialDir * pulseDelta * pulseAmp * p.radialAmp) +
+  wobble;
+
 
       p.radiusNorm = Math.max(ORB_INNER_NORM, Math.min(ORB_OUTER_NORM, effectiveNorm));
 
