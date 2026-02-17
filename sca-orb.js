@@ -27,15 +27,33 @@
     animationId: null,
     particles: []
   };
+   
+  // --- Spread controls ---
+  const ORB_INNER_NORM  = 0.92;   // allow slightly inside
+  const ORB_CENTER_NORM = 1.05;   // where most particles cluster
+  const ORB_OUTER_NORM  = 1.20;   // allow slightly outside
+  const ORB_CENTER_BIAS = 2.6;    // higher = more clustered around center
 
   function respawn(p) {
     const angle = Math.random() * Math.PI * 2;
-    const depth = Math.random();
-    const radiusNorm = 1.00 + depth * 0.10; // 1.00–1.10
+
+    // biased-to-center sampling (more particles near ORB_CENTER_NORM)
+    const u = Math.random();
+    const v = Math.random();
+    const mix = Math.pow((u + v) * 0.5, ORB_CENTER_BIAS);
+
+    let radiusNorm;
+    if (Math.random() < 0.55) {
+      // slightly more likely to sit on/just outside the center band
+      radiusNorm = ORB_CENTER_NORM + mix * (ORB_OUTER_NORM - ORB_CENTER_NORM);
+    } else {
+      radiusNorm = ORB_CENTER_NORM - mix * (ORB_CENTER_NORM - ORB_INNER_NORM);
+    }
 
     p.angle = angle;
     p.baseRadiusNorm = radiusNorm;
     p.radiusNorm = radiusNorm;
+
     p.radialDir = Math.random() < 0.5 ? -1 : 1;
 
     p.speed = 0.0008 + Math.random() * 0.002;
@@ -254,7 +272,7 @@ ctx.restore();
 
 const effectiveNorm = p.baseRadiusNorm + (p.radialDir * pulseDelta * pulseAmp);
 
-      p.radiusNorm = Math.max(0.995, Math.min(1.11, effectiveNorm));
+      p.radiusNorm = Math.max(ORB_INNER_NORM, Math.min(ORB_OUTER_NORM, effectiveNorm));
 
       const radius = ringRadius * p.radiusNorm * ORB.baseScale;
       const x = cx + Math.cos(p.angle) * radius;
@@ -271,7 +289,15 @@ if (alpha <= 0.001) continue;
       // size swell (talking + lifecycle)
       const pulseSize = 1 + Math.min(0.55, Math.abs(pulseDelta) * (talking ? 14 : 8));
       const lifeSize = 0.78 + 0.22 * lifeAlpha;
-      const dotRadius = p.size * pulseSize * lifeSize;
+
+      // NEW: size falloff — smaller when farther from the center band
+      const distFromCenter = Math.abs(p.radiusNorm - ORB_CENTER_NORM);
+      const spreadHalf = Math.max(0.0001, (ORB_OUTER_NORM - ORB_INNER_NORM) * 0.5);
+      const t = Math.min(1, distFromCenter / spreadHalf);  // 0=center, 1=extremes
+      const sizeFalloff = 1 - (0.45 * t);                  // 45% smaller at extremes
+
+      const dotRadius = p.size * pulseSize * lifeSize * sizeFalloff;
+
 
       const grad = ctx.createRadialGradient(x, y, 0, x, y, dotRadius * 3.6);
       grad.addColorStop(0, `rgba(20, 101, 192, ${alpha})`);
