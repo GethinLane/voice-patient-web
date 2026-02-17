@@ -277,6 +277,31 @@ function setAvatar(url) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
+     // ---- MIST DONUT (light blue -> near-white -> transparent) ----
+const mistInner = ringCenter * 0.76;  // transparent inside (keeps face clean)
+const mistMid   = ringCenter * 0.98;  // peak brightness around blob area
+const mistOuter = ringCenter * 1.22;  // fade out beyond blobs
+
+const mist = ctx.createRadialGradient(cx, cy, mistInner, cx, cy, mistOuter);
+
+// Blue haze ramping up
+mist.addColorStop(0.00, "rgba(255,255,255,0)");        // fully transparent
+mist.addColorStop(0.42, "rgba(180,225,255,0.10)");     // pale blue
+mist.addColorStop(0.58, "rgba(180,225,255,0.18)");     // stronger pale blue
+
+// Near-white highlight (this is what makes it feel “misty/light”)
+mist.addColorStop(0.70, "rgba(255,255,255,0.22)");     // soft white bloom
+mist.addColorStop(0.78, "rgba(255,255,255,0.14)");     // taper
+
+// Fade out
+mist.addColorStop(1.00, "rgba(255,255,255,0)");
+
+ctx.save();
+ctx.fillStyle = mist;
+ctx.fillRect(0, 0, width, height);
+ctx.restore();
+
+
     if (!ORB_STATE.particles.length) createEdgeParticles();
     updateOrbDynamics();
     ORB_STATE.tick = (ORB_STATE.tick || 0) + 1;
