@@ -219,7 +219,7 @@ const tWhite = (whitePeak - inner) / (outer - inner);
 
 mist.addColorStop(0.00, "rgba(255,255,255,0)");
 // #d6dde9 = rgb(214,221,233)
-mist.addColorStop(Math.max(0, Math.min(1, tBlue)),  "rgba(214,221,233,0.98)");
+mist.addColorStop(Math.max(0, Math.min(1, tBlue)),  "rgba(214,221,233,1)");
 mist.addColorStop(Math.max(0, Math.min(1, tWhite)), "rgba(255,255,255,0.88)");
 
 mist.addColorStop(1.00, "rgba(255,255,255,0)");
