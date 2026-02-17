@@ -280,7 +280,7 @@ ctx.restore();
 // NEW: organic variation — some particles respond more/less to pulse
 // Idle still moves, but much slower + smaller than other modes.
 const isIdle = ORB.mode === "idle";
-const wobbleAmpMul  = isIdle ? 0.18 : 1.0;  // 18% amplitude in idle
+const wobbleAmpMul  = isIdle ? 0.7 : 1.0;  // 70% amplitude in idle
 const wobbleFreqMul = isIdle ? 0.25 : 1.0;  // 4x slower in idle
 
 const wobble =
