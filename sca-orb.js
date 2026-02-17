@@ -29,7 +29,7 @@
   };
    
   // --- Spread controls ---
-  const ORB_INNER_NORM  = 0.8;   // allow slightly inside
+  const ORB_INNER_NORM  = 0.85;   // allow slightly inside
   const ORB_CENTER_NORM = 1.05;   // where most particles cluster
   const ORB_OUTER_NORM  = 1.20;   // allow slightly outside
   const ORB_CENTER_BIAS = 2.6;    // higher = more clustered around center
@@ -316,7 +316,7 @@ if (alpha <= 0.001) continue;
       const distFromCenter = Math.abs(p.radiusNorm - ORB_CENTER_NORM);
       const spreadHalf = Math.max(0.0001, (ORB_OUTER_NORM - ORB_INNER_NORM) * 0.5);
       const t = Math.min(1, distFromCenter / spreadHalf);  // 0=center, 1=extremes
-      const sizeFalloff = 1 - (0.45 * t);                  // 45% smaller at extremes
+      const sizeFalloff = 1 - (0.75 * t);                  // 45% smaller at extremes
 
       const dotRadius = p.size * pulseSize * lifeSize * sizeFalloff;
 
