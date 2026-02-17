@@ -192,6 +192,33 @@ if (ringRect && canvasRect) {
       talking ? 0.75 :
       0.33;
 
+     // ---- HARD MIST DONUT (blue -> white) that fades the IMAGE ----
+// Draw this BEFORE particles so blobs stay crisp on top.
+
+const inner = ringRadius * 0.78;   // start of fade (center stays clear)
+const mid1  = ringRadius * 0.92;   // blue builds
+const mid2  = ringRadius * 1.04;   // white peak
+const outer = ringRadius * 1.22;   // fade out
+
+const mist = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+
+// Center fully clear
+mist.addColorStop(0.00, "rgba(255,255,255,0)");
+
+// Strong “real” overlay so it visibly fades the photo
+mist.addColorStop((mid1 - inner) / (outer - inner), "rgba(170,220,255,0.55)"); // light blue
+mist.addColorStop((mid2 - inner) / (outer - inner), "rgba(255,255,255,0.72)"); // white wash
+
+// Fade out beyond ring
+mist.addColorStop(1.00, "rgba(255,255,255,0)");
+
+ctx.save();
+ctx.globalCompositeOperation = "source-over";
+ctx.fillStyle = mist;
+ctx.fillRect(0, 0, width, height);
+ctx.restore();
+
+     
     for (const p of ORB.particles) {
       p.angle += p.speed * movementBoost;
 
