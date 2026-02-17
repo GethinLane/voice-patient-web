@@ -208,8 +208,8 @@ const edge = avatarRadius;
 
 // These are tuned so the strongest blue lands right on the avatar edge.
 const inner = edge * 0.74;         // how far into the face the fade starts
-const bluePeak = edge * 0.90;      // move outward if you want it bigger (try 1.06)
-const whitePeak = edge * 1.0;     // white wash just outside the blue
+const bluePeak = edge * 1.0;      // move outward if you want it bigger (try 1.06)
+const whitePeak = edge * 1.15;     // white wash just outside the blue
 const outer = edge * 1.55;         // overall size of halo; increase to make it larger
 
 const mist = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
