@@ -79,31 +79,50 @@ function ensureCanvas(ring) {
     let color = { r: 140, g: 196, b: 242 };
     let colorTarget = { r: 140, g: 196, b: 242 };
 
-    function resize() {
-const ringRect = canvas.parentElement.getBoundingClientRect();
-const avatar = canvas.parentElement.querySelector(".sca-avatar");
-const avatarRect = avatar ? avatar.getBoundingClientRect() : ringRect;
+function resize() {
+  const ring = canvas.parentElement;
+  const avatar = ring.querySelector(".sca-avatar");
 
-// Make orb significantly bigger than avatar
-const size = Math.max(avatarRect.width, avatarRect.height) * 1.6;
+  if (!avatar) return;
 
-      const dpr = window.devicePixelRatio || 1;
+  const ringRect = ring.getBoundingClientRect();
+  const avatarRect = avatar.getBoundingClientRect();
 
-      canvas.width = size * dpr;
-      canvas.height = size * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Orb size relative to avatar
+  const baseSize = Math.max(avatarRect.width, avatarRect.height);
 
-      W = size;
-      H = size;
-      CX = W / 2;
-      CY = H / 2;
+  const orbSize = baseSize * 1.7; // increase/decrease this multiplier
 
-      ORB_RADIUS = W / 2;
-      INNER_MAX = ORB_RADIUS * 0.8;
-      MAX_RADIUS = ORB_RADIUS * (200 / 150);
+  // Set canvas CSS size explicitly
+  canvas.style.width = orbSize + "px";
+  canvas.style.height = orbSize + "px";
 
-      createParticles();
-    }
+  // Center relative to ring
+  const centerX = avatarRect.left + avatarRect.width / 2 - ringRect.left;
+  const centerY = avatarRect.top + avatarRect.height / 2 - ringRect.top;
+
+  canvas.style.left = centerX + "px";
+  canvas.style.top = centerY + "px";
+  canvas.style.transform = "translate(-50%, -50%)";
+
+  // HiDPI scaling
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = orbSize * dpr;
+  canvas.height = orbSize * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  W = orbSize;
+  H = orbSize;
+  CX = W / 2;
+  CY = H / 2;
+
+  ORB_RADIUS = W / 2;
+  INNER_MAX = ORB_RADIUS * 0.8;
+  MAX_RADIUS = ORB_RADIUS * (200 / 150);
+
+  createParticles();
+}
+
 
     function createParticles() {
       particles = [];
