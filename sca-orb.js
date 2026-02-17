@@ -44,7 +44,7 @@
 
     // lifecycle (longer)
     p.t = 0;
-    p.tSpeed = 0.0015 + Math.random() * 0.0025;
+    p.tSpeed = 0.004 + Math.random() * 0.0025;
 
     // delay (idle very calm)
     const delayMax =
@@ -153,11 +153,25 @@
     if (!ORB.particles.length) seedParticles();
     updateDynamics();
 
-    const cx = width / 2;
-    const cy = height / 2;
+// --- Anchor orb to the ACTUAL ring circle (not the canvas size) ---
+const ringEl = document.getElementById("sca-ring");
+const ringRect = ringEl?.getBoundingClientRect();
+const canvasRect = canvas.getBoundingClientRect();
 
-    // ✅ ring radius matches the avatar circle (no overshoot)
-    const ringRadius = Math.min(width, height) * 0.5;
+// Fallback if something is missing
+let cx = width / 2;
+let cy = height / 2;
+let ringRadius = Math.min(width, height) * 0.5;
+
+if (ringRect && canvasRect) {
+  // centre of the ring, expressed in canvas local coords
+  cx = (ringRect.left + ringRect.width / 2) - canvasRect.left;
+  cy = (ringRect.top + ringRect.height / 2) - canvasRect.top;
+
+  // true circle radius is the ring size, not the canvas size (canvas includes bleed)
+  ringRadius = ringRect.width / 2;
+}
+
 
     const talking = ORB.mode === "talking";
     const thinking = ORB.mode === "thinking";
@@ -198,11 +212,8 @@
       const pulseDelta = ORB.pulseValue - 1;
       const pulseAmp = talking ? 2.2 : thinking ? 1.5 : listening ? 1.2 : 0.9;
 
-      const wobble =
-        Math.sin(ORB.tick * (talking ? 0.10 : 0.07) + p.angle * 4.2) *
-        (talking ? 0.020 : thinking ? 0.013 : listening ? 0.010 : 0.006);
+const effectiveNorm = p.baseRadiusNorm + (p.radialDir * pulseDelta * pulseAmp);
 
-      const effectiveNorm = p.baseRadiusNorm + (p.radialDir * pulseDelta * pulseAmp) + wobble;
       p.radiusNorm = Math.max(0.995, Math.min(1.11, effectiveNorm));
 
       const radius = ringRadius * p.radiusNorm * ORB.baseScale;
@@ -210,8 +221,12 @@
       const y = cy + Math.sin(p.angle) * radius;
 
       // alpha
-      let alpha = (p.alpha * lifeAlpha) + alphaBoost;
-      alpha = Math.max(0.02, Math.min(0.92, alpha));
+let alpha = (p.alpha * lifeAlpha) + alphaBoost;
+
+// allow true fade-out to invisible at end of life
+alpha = Math.max(0.0, Math.min(0.92, alpha));
+if (alpha <= 0.001) continue;
+
 
       // size swell (talking + lifecycle)
       const pulseSize = 1 + Math.min(0.55, Math.abs(pulseDelta) * (talking ? 14 : 8));
