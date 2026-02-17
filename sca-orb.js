@@ -172,6 +172,16 @@ if (ringRect && canvasRect) {
   ringRadius = ringRect.width / 2;
 }
 
+     // --- NEW: measure the ACTUAL avatar circle radius ---
+const avatarEl = document.querySelector("#sca-ring .sca-avatar");
+const avatarRect = avatarEl?.getBoundingClientRect();
+
+let avatarRadius = ringRadius * 0.5; // fallback guess
+if (avatarRect) {
+  avatarRadius = avatarRect.width / 2;
+}
+
+
 
     const talking = ORB.mode === "talking";
     const thinking = ORB.mode === "thinking";
@@ -192,24 +202,24 @@ if (ringRect && canvasRect) {
       talking ? 0.75 :
       0.33;
 
-     // ---- HARD MIST DONUT (blue -> white) that fades the IMAGE ----
-// Draw this BEFORE particles so blobs stay crisp on top.
+// ---- MIST DONUT tuned so BLUE peak sits on AVATAR edge ----
+// Draw BEFORE particles so blobs stay crisp on top.
+const edge = avatarRadius;
 
-const inner = ringRadius * 0.78;   // start of fade (center stays clear)
-const mid1  = ringRadius * 0.92;   // blue builds
-const mid2  = ringRadius * 1.04;   // white peak
-const outer = ringRadius * 1.22;   // fade out
+// These are tuned so the strongest blue lands right on the avatar edge.
+const inner = edge * 0.74;         // how far into the face the fade starts
+const bluePeak = edge * 1.04;      // move outward if you want it bigger (try 1.06)
+const whitePeak = edge * 1.14;     // white wash just outside the blue
+const outer = edge * 1.55;         // overall size of halo; increase to make it larger
 
 const mist = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
 
-// Center fully clear
+const tBlue  = (bluePeak  - inner) / (outer - inner);
+const tWhite = (whitePeak - inner) / (outer - inner);
+
 mist.addColorStop(0.00, "rgba(255,255,255,0)");
-
-// Strong “real” overlay so it visibly fades the photo
-mist.addColorStop((mid1 - inner) / (outer - inner), "rgba(170,220,255,0.55)"); // light blue
-mist.addColorStop((mid2 - inner) / (outer - inner), "rgba(255,255,255,0.72)"); // white wash
-
-// Fade out beyond ring
+mist.addColorStop(Math.max(0, Math.min(1, tBlue)),  "rgba(170,220,255,0.70)");
+mist.addColorStop(Math.max(0, Math.min(1, tWhite)), "rgba(255,255,255,0.85)");
 mist.addColorStop(1.00, "rgba(255,255,255,0)");
 
 ctx.save();
@@ -217,6 +227,7 @@ ctx.globalCompositeOperation = "source-over";
 ctx.fillStyle = mist;
 ctx.fillRect(0, 0, width, height);
 ctx.restore();
+
 
      
     for (const p of ORB.particles) {
