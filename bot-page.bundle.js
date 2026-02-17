@@ -144,7 +144,7 @@ function setAvatar(url) {
     for (let i = 0; i < count; i += 1) {
       const angle = Math.random() * Math.PI * 2;
       const depth = Math.random();
-      const radiusNorm = 0.9 + depth * 0.22;
+      const radiusNorm = 0.9 + depth * 0.16;
       parts.push({
         angle,
         radiusNorm,
@@ -220,9 +220,8 @@ function setAvatar(url) {
 
     const cx = width / 2;
     const cy = height / 2;
-    const avatarRadius = Math.min(width, height) * 0.38;
-    const ringThickness = Math.min(width, height) * 0.11;
-    const ringCenter = avatarRadius + ringThickness * 0.55;
+    const avatarRadius = Math.min(width, height) * 0.5;
+    const ringCenter = avatarRadius * 0.9;
 
     const talking = ORB_STATE.mode === "talking";
     const thinking = ORB_STATE.mode === "thinking";
@@ -234,8 +233,8 @@ function setAvatar(url) {
       p.angle += p.speed * movementBoost;
       p.radiusNorm += p.drift * movementBoost;
 
-      if (p.radiusNorm < 0.88 || p.radiusNorm > 1.15) {
-        p.radiusNorm = 0.9 + Math.random() * 0.22;
+      if (p.radiusNorm < 0.88 || p.radiusNorm > 1.08) {
+        p.radiusNorm = 0.9 + Math.random() * 0.16;
       }
 
       const radius = ringCenter * p.radiusNorm * ORB_STATE.baseScaleCurrent * ORB_STATE.pulseValue;
