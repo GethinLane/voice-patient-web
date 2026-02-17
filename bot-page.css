@@ -545,3 +545,20 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::before{
     rgba(0,0,0,1) 78%,
     rgba(0,0,0,0) 100%);
 }
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+  position: relative;
+}
+
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
+  position: relative;
+  z-index: 1;          /* image */
+}
+
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
+  position: absolute;
+  inset: calc(var(--orb-bleed) * -1);
+  width: calc(100% + (var(--orb-bleed) * 2));
+  height: calc(100% + (var(--orb-bleed) * 2));
+  z-index: 2;          /* mist + blobs */
+  pointer-events: none;
+}
