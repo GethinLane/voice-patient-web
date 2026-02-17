@@ -129,54 +129,104 @@ function setAvatar(url) {
   const ORB_STATE = {
     mode: "idle",
     glow: 0.15,
+
+    // per-particle in/out wobble (NOT whole-orb scaling)
     pulseValue: 1,
     pulseTarget: 1,
     pulseFrames: 0,
-    baseScaleCurrent: 0.82,
-    baseScaleTarget: 0.82,
+
+    // keep orb size constant across states
+    baseScaleCurrent: 0.86,
+    baseScaleTarget: 0.86,
+
     animationId: null,
-    particles: []
+    particles: [],
+    lastMode: "idle"
   };
 
+  function respawnEdgeParticle(p) {
+    const angle = Math.random() * Math.PI * 2;
+    const depth = Math.random();
+    const radiusNorm = 1.01 + depth * 0.1;
+
+    p.angle = angle;
+    p.radiusNorm = radiusNorm;
+    p.baseRadiusNorm = radiusNorm;
+    p.radialDir = Math.random() < 0.5 ? -1 : 1;
+
+    p.speed = 0.0008 + Math.random() * 0.002;
+    p.size = 1.2 + Math.random() * 1.8;
+    p.alpha = 0.2 + Math.random() * 0.55;
+
+    // fade lifecycle: t goes 0→1, alpha uses sin(pi*t), then respawn
+    p.t = 0;
+    p.tSpeed = 0.006 + Math.random() * 0.012;
+
+    // delay controls “gaps” where particle is not visible
+    const delayMax =
+      ORB_STATE.mode === "idle" ? 140 :
+      ORB_STATE.mode === "listening" ? 90 :
+      ORB_STATE.mode === "thinking" ? 70 :
+      55; // talking = most active
+    p.delay = Math.floor(Math.random() * delayMax);
+  }
+
+  function kickOrbParticles() {
+    // on state change: force a visible “re-seed” so blobs start appearing immediately
+    const parts = ORB_STATE.particles || [];
+    for (let i = 0; i < parts.length; i += 1) {
+      if (Math.random() < 0.35) {
+        parts[i].delay = Math.floor(Math.random() * 8);
+        parts[i].t = Math.random() * 0.25;
+      }
+    }
+  }
+
+   
   function createEdgeParticles() {
     const count = 220;
     const parts = [];
     for (let i = 0; i < count; i += 1) {
-      const angle = Math.random() * Math.PI * 2;
-      const depth = Math.random();
-      const radiusNorm = 1.01 + depth * 0.1;
-      const radialDir = Math.random() < 0.5 ? -1 : 1;
-      parts.push({
-        angle,
-        radiusNorm,
-        baseRadiusNorm: radiusNorm,
-        radialDir,
-        speed: 0.0008 + Math.random() * 0.002,
-        size: 1.2 + Math.random() * 1.8,
-        alpha: 0.2 + Math.random() * 0.55
-      });
+      const p = {};
+      respawnEdgeParticle(p);
+      // start staggered so they don’t all appear at once
+      p.t = Math.random();
+      parts.push(p);
     }
     ORB_STATE.particles = parts;
   }
 
+
   function chooseOrbPulse() {
     const mode = ORB_STATE.mode;
+
+    // keep orb size constant always (no diameter pumping)
+    ORB_STATE.baseScaleTarget = 0.86;
+
     if (mode === "talking") {
+      // more in/out activity, but no overall scale-up
       ORB_STATE.pulseTarget = 0.985 + Math.random() * 0.03;
-      ORB_STATE.pulseFrames = 12 + Math.floor(Math.random() * 10);
-      ORB_STATE.baseScaleTarget = 1;
+      ORB_STATE.pulseFrames = 10 + Math.floor(Math.random() * 10);
       return;
     }
+
     if (mode === "thinking") {
       ORB_STATE.pulseTarget = 0.99 + Math.random() * 0.03;
-      ORB_STATE.pulseFrames = 18 + Math.floor(Math.random() * 16);
-      ORB_STATE.baseScaleTarget = 0.86;
+      ORB_STATE.pulseFrames = 16 + Math.floor(Math.random() * 14);
       return;
     }
+
+    if (mode === "listening") {
+      ORB_STATE.pulseTarget = 0.995 + Math.random() * 0.01;
+      ORB_STATE.pulseFrames = 28 + Math.floor(Math.random() * 22);
+      return;
+    }
+
+    // idle
     ORB_STATE.pulseTarget = 1;
     ORB_STATE.pulseFrames = 60;
-    ORB_STATE.baseScaleTarget = 0.86;
   }
+
 
   function updateOrbDynamics() {
     if (ORB_STATE.pulseFrames <= 0) chooseOrbPulse();
@@ -252,8 +302,30 @@ function setAvatar(url) {
       const x = cx + Math.cos(p.angle) * radius;
       const y = cy + Math.sin(p.angle) * radius;
 
-      let alpha = p.alpha + alphaBoost;
-      alpha = Math.max(0.07, Math.min(0.92, alpha));
+      // --- fade lifecycle: come/go even when not rotating ---
+      const idle = ORB_STATE.mode === "idle";
+      const talking = ORB_STATE.mode === "talking";
+      const thinking = ORB_STATE.mode === "thinking";
+      const listening = ORB_STATE.mode === "listening";
+
+      const twinkleFactor = idle ? 0.75 : talking ? 1.55 : (thinking ? 1.25 : (listening ? 1.05 : 1.1));
+
+      if (p.delay > 0) {
+        p.delay -= 1;
+        continue; // not visible yet
+      }
+
+      p.t += p.tSpeed * twinkleFactor;
+      if (p.t >= 1) {
+        respawnEdgeParticle(p);
+        continue;
+      }
+
+      const lifeAlpha = Math.sin(Math.PI * p.t); // 0 → 1 → 0
+
+      let alpha = (p.alpha * lifeAlpha) + alphaBoost;
+      alpha = Math.max(0.02, Math.min(0.92, alpha));
+
 
       const dotRadius = p.size * (talking ? 0.98 : 1);
       const grad = ctx.createRadialGradient(x, y, 0, x, y, dotRadius * 3.6);
@@ -282,9 +354,16 @@ function setAvatar(url) {
     if (d.status) setStatus(d.status);
     if (d.state) {
       setBadge(d.state);
-      ORB_STATE.mode = d.state;
+
+      const nextMode = d.state;
+      const changed = nextMode !== ORB_STATE.mode;
+
+      ORB_STATE.mode = nextMode;
       chooseOrbPulse();
+
+      if (changed) kickOrbParticles();
     }
+
 
     if (!d.state && typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) {
       ORB_STATE.mode = "idle";
