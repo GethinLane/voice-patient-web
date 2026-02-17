@@ -208,8 +208,8 @@ const edge = avatarRadius;
 
 // These are tuned so the strongest blue lands right on the avatar edge.
 const inner = edge * 0.74;         // how far into the face the fade starts
-const bluePeak = edge * 1.04;      // move outward if you want it bigger (try 1.06)
-const whitePeak = edge * 1.14;     // white wash just outside the blue
+const bluePeak = edge * 0.90;      // move outward if you want it bigger (try 1.06)
+const whitePeak = edge * 1.0;     // white wash just outside the blue
 const outer = edge * 1.55;         // overall size of halo; increase to make it larger
 
 const mist = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
@@ -218,8 +218,10 @@ const tBlue  = (bluePeak  - inner) / (outer - inner);
 const tWhite = (whitePeak - inner) / (outer - inner);
 
 mist.addColorStop(0.00, "rgba(255,255,255,0)");
-mist.addColorStop(Math.max(0, Math.min(1, tBlue)),  "rgba(170,220,255,0.70)");
-mist.addColorStop(Math.max(0, Math.min(1, tWhite)), "rgba(255,255,255,0.85)");
+// #d6dde9 = rgb(214,221,233)
+mist.addColorStop(Math.max(0, Math.min(1, tBlue)),  "rgba(214,221,233,0.78)");
+mist.addColorStop(Math.max(0, Math.min(1, tWhite)), "rgba(255,255,255,0.88)");
+
 mist.addColorStop(1.00, "rgba(255,255,255,0)");
 
 ctx.save();
