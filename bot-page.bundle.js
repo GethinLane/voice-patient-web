@@ -60,6 +60,7 @@
 
         <div class="sca-avatarWrap">
           <div class="sca-ring" id="sca-ring">
+            <canvas id="sca-orb-canvas" class="sca-orbCanvas" width="500" height="500" aria-hidden="true"></canvas>
             <div class="sca-avatar">
               <img id="sca-avatar-img"
      alt=""
@@ -124,15 +125,160 @@ function setAvatar(url) {
   }
 }
 
+  // ---------------- Orb edge animation ----------------
+  const ORB_STATE = {
+    mode: "idle",
+    glow: 0.15,
+    pulseValue: 1,
+    pulseTarget: 1,
+    pulseFrames: 0,
+    baseScaleCurrent: 0.82,
+    baseScaleTarget: 0.82,
+    animationId: null,
+    particles: []
+  };
 
+  function createEdgeParticles() {
+    const count = 220;
+    const parts = [];
+    for (let i = 0; i < count; i += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const depth = Math.random();
+      const radiusNorm = 0.9 + depth * 0.22;
+      parts.push({
+        angle,
+        radiusNorm,
+        speed: 0.0008 + Math.random() * 0.002,
+        drift: (Math.random() - 0.5) * 0.00075,
+        size: 1.2 + Math.random() * 1.8,
+        alpha: 0.2 + Math.random() * 0.55
+      });
+    }
+    ORB_STATE.particles = parts;
+  }
 
+  function chooseOrbPulse() {
+    const mode = ORB_STATE.mode;
+    if (mode === "talking") {
+      ORB_STATE.pulseTarget = 0.88 + Math.random() * 0.26;
+      ORB_STATE.pulseFrames = 6 + Math.floor(Math.random() * 10);
+      ORB_STATE.baseScaleTarget = 1;
+      return;
+    }
+    if (mode === "thinking") {
+      ORB_STATE.pulseTarget = 0.95 + Math.random() * 0.08;
+      ORB_STATE.pulseFrames = 12 + Math.floor(Math.random() * 14);
+      ORB_STATE.baseScaleTarget = 0.9;
+      return;
+    }
+    ORB_STATE.pulseTarget = 1;
+    ORB_STATE.pulseFrames = 45;
+    ORB_STATE.baseScaleTarget = 0.82;
+  }
+
+  function updateOrbDynamics() {
+    if (ORB_STATE.pulseFrames <= 0) chooseOrbPulse();
+    ORB_STATE.pulseFrames -= 1;
+
+    const talking = ORB_STATE.mode === "talking";
+    const pulseLerp = talking ? 0.16 : 0.05;
+    const scaleLerp = talking ? 0.11 : 0.05;
+
+    ORB_STATE.pulseValue += (ORB_STATE.pulseTarget - ORB_STATE.pulseValue) * pulseLerp;
+    ORB_STATE.baseScaleCurrent += (ORB_STATE.baseScaleTarget - ORB_STATE.baseScaleCurrent) * scaleLerp;
+  }
+
+  function drawOrbFrame() {
+    const canvas = $("sca-orb-canvas");
+    if (!canvas) {
+      ORB_STATE.animationId = null;
+      return;
+    }
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      ORB_STATE.animationId = null;
+      return;
+    }
+
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const width = canvas.clientWidth || 500;
+    const height = canvas.clientHeight || 500;
+
+    const nextW = Math.round(width * dpr);
+    const nextH = Math.round(height * dpr);
+    if (canvas.width !== nextW || canvas.height !== nextH) {
+      canvas.width = nextW;
+      canvas.height = nextH;
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    if (!ORB_STATE.particles.length) createEdgeParticles();
+    updateOrbDynamics();
+
+    const cx = width / 2;
+    const cy = height / 2;
+    const avatarRadius = Math.min(width, height) * 0.38;
+    const ringThickness = Math.min(width, height) * 0.11;
+    const ringCenter = avatarRadius + ringThickness * 0.55;
+
+    const talking = ORB_STATE.mode === "talking";
+    const thinking = ORB_STATE.mode === "thinking";
+    const movementBoost = talking ? 1.5 : thinking ? 1.15 : 0.65;
+    const alphaBoost = talking ? 0.22 : thinking ? 0.08 : -0.06;
+    const tint = 112 + Math.round(40 * ORB_STATE.glow);
+
+    for (const p of ORB_STATE.particles) {
+      p.angle += p.speed * movementBoost;
+      p.radiusNorm += p.drift * movementBoost;
+
+      if (p.radiusNorm < 0.88 || p.radiusNorm > 1.15) {
+        p.radiusNorm = 0.9 + Math.random() * 0.22;
+      }
+
+      const radius = ringCenter * p.radiusNorm * ORB_STATE.baseScaleCurrent * ORB_STATE.pulseValue;
+      const x = cx + Math.cos(p.angle) * radius;
+      const y = cy + Math.sin(p.angle) * radius;
+
+      let alpha = p.alpha + alphaBoost;
+      alpha = Math.max(0.07, Math.min(0.92, alpha));
+
+      const dotRadius = p.size * (talking ? 1.15 : 1);
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, dotRadius * 3.6);
+      grad.addColorStop(0, `rgba(20, 101, 192, ${alpha})`);
+      grad.addColorStop(0.6, `rgba(85, ${tint}, 230, ${alpha * 0.55})`);
+      grad.addColorStop(1, "rgba(160, 210, 255, 0)");
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, dotRadius * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ORB_STATE.animationId = requestAnimationFrame(drawOrbFrame);
+  }
+
+  function startOrbAnimation() {
+    if (ORB_STATE.animationId) return;
+    chooseOrbPulse();
+    ORB_STATE.animationId = requestAnimationFrame(drawOrbFrame);
+  }
 
   // Listen for voice-patient.js updates
   window.addEventListener("vp:ui", (e) => {
     const d = e.detail || {};
     if (d.status) setStatus(d.status);
-    if (d.state) setBadge(d.state);
-    if (typeof d.glow === "number") setGlow(d.glow);
+    if (d.state) {
+      setBadge(d.state);
+      ORB_STATE.mode = d.state;
+      chooseOrbPulse();
+    }
+    if (typeof d.glow === "number") {
+      setGlow(d.glow);
+      ORB_STATE.glow = clamp01(d.glow);
+    }
   });
 
   // ---------------- bot-page-ui shell + accordion ----------------
@@ -530,6 +676,7 @@ function setAvatar(url) {
   function boot() {
     // 1) Mount patient card early so avatar can be set
     mountPatientCard();
+    startOrbAnimation();
 
     // 2) Build shell & move nodes
     mountPageShell();
