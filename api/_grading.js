@@ -204,21 +204,22 @@ export async function gradeTranscriptWithIndicators({
     application: marking.application,
   };
 
-  const outputSchemaHint = {
-    dg_pos_scores: ["0|1|2"],
-    dg_neg_severity: ["0|1|2"],
-    cm_pos_scores: ["0|1|2"],
-    cm_neg_severity: ["0|1|2"],
-    rto_pos_scores: ["0|1|2"],
-    rto_neg_severity: ["0|1|2"],
-    app_scores: ["0|1|2"],
-    narrative: {
-      dg: { paragraph: "string", example_phrases: ["string"] },
-      cm: { paragraph: "string", example_phrases: ["string"] },
-      rto: { paragraph: "string", example_phrases: ["string"] },
-      overall: { paragraph: "string", priorities_next_time: ["string"] },
-    },
-  };
+const outputSchemaHint = {
+  dg_pos_scores: ["0|1|2"],
+  dg_neg_severity: ["0|1|2"],
+  cm_pos_scores: ["0|1|2"],
+  cm_neg_severity: ["0|1|2"],
+  rto_pos_scores: ["0|1|2"],
+  rto_neg_severity: ["0|1|2"],
+  app_scores: ["0|1|2"],
+  narrative: {
+    dg: { paragraph: "string", example_phrases: ["string"], evidence_quotes: ["string"] },
+    cm: { paragraph: "string", example_phrases: ["string"], evidence_quotes: ["string"] },
+    rto: { paragraph: "string", example_phrases: ["string"], evidence_quotes: ["string"] },
+    overall: { paragraph: "string", priorities_next_time: ["string"] },
+  },
+};
+
 
 async function callOpenAI({ retryMode = false } = {}) {
   // Reasoning models don't support temperature. (e.g. o1/o3/o4/gpt-5 families)
@@ -237,6 +238,14 @@ async function callOpenAI({ retryMode = false } = {}) {
           "You are an OSCE examiner. Use the marking criteria as a GUIDE, not a strict word-for-word checklist.\n" +
           "Be fair: give PARTIAL credit when the intent is present but incomplete.\n" +
           "Do NOT require exact wording.\n\n" +
+            "GROUNDING RULES (critical):\n" +
+  "- You MUST base scoring and narrative ONLY on the transcript provided.\n" +
+  "- Do NOT assume anything happened unless it is explicitly in CLINICIAN lines.\n" +
+  "- If something is not in the transcript, say 'not evidenced'. Do NOT invent.\n" +
+  "- Do NOT mention QRisk, guidelines, complaints procedure, safety-netting, follow-up, tests, or alternative meds unless explicitly stated.\n" +
+  "- Example phrases MUST be exact quotes from CLINICIAN lines.\n\n" +
+
+          
           "Return ONLY valid JSON. No markdown.\n\n" +
           "SCORING OUTPUT (critical):\n" +
           "- For each POSITIVE criteria list, return an array of scores 0..2 in the SAME ORDER and SAME LENGTH as provided:\n" +
@@ -249,6 +258,8 @@ async function callOpenAI({ retryMode = false } = {}) {
           "  (a) what was done well tied to criteria that scored 2 (clear), AND\n" +
           "  (b) what to improve tied to criteria that scored 0 or 1 (missed/partial).\n" +
           "- Include 2–4 short example phrases the candidate used (from CLINICIAN lines) per domain.\n" +
+          "- Include evidence_quotes: 2–5 EXACT quotes from the transcript (CLINICIAN lines) that support your claims.\n" +
+          "- If you cannot find evidence for a claim, you must NOT make the claim; say 'not evidenced'.\n" +
           "- Even if the domain is PASS, you MUST still give at least 2 concrete improvement points (growth points).\n" +
           "- Do NOT say 'no improvements needed' or 'no significant omissions'.\n" +
           (retryMode
