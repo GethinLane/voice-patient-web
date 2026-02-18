@@ -230,10 +230,6 @@ function cleanQuotesToClinicianOnly(quotes, clinicianText, max = 4) {
 
 const { clinicianText } = buildClinicianCorpus(Array.isArray(transcript) ? transcript : []);
 
-
-  
-  if (!transcriptText.trim()) throw new Error("Transcript text empty after formatting");
-
   const criteria = {
     dg_positive: marking.dg.positive,
     dg_negative: marking.dg.negative,
@@ -312,9 +308,8 @@ async function callOpenAI({ retryMode = false } = {}) {
 "- For EACH criteria array you score, you MUST also return a matching evidence array of the SAME LENGTH.\n" +
 "- Each evidence item must be an EXACT quote from a CLINICIAN line that supports the score.\n" +
 "- If no supporting quote exists, evidence must be null and the score MUST be 0.\n" +
-"- You may only assign score=2 if evidence is a strong, exact supporting quote.\n\n"
-
-          "NARRATIVE OUTPUT (critical):\n" +
+"- You may only assign score=2 if evidence is a strong, exact supporting quote.\n\n" +
+"NARRATIVE OUTPUT (critical):\n" +
           "- For EACH domain (DG/CM/RTO) write ONE substantial paragraph (about 120–200 words) that includes BOTH:\n" +
           "  (a) what was done well tied to criteria that scored 2 (clear), AND\n" +
           "  (b) what to improve tied to criteria that scored 0 or 1 (missed/partial).\n" +
