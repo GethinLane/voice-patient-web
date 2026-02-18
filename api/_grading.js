@@ -308,9 +308,8 @@ async function callOpenAI({ retryMode = false } = {}) {
           "SCORING GUIDANCE (important):\n" +
 "- Score based on what is clearly demonstrated in the transcript.\n" +
 "- Exact wording is NOT required for score=2; strong implication or clear behaviour is sufficient.\n" +
-"- Do NOT invent actions that are not reasonably supported by the transcript.\n\n"
+"- Do NOT invent actions that are not reasonably supported by the transcript.\n\n" +
 
-          
 "NARRATIVE OUTPUT (critical):\n" +
           "- For EACH domain (DG/CM/RTO) write ONE substantial paragraph (about 120–200 words) that includes BOTH:\n" +
           "  (a) what was done well tied to criteria that scored 2 (clear), AND\n" +
