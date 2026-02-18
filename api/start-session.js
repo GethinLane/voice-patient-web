@@ -54,19 +54,24 @@ function canonicalizeProvider(value) {
     ["googletexttospeech", "google"],
     ["googlecloudtexttospeech", "google"],
     ["gcp", "google"],
+
+    // Inworld
+    ["inworld", "inworld"],
+    ["inworldtts", "inworld"],
+    ["inworldai", "inworld"],
+    ["inworldtexttospeech", "inworld"],
   ]);
 
   if (aliases.has(compact)) return aliases.get(compact);
 
-  // Airtable single-select labels can vary (e.g. "Google Cloud Text-to-Speech").
-  // If it's clearly a Google label, canonicalize to provider key expected by the bot.
   if (compact.includes("google")) return "google";
+  if (compact.includes("inworld")) return "inworld";
 
   return raw;
 }
 
 
-function buildTtsPreflightWarnings({ provider, voice, config }) {
+function buildTtsPreflightWarnings({ provider, voice, model, config }) {
   const warnings = [];
 
   if (provider === "google") {
@@ -74,16 +79,28 @@ function buildTtsPreflightWarnings({ provider, voice, config }) {
       warnings.push("Google TTS selected but no voice is set in Airtable (StandardVoice/PremiumVoice).");
     }
 
-    const hasAnyConfig = !!(config && typeof config === "object" && Object.keys(config).length > 0);
+    const hasAnyConfig =
+      !!(config && typeof config === "object" && Object.keys(config).length > 0);
+
     if (!hasAnyConfig) {
       warnings.push(
-        "Google TTS selected with empty config. If Pipecat logs show 'No valid credentials provided', configure Google credentials in the bot runtime environment (not this Vercel start-session API).",
+        "Google TTS selected with empty config. If Pipecat logs show 'No valid credentials provided', configure Google credentials in the bot runtime environment (not this Vercel start-session API)."
       );
+    }
+  }
+
+  if (provider === "inworld") {
+    if (!voice) {
+      warnings.push("Inworld selected but no voiceId is set in Airtable (StandardVoice/PremiumVoice).");
+    }
+    if (!model) {
+      warnings.push("Inworld selected but no modelId is set in Airtable (StandardModel/PremiumModel). The bot will default if missing, but set it for control.");
     }
   }
 
   return warnings;
 }
+
 function debugValueMeta(value) {
   return {
     type: Array.isArray(value) ? "array" : typeof value,
