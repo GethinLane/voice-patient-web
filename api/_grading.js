@@ -300,6 +300,7 @@ async function callOpenAI({ retryMode = false } = {}) {
 
   const payload = {
     model,
+    reasoning: { effort: "low" },     // ✅ ADD THIS LINE
     input: [
       {
         role: "system",
@@ -362,7 +363,7 @@ async function callOpenAI({ retryMode = false } = {}) {
     text: { format: { type: "json_object" } },
     // Only include temperature when supported
     ...(isReasoningModel ? {} : { temperature: 0.2 }),
-    max_output_tokens: 3500,
+    max_output_tokens: 5000,
   };
 
   const resp = await fetch("https://api.openai.com/v1/responses", {
