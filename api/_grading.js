@@ -242,22 +242,22 @@ const { clinicianText } = buildClinicianCorpus(Array.isArray(transcript) ? trans
 
 const outputSchemaHint = {
   dg_pos_scores: ["0|1|2"],
-  dg_pos_evidence: ["string|null"],          // NEW
+
   dg_neg_severity: ["0|1|2"],
-  dg_neg_evidence: ["string|null"],          // NEW
+
 
   cm_pos_scores: ["0|1|2"],
-  cm_pos_evidence: ["string|null"],          // NEW
+
   cm_neg_severity: ["0|1|2"],
-  cm_neg_evidence: ["string|null"],          // NEW
+
 
   rto_pos_scores: ["0|1|2"],
-  rto_pos_evidence: ["string|null"],         // NEW
+
   rto_neg_severity: ["0|1|2"],
-  rto_neg_evidence: ["string|null"],         // NEW
+
 
   app_scores: ["0|1|2"],
-  app_evidence: ["string|null"],             // NEW
+ 
   
   narrative: {
     dg: { paragraph: "string", example_phrases: ["string"], evidence_quotes: ["string"] },
@@ -304,11 +304,13 @@ async function callOpenAI({ retryMode = false } = {}) {
           "- For each NEGATIVE criteria list, return severity 0..2 in the SAME ORDER and SAME LENGTH:\n" +
           "  0 = not present, 1 = mild issue, 2 = major issue.\n" +
           "- Keep per-criterion output VERY short (numbers only). Do NOT repeat or rewrite the indicator text.\n\n" +
-          "SCORING EVIDENCE (critical):\n" +
-"- For EACH criteria array you score, you MUST also return a matching evidence array of the SAME LENGTH.\n" +
-"- Each evidence item must be an EXACT quote from a CLINICIAN line that supports the score.\n" +
-"- If no supporting quote exists, evidence must be null and the score MUST be 0.\n" +
-"- You may only assign score=2 if evidence is a strong, exact supporting quote.\n\n" +
+
+          "SCORING GUIDANCE (important):\n" +
+"- Score based on what is clearly demonstrated in the transcript.\n" +
+"- Exact wording is NOT required for score=2; strong implication or clear behaviour is sufficient.\n" +
+"- Do NOT invent actions that are not reasonably supported by the transcript.\n\n"
+
+          
 "NARRATIVE OUTPUT (critical):\n" +
           "- For EACH domain (DG/CM/RTO) write ONE substantial paragraph (about 120–200 words) that includes BOTH:\n" +
           "  (a) what was done well tied to criteria that scored 2 (clear), AND\n" +
@@ -384,88 +386,19 @@ async function callOpenAI({ retryMode = false } = {}) {
     }
     return out;
   }
+// ---- Scores (no hard literal enforcement) ----
+const dgPosScores = normalize012Array(parsed.dg_pos_scores, marking.dg.positive.length);
+const dgNegSev = normalize012Array(parsed.dg_neg_severity, marking.dg.negative.length);
 
-  function normalizeEvidenceArray(arr, n) {
-  const a = Array.isArray(arr) ? arr : [];
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    const v = a[i];
-    const s = (v === null || v === undefined) ? null : String(v).trim();
-    out.push(s && s.length ? s : null);
-  }
-  return out;
-}
+const cmPosScores = normalize012Array(parsed.cm_pos_scores, marking.cm.positive.length);
+const cmNegSev = normalize012Array(parsed.cm_neg_severity, marking.cm.negative.length);
 
-// HARD RULE: if evidence is missing OR not an exact quote in clinicianText, force score to 0
-function enforceEvidence(scores, evidence, clinicianText) {
-  const out = [];
-  for (let i = 0; i < (scores || []).length; i++) {
-    const s = Number(scores?.[i] ?? 0);
-    const ev = evidence?.[i] ?? null;
+const rtoPosScores = normalize012Array(parsed.rto_pos_scores, marking.rto.positive.length);
+const rtoNegSev = normalize012Array(parsed.rto_neg_severity, marking.rto.negative.length);
 
-    if (!ev) { out.push(0); continue; }
-    if (!String(clinicianText || "").includes(String(ev))) { out.push(0); continue; }
-
-    out.push(s === 0 || s === 1 || s === 2 ? s : 0);
-  }
-  return out;
-}
+const appScores = normalize012Array(parsed.app_scores, marking.application.length);
 
 
-// ---- Evidence arrays (must match criteria lengths) ----
-const dgPosEv = normalizeEvidenceArray(parsed.dg_pos_evidence, marking.dg.positive.length);
-const dgNegEv = normalizeEvidenceArray(parsed.dg_neg_evidence, marking.dg.negative.length);
-
-const cmPosEv = normalizeEvidenceArray(parsed.cm_pos_evidence, marking.cm.positive.length);
-const cmNegEv = normalizeEvidenceArray(parsed.cm_neg_evidence, marking.cm.negative.length);
-
-const rtoPosEv = normalizeEvidenceArray(parsed.rto_pos_evidence, marking.rto.positive.length);
-const rtoNegEv = normalizeEvidenceArray(parsed.rto_neg_evidence, marking.rto.negative.length);
-
-const appEv = normalizeEvidenceArray(parsed.app_evidence, marking.application.length);
-
-// ---- Scores with HARD enforcement: no evidence => cannot score >0 ----
-const dgPosScores = enforceEvidence(
-  normalize012Array(parsed.dg_pos_scores, marking.dg.positive.length),
-  dgPosEv,
-  clinicianText
-);
-
-const dgNegSev = enforceEvidence(
-  normalize012Array(parsed.dg_neg_severity, marking.dg.negative.length),
-  dgNegEv,
-  clinicianText
-);
-
-const cmPosScores = enforceEvidence(
-  normalize012Array(parsed.cm_pos_scores, marking.cm.positive.length),
-  cmPosEv,
-  clinicianText
-);
-
-const cmNegSev = enforceEvidence(
-  normalize012Array(parsed.cm_neg_severity, marking.cm.negative.length),
-  cmNegEv,
-  clinicianText
-);
-
-const rtoPosScores = enforceEvidence(
-  normalize012Array(parsed.rto_pos_scores, marking.rto.positive.length),
-  rtoPosEv,
-  clinicianText
-);
-
-const rtoNegSev = enforceEvidence(
-  normalize012Array(parsed.rto_neg_severity, marking.rto.negative.length),
-  rtoNegEv,
-  clinicianText
-);
-
-const appScores = enforceEvidence(
-  normalize012Array(parsed.app_scores, marking.application.length),
-  appEv,
-  clinicianText
-);
 
 
   const dgBand = computeDomainBandFromScores(dgPosScores, dgNegSev);
