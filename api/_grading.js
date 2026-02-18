@@ -191,7 +191,47 @@ export async function gradeTranscriptWithIndicators({
   if (!model) throw new Error("Missing model");
   if (!marking) throw new Error("Missing marking");
 
-  const transcriptText = transcriptToText(transcript);
+const transcriptText = transcriptToText(transcript);
+if (!transcriptText.trim()) throw new Error("Transcript text empty after formatting");
+
+// ---- Build CLINICIAN-only text for strict quote validation ----
+function buildClinicianCorpus(transcriptArr) {
+  const trimmed = Array.isArray(transcriptArr) ? transcriptArr : [];
+  const last = trimmed.slice(-200);
+  const clinicianLines = [];
+  for (const t of last) {
+    const who = normalizeRole(t?.role);
+    if (who !== "CLINICIAN") continue;
+    const text = String(t?.text || "").trim();
+    if (!text) continue;
+    clinicianLines.push(text);
+  }
+  const clinicianText = clinicianLines.join("\n");
+  return { clinicianLines, clinicianText };
+}
+
+function exactQuoteInClinician(quote, clinicianText) {
+  const q = String(quote || "").trim();
+  if (!q) return false;
+  return clinicianText.includes(q);
+}
+
+function cleanQuotesToClinicianOnly(quotes, clinicianText, max = 4) {
+  const arr = Array.isArray(quotes) ? quotes : [];
+  const out = [];
+  for (const q of arr) {
+    const s = String(q || "").trim();
+    if (!s) continue;
+    if (exactQuoteInClinician(s, clinicianText)) out.push(s);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+const { clinicianText } = buildClinicianCorpus(Array.isArray(transcript) ? transcript : []);
+
+
+  
   if (!transcriptText.trim()) throw new Error("Transcript text empty after formatting");
 
   const criteria = {
@@ -206,12 +246,23 @@ export async function gradeTranscriptWithIndicators({
 
 const outputSchemaHint = {
   dg_pos_scores: ["0|1|2"],
+  dg_pos_evidence: ["string|null"],          // NEW
   dg_neg_severity: ["0|1|2"],
+  dg_neg_evidence: ["string|null"],          // NEW
+
   cm_pos_scores: ["0|1|2"],
+  cm_pos_evidence: ["string|null"],          // NEW
   cm_neg_severity: ["0|1|2"],
+  cm_neg_evidence: ["string|null"],          // NEW
+
   rto_pos_scores: ["0|1|2"],
+  rto_pos_evidence: ["string|null"],         // NEW
   rto_neg_severity: ["0|1|2"],
+  rto_neg_evidence: ["string|null"],         // NEW
+
   app_scores: ["0|1|2"],
+  app_evidence: ["string|null"],             // NEW
+  
   narrative: {
     dg: { paragraph: "string", example_phrases: ["string"], evidence_quotes: ["string"] },
     cm: { paragraph: "string", example_phrases: ["string"], evidence_quotes: ["string"] },
@@ -244,6 +295,10 @@ async function callOpenAI({ retryMode = false } = {}) {
   "- If something is not in the transcript, say 'not evidenced'. Do NOT invent.\n" +
   "- Do NOT mention QRisk, guidelines, complaints procedure, safety-netting, follow-up, tests, or alternative meds unless explicitly stated.\n" +
   "- Example phrases MUST be exact quotes from CLINICIAN lines.\n\n" +
+          "- You MUST NOT write invented clinician statements like 'I advised...' unless those exact words appear in CLINICIAN lines.\n" +
+"- If there is little/no management discussion in the transcript, you MUST say 'management not evidenced in transcript' and score accordingly.\n" +
+"- Example phrases and evidence_quotes MUST come ONLY from CLINICIAN lines (candidate). Never quote PATIENT.\n" +
+
 
           
           "Return ONLY valid JSON. No markdown.\n\n" +
@@ -253,6 +308,12 @@ async function callOpenAI({ retryMode = false } = {}) {
           "- For each NEGATIVE criteria list, return severity 0..2 in the SAME ORDER and SAME LENGTH:\n" +
           "  0 = not present, 1 = mild issue, 2 = major issue.\n" +
           "- Keep per-criterion output VERY short (numbers only). Do NOT repeat or rewrite the indicator text.\n\n" +
+          "SCORING EVIDENCE (critical):\n" +
+"- For EACH criteria array you score, you MUST also return a matching evidence array of the SAME LENGTH.\n" +
+"- Each evidence item must be an EXACT quote from a CLINICIAN line that supports the score.\n" +
+"- If no supporting quote exists, evidence must be null and the score MUST be 0.\n" +
+"- You may only assign score=2 if evidence is a strong, exact supporting quote.\n\n"
+
           "NARRATIVE OUTPUT (critical):\n" +
           "- For EACH domain (DG/CM/RTO) write ONE substantial paragraph (about 120–200 words) that includes BOTH:\n" +
           "  (a) what was done well tied to criteria that scored 2 (clear), AND\n" +
@@ -329,13 +390,88 @@ async function callOpenAI({ retryMode = false } = {}) {
     return out;
   }
 
-  const dgPosScores = normalize012Array(parsed.dg_pos_scores, marking.dg.positive.length);
-  const dgNegSev = normalize012Array(parsed.dg_neg_severity, marking.dg.negative.length);
-  const cmPosScores = normalize012Array(parsed.cm_pos_scores, marking.cm.positive.length);
-  const cmNegSev = normalize012Array(parsed.cm_neg_severity, marking.cm.negative.length);
-  const rtoPosScores = normalize012Array(parsed.rto_pos_scores, marking.rto.positive.length);
-  const rtoNegSev = normalize012Array(parsed.rto_neg_severity, marking.rto.negative.length);
-  const appScores = normalize012Array(parsed.app_scores, marking.application.length);
+  function normalizeEvidenceArray(arr, n) {
+  const a = Array.isArray(arr) ? arr : [];
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const v = a[i];
+    const s = (v === null || v === undefined) ? null : String(v).trim();
+    out.push(s && s.length ? s : null);
+  }
+  return out;
+}
+
+// HARD RULE: if evidence is missing OR not an exact quote in clinicianText, force score to 0
+function enforceEvidence(scores, evidence, clinicianText) {
+  const out = [];
+  for (let i = 0; i < (scores || []).length; i++) {
+    const s = Number(scores?.[i] ?? 0);
+    const ev = evidence?.[i] ?? null;
+
+    if (!ev) { out.push(0); continue; }
+    if (!String(clinicianText || "").includes(String(ev))) { out.push(0); continue; }
+
+    out.push(s === 0 || s === 1 || s === 2 ? s : 0);
+  }
+  return out;
+}
+
+
+// ---- Evidence arrays (must match criteria lengths) ----
+const dgPosEv = normalizeEvidenceArray(parsed.dg_pos_evidence, marking.dg.positive.length);
+const dgNegEv = normalizeEvidenceArray(parsed.dg_neg_evidence, marking.dg.negative.length);
+
+const cmPosEv = normalizeEvidenceArray(parsed.cm_pos_evidence, marking.cm.positive.length);
+const cmNegEv = normalizeEvidenceArray(parsed.cm_neg_evidence, marking.cm.negative.length);
+
+const rtoPosEv = normalizeEvidenceArray(parsed.rto_pos_evidence, marking.rto.positive.length);
+const rtoNegEv = normalizeEvidenceArray(parsed.rto_neg_evidence, marking.rto.negative.length);
+
+const appEv = normalizeEvidenceArray(parsed.app_evidence, marking.application.length);
+
+// ---- Scores with HARD enforcement: no evidence => cannot score >0 ----
+const dgPosScores = enforceEvidence(
+  normalize012Array(parsed.dg_pos_scores, marking.dg.positive.length),
+  dgPosEv,
+  clinicianText
+);
+
+const dgNegSev = enforceEvidence(
+  normalize012Array(parsed.dg_neg_severity, marking.dg.negative.length),
+  dgNegEv,
+  clinicianText
+);
+
+const cmPosScores = enforceEvidence(
+  normalize012Array(parsed.cm_pos_scores, marking.cm.positive.length),
+  cmPosEv,
+  clinicianText
+);
+
+const cmNegSev = enforceEvidence(
+  normalize012Array(parsed.cm_neg_severity, marking.cm.negative.length),
+  cmNegEv,
+  clinicianText
+);
+
+const rtoPosScores = enforceEvidence(
+  normalize012Array(parsed.rto_pos_scores, marking.rto.positive.length),
+  rtoPosEv,
+  clinicianText
+);
+
+const rtoNegSev = enforceEvidence(
+  normalize012Array(parsed.rto_neg_severity, marking.rto.negative.length),
+  rtoNegEv,
+  clinicianText
+);
+
+const appScores = enforceEvidence(
+  normalize012Array(parsed.app_scores, marking.application.length),
+  appEv,
+  clinicianText
+);
+
 
   const dgBand = computeDomainBandFromScores(dgPosScores, dgNegSev);
   const cmBand = computeDomainBandFromScores(cmPosScores, cmNegSev);
@@ -392,6 +528,31 @@ async function callOpenAI({ retryMode = false } = {}) {
 
   // Narrative
   let n = parsed.narrative || {};
+
+  // ---- Enforce clinician-only quotes; if model invents, force retry ----
+function enforceNarrativeQuotes(narr) {
+  const nn = narr || {};
+  for (const key of ["dg", "cm", "rto"]) {
+    if (!nn[key]) nn[key] = {};
+    nn[key].example_phrases = cleanQuotesToClinicianOnly(nn[key].example_phrases, clinicianText, 4);
+    nn[key].evidence_quotes = cleanQuotesToClinicianOnly(nn[key].evidence_quotes, clinicianText, 5);
+  }
+  return nn;
+}
+
+n = enforceNarrativeQuotes(n);
+
+// If the model couldn't provide any valid clinician quotes in any domain, retry once.
+const bad =
+  (Array.isArray(n.dg?.example_phrases) && n.dg.example_phrases.length === 0) ||
+  (Array.isArray(n.cm?.example_phrases) && n.cm.example_phrases.length === 0) ||
+  (Array.isArray(n.rto?.example_phrases) && n.rto.example_phrases.length === 0);
+
+if (bad) {
+  parsed = await callOpenAI({ retryMode: true });
+  n = enforceNarrativeQuotes(parsed.narrative || {});
+}
+  
   const dgPara = String((n.dg || {}).paragraph || "").trim();
   const cmPara = String((n.cm || {}).paragraph || "").trim();
   const rtoPara = String((n.rto || {}).paragraph || "").trim();
