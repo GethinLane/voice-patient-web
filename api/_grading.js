@@ -85,20 +85,42 @@ function transcriptToText(transcript) {
 // -------------------- OpenAI response extraction/parsing --------------------
 
 function collectAllAssistantText(respJson) {
-  const out = respJson?.output;
-  if (!Array.isArray(out)) return respJson?.output_text || "";
-  let s = "";
-  for (const item of out) {
-    if (item?.type !== "message" || item?.role !== "assistant") continue;
-    const content = item?.content;
-    if (!Array.isArray(content)) continue;
-    for (const c of content) {
-      if (typeof c?.text === "string") s += c.text;
-      else if (c?.type === "text" && typeof c?.text === "string") s += c.text;
-    }
+  if (!respJson) return "";
+
+  // 1. Direct output_text shortcut
+  if (typeof respJson.output_text === "string") {
+    return respJson.output_text;
   }
-  return s || respJson?.output_text || "";
+
+  // 2. Standard output array
+  if (Array.isArray(respJson.output)) {
+    let s = "";
+
+    for (const item of respJson.output) {
+      if (!item) continue;
+
+      // Some models nest content differently
+      if (Array.isArray(item.content)) {
+        for (const c of item.content) {
+          if (!c) continue;
+
+          if (typeof c.text === "string") {
+            s += c.text;
+          }
+
+          if (c.type === "output_text" && typeof c.text === "string") {
+            s += c.text;
+          }
+        }
+      }
+    }
+
+    return s;
+  }
+
+  return "";
 }
+
 
 function safeJsonParseAny(text) {
   if (!text) return null;
@@ -354,6 +376,9 @@ async function callOpenAI({ retryMode = false } = {}) {
 
   const raw = await resp.text();
   if (!resp.ok) throw new Error(`OpenAI error ${resp.status}: ${raw.slice(0, 400)}`);
+
+  console.error("RAW OPENAI RESPONSE:", raw);
+
 
   const data = raw ? JSON.parse(raw) : null;
   const outText = collectAllAssistantText(data);
