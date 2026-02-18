@@ -94,7 +94,8 @@ function collectAllAssistantText(respJson) {
 
   // 2. Standard output array
   if (Array.isArray(respJson.output)) {
-    let s = "";
+    let last = "";
+
 
     for (const item of respJson.output) {
       if (!item) continue;
@@ -104,18 +105,20 @@ function collectAllAssistantText(respJson) {
         for (const c of item.content) {
           if (!c) continue;
 
-          if (typeof c.text === "string") {
-            s += c.text;
-          }
+if (typeof c.text === "string") {
+  last = c.text;
+}
 
-          if (c.type === "output_text" && typeof c.text === "string") {
-            s += c.text;
-          }
+if (c.type === "output_text" && typeof c.text === "string") {
+  last = c.text;
+}
+
         }
       }
     }
 
-    return s;
+    return last;
+
   }
 
   return "";
@@ -125,18 +128,46 @@ function collectAllAssistantText(respJson) {
 function safeJsonParseAny(text) {
   if (!text) return null;
   const t = String(text).trim();
+
+  // 1) Try direct parse first
   try {
     return JSON.parse(t);
   } catch {}
-  const i = t.indexOf("{");
-  const j = t.lastIndexOf("}");
-  if (i >= 0 && j > i) {
-    try {
-      return JSON.parse(t.slice(i, j + 1));
-    } catch {}
+
+  // 2) Extract the first complete JSON object by brace-matching
+  const start = t.indexOf("{");
+  if (start < 0) return null;
+
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+
+  for (let i = start; i < t.length; i++) {
+    const ch = t[i];
+
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === "\"") inStr = false;
+      continue;
+    } else {
+      if (ch === "\"") { inStr = true; continue; }
+      if (ch === "{") depth++;
+      if (ch === "}") depth--;
+      if (depth === 0) {
+        const candidate = t.slice(start, i + 1);
+        try {
+          return JSON.parse(candidate);
+        } catch {
+          // if candidate failed, keep searching (rare) — maybe junk inside strings etc.
+        }
+      }
+    }
   }
+
   return null;
 }
+
 
 function wordCount(s) {
   return String(s || "").trim().split(/\s+/).filter(Boolean).length;
