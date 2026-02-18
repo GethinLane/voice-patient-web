@@ -311,7 +311,7 @@ async function callOpenAI({ retryMode = false } = {}) {
 "- Do NOT invent actions that are not reasonably supported by the transcript.\n\n" +
 
 "NARRATIVE OUTPUT (critical):\n" +
-          "- For EACH domain (DG/CM/RTO) write ONE substantial paragraph (about 120–200 words) that includes BOTH:\n" +
+          "- For EACH domain (DG/CM/RTO) write ONE substantial paragraph (about 100–150 words) that includes BOTH:\n" +
           "  (a) what was done well tied to criteria that scored 2 (clear), AND\n" +
           "  (b) what to improve tied to criteria that scored 0 or 1 (missed/partial).\n" +
           "- Include 2–4 short example phrases the candidate used (from CLINICIAN lines) per domain.\n" +
@@ -340,7 +340,7 @@ async function callOpenAI({ retryMode = false } = {}) {
     text: { format: { type: "json_object" } },
     // Only include temperature when supported
     ...(isReasoningModel ? {} : { temperature: 0.2 }),
-    max_output_tokens: 6000,
+    max_output_tokens: 3500,
   };
 
   const resp = await fetch("https://api.openai.com/v1/responses", {
@@ -357,13 +357,20 @@ async function callOpenAI({ retryMode = false } = {}) {
 
   const data = raw ? JSON.parse(raw) : null;
   const outText = collectAllAssistantText(data);
-  const parsed = safeJsonParseAny(outText);
+  let parsed = safeJsonParseAny(outText);
 
-  if (!parsed) {
-    throw new Error(
-      `OpenAI returned non-JSON. Preview: ${String(outText).slice(0, 260)}`
-    );
+if (!parsed) {
+  console.error("Failed JSON parse. Raw output:", outText);
+
+  // Retry once automatically
+  if (!retryMode) {
+    return await callOpenAI({ retryMode: true });
   }
+
+  throw new Error(
+    `OpenAI returned non-JSON. Preview: ${String(outText).slice(0, 260)}`
+  );
+}
 
   return parsed;
 }
