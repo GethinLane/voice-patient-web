@@ -353,11 +353,17 @@ async function callOpenAI({ retryMode = false } = {}) {
           
           "Return ONLY valid JSON. No markdown.\n\n" +
           "SCORING OUTPUT (critical):\n" +
-          "- For each POSITIVE criteria list, return an array of scores 0..2 in the SAME ORDER and SAME LENGTH as provided:\n" +
-          "  0 = not addressed, 1 = partially addressed, 2 = clearly addressed.\n" +
-          "- For each NEGATIVE criteria list, return severity 0..2 in the SAME ORDER and SAME LENGTH:\n" +
-          "  0 = not present, 1 = mild issue, 2 = major issue.\n" +
-          "- Keep per-criterion output VERY short (numbers only). Do NOT repeat or rewrite the indicator text.\n\n" +
+"- For each POSITIVE criteria list, return an array of scores 0..2 in the SAME ORDER and SAME LENGTH as provided:\n" +
+"  0 = not demonstrated or absent, 1 = partially demonstrated or incomplete, 2 = fully demonstrated as described with clear and specific behaviour.\n" +
+"- For each NEGATIVE criteria list, return severity 0..2 in the SAME ORDER and SAME LENGTH:\n" +
+"  0 = not present, 1 = mild issue, 2 = major issue.\n" +
+"- Keep per-criterion output VERY short (numbers only). Do NOT repeat or rewrite the indicator text.\n\n" +
+"IMPORTANT SCORING RULE:\n" +
+"- Score 2 only if the criterion is clearly and substantially demonstrated in the transcript.\n" +
+"- If only part of the behaviour is present, score 1.\n" +
+"- Do not infer missing components.\n\n" +
+
+          
 
           "SCORING GUIDANCE (important):\n" +
 "- Score based on what is clearly demonstrated in the transcript.\n" +
