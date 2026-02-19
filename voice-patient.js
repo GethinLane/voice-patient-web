@@ -69,6 +69,22 @@
 // ---------------- Helpers ----------------
 function $(id) { return document.getElementById(id); }
 
+  // Voice agent picker (stored by Squarespace dropdown or set manually)
+function getForcedAgent() {
+  try {
+    // Preferred: set by your Squarespace dropdown script
+    const fromLs = String(localStorage.getItem("vp_forced_agent") || "").trim();
+    if (fromLs) return fromLs;
+
+    // Optional fallback: if you put a <select id="vpAgentSelect"> on the page
+    const sel = document.getElementById("vpAgentSelect");
+    const fromSelect = sel ? String(sel.value || "").trim() : "";
+    if (fromSelect) return fromSelect;
+  } catch {}
+  return "";
+}
+
+
 function getSelectedMode() {
   const el = document.querySelector('input[name="vpMode"]:checked');
   return el ? String(el.value || "").trim().toLowerCase() : "standard";
@@ -826,12 +842,19 @@ if (!credits?.canStart) {
 }
 
 
-      const data = await fetchJson(`${API_BASE}/api/start-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ caseId, userId, email, mode }), // ✅ include mode
-        mode: "cors",
-      });
+// Build payload (includes mode + optional agent)
+const payload = { caseId, userId, email, mode };
+
+const agent = getForcedAgent();
+if (agent) payload.agent = agent;
+
+const data = await fetchJson(`${API_BASE}/api/start-session`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(payload),
+  mode: "cors",
+});
+
 
       // Tell the Squarespace overlay which avatar to show (if provided)
 if (data?.patientImageUrl) {
