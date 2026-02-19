@@ -69,16 +69,6 @@
 // ---------------- Helpers ----------------
 function $(id) { return document.getElementById(id); }
 
-  // TEMP: forced agent for testing (set by your simple Squarespace agent picker)
-function getForcedAgent() {
-  try {
-    return String(localStorage.getItem("vp_forced_agent") || "").trim();
-  } catch {
-    return "";
-  }
-}
-
-
 function getSelectedMode() {
   const el = document.querySelector('input[name="vpMode"]:checked');
   return el ? String(el.value || "").trim().toLowerCase() : "standard";
@@ -839,17 +829,7 @@ if (!credits?.canStart) {
       const data = await fetchJson(`${API_BASE}/api/start-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        const payload = { caseId, userId, email, mode }; // keep existing fields
-const agent = getForcedAgent();
-if (agent) payload.agent = agent; // TEMP testing override
-
-const data = await fetchJson(`${API_BASE}/api/start-session`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(payload),
-  mode: "cors",
-});
-
+        body: JSON.stringify({ caseId, userId, email, mode }), // ✅ include mode
         mode: "cors",
       });
 
