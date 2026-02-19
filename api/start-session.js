@@ -118,6 +118,62 @@ function parseCreditCost(rawValue, fallback) {
   return Number.isFinite(n) ? Math.max(0, n) : fallback;
 }
 
+// ---------------- PIPECAT AGENT POOL + FAILOVER HELPERS ----------------
+
+function fnv1a32(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h + (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24)) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function getAgentPool() {
+  const raw =
+    process.env.PIPECAT_AGENT_NAMES ||
+    process.env.PIPECAT_AGENT_NAME ||
+    "";
+  return raw
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function isCapacityError(resp, data, rawText) {
+  // Pipecat: at-capacity is HTTP 429
+  if (resp?.status === 429) return true;
+
+  const code =
+    data?.code ||
+    data?.error_code ||
+    data?.errorCode ||
+    data?.error;
+
+  if (code === "PCC-AGENT-AT-CAPACITY") return true;
+
+  const msg = String(data?.message || data?.error || rawText || "");
+  return /maximum agent instances reached|at[- ]capacity|pool capacity|rate limit exceeded/i.test(msg);
+}
+
+// Optional: allow forcing an agent for testing only
+function pickAgentOrder({ seed, forcedAgent }) {
+  const pool = getAgentPool();
+  if (!pool.length) return [];
+
+  // If tester forces an agent, try it first, then rest as fallback
+  if (forcedAgent && pool.includes(forcedAgent)) {
+    return [forcedAgent, ...pool.filter(a => a !== forcedAgent)];
+  }
+
+  // Otherwise deterministic load-spread
+  const startIdx = fnv1a32(seed) % pool.length;
+  return pool.slice(startIdx).concat(pool.slice(0, startIdx));
+}
+
+// ----------------------------------------------------------------------
+
+
 export default async function handler(req, res) {
   const origin = req.headers.origin;
 
@@ -160,6 +216,8 @@ export default async function handler(req, res) {
     // Standard vs premium mode
     const mode = (req.body?.mode != null ? safeStr(req.body.mode) : "standard").trim().toLowerCase();
     const safeMode = mode === "premium" ? "premium" : "standard";
+    const forcedAgent = req.body?.agent != null ? safeStr(req.body.agent).trim() : "";
+
 
     // ---------------- CREDIT GATE (BLOCK START IF INSUFFICIENT) ----------------
     const usersKey = process.env.AIRTABLE_USERS_API_KEY;
@@ -303,79 +361,65 @@ export default async function handler(req, res) {
 
     const ttsPreflightWarnings = buildTtsPreflightWarnings(tts);
 
-    // Pipecat config
-    const agentName = process.env.PIPECAT_AGENT_NAME;
-    const apiKey = process.env.PIPECAT_PUBLIC_API_KEY;
-    if (!agentName) throw new Error("Missing PIPECAT_AGENT_NAME");
-    if (!apiKey) throw new Error("Missing PIPECAT_PUBLIC_API_KEY");
+// Pipecat config
+const apiKey = process.env.PIPECAT_PUBLIC_API_KEY;
+if (!apiKey) throw new Error("Missing PIPECAT_PUBLIC_API_KEY");
 
-    const sent = {
-      transport: "webrtc",
-      createDailyRoom: true,
-      body: {
-        caseId,
-        userId,
-        email,
+const agentSeed = `${userId || email || "anon"}:${caseId}`;
+const agentOrder = pickAgentOrder({ seed: agentSeed, forcedAgent });
 
-        mode: safeMode,
-        startTone,
-        tts,
-      },
-    };
+if (!agentOrder.length) {
+  throw new Error("Missing PIPECAT_AGENT_NAME(S): set PIPECAT_AGENT_NAMES or PIPECAT_AGENT_NAME");
+}
 
-    const url = `https://api.pipecat.daily.co/v1/public/${encodeURIComponent(agentName)}/start`;
+const sent = {
+  transport: "webrtc",
+  createDailyRoom: true,
+  body: {
+    caseId,
+    userId,
+    email,
+    mode: safeMode,
+    startTone,
+    tts,
+  },
+};
 
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(sent),
-    });
+// Try each agent in order; fail over only on capacity errors (typically 429)
+let lastCapacity = null;
+const attempts = [];
 
-    const raw = await resp.text();
-    let data = null;
-    try { data = raw ? JSON.parse(raw) : null; } catch {}
+for (const agentName of agentOrder) {
+  const url = `https://api.pipecat.daily.co/v1/public/${encodeURIComponent(agentName)}/start`;
 
-    if (!resp.ok) {
-      return res.status(resp.status).json({
-        ok: false,
-        error: (data && (data.error || data.message)) || raw.slice(0, 400),
-        receivedCaseId,
-        parsedCaseId: caseId,
-        sent,
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(sent),
+  });
 
-        // DEBUG: show what we found in Airtable
-        profileFound: !!profileFields,
-        profileRecordId,
-        profileKeys: profileFields ? Object.keys(profileFields) : [],
-        debugTtsSelection: {
-          mode: safeMode,
-          modeProviderField,
-          modeVoiceField,
-          providerSource: debugValueMeta(providerSource),
-          voiceSource: debugValueMeta(voiceSource),
-          normalizedProvider,
-          normalizedVoice,
-          selectedProviderRaw: safeStr(providerRaw).trim().toLowerCase(),
-          selectedProvider: providerCanonical,
-          selectedVoice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
-          providerFallbackReason,
-          providerCanonicalizationNote,
-          ttsPreflightWarnings,
-        },
+  const raw = await resp.text();
+  let data = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch {}
 
-        pipecatStatus: resp.status,
-        pipecatRawPreview: raw.slice(0, 400),
-      });
-    }
+  attempts.push({
+    agentName,
+    status: resp.status,
+    preview: raw.slice(0, 180),
+  });
 
+  if (resp.ok) {
     return res.json({
       ok: true,
       receivedCaseId,
       parsedCaseId: caseId,
       sent,
+
+      agentNameUsed: agentName,
+      attempts,
 
       // DEBUG: show what we found in Airtable
       profileFound: !!profileFields,
@@ -401,6 +445,61 @@ export default async function handler(req, res) {
       dailyRoom: data.dailyRoom,
       dailyToken: data.dailyToken,
     });
+  }
+
+  // Capacity/at-limit? try next agent
+  if (isCapacityError(resp, data, raw)) {
+    lastCapacity = { agentName, status: resp.status, raw: raw.slice(0, 400), data };
+    continue;
+  }
+
+  // Any other error: stop immediately (don’t spam other deployments)
+  return res.status(resp.status).json({
+    ok: false,
+    error: (data && (data.error || data.message)) || raw.slice(0, 400),
+    receivedCaseId,
+    parsedCaseId: caseId,
+    sent,
+
+    agentNameTried: agentName,
+    attempts,
+
+    // DEBUG: show what we found in Airtable
+    profileFound: !!profileFields,
+    profileRecordId,
+    profileKeys: profileFields ? Object.keys(profileFields) : [],
+    debugTtsSelection: {
+      mode: safeMode,
+      modeProviderField,
+      modeVoiceField,
+      providerSource: debugValueMeta(providerSource),
+      voiceSource: debugValueMeta(voiceSource),
+      normalizedProvider,
+      normalizedVoice,
+      selectedProviderRaw: safeStr(providerRaw).trim().toLowerCase(),
+      selectedProvider: providerCanonical,
+      selectedVoice: voiceRaw != null ? safeStr(voiceRaw).trim() : null,
+      providerFallbackReason,
+      providerCanonicalizationNote,
+      ttsPreflightWarnings,
+    },
+
+    pipecatStatus: resp.status,
+    pipecatRawPreview: raw.slice(0, 400),
+  });
+}
+
+// All agents looked “full”
+return res.status(429).json({
+  ok: false,
+  error: "All Pipecat agent deployments are at capacity. Please retry shortly.",
+  code: lastCapacity?.data?.code || "PCC-AGENT-AT-CAPACITY",
+  attempts,
+  receivedCaseId,
+  parsedCaseId: caseId,
+  sent,
+});
+
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
