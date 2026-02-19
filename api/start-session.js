@@ -270,6 +270,28 @@ export default async function handler(req, res) {
 
     const configObj = parseJSONMaybe(configRaw) || {};
 
+        // ------------------- NEW: Voice speed (speakingRate) -------------------
+    // Airtable field: StandardVoiceSpeed (Number). Optional PremiumVoiceSpeed later.
+    const speedRaw =
+      safeMode === "premium"
+        ? profileFields?.PremiumVoiceSpeed   // only works if you add this field
+        : profileFields?.StandardVoiceSpeed; // your new field
+
+    let speakingRate =
+      (typeof speedRaw === "number" && Number.isFinite(speedRaw))
+        ? speedRaw
+        : Number(String(speedRaw ?? "").trim());
+
+    if (!Number.isFinite(speakingRate)) speakingRate = 1.0;
+
+    // clamp to safe range
+    speakingRate = Math.max(0.5, Math.min(2.0, speakingRate));
+
+    // Put into config under canonical key the bot expects
+    configObj.speakingRate = speakingRate;
+    // ----------------------------------------------------------------------
+
+
     const startTone = (profileFields?.StartTone || "neutral").toString().trim().toLowerCase();
 
     const tts = {
