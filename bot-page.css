@@ -697,3 +697,9 @@ body.sca-botpage #scaBotPageRoot .sca-accHeader{
   position: relative;
   z-index: 10000;
 }
+body.sca-botpage #scaBotPageRoot .sca-accItem{
+  cursor: pointer;
+}
+body.sca-botpage #scaBotPageRoot .sca-accHeader{
+  width: 100%;
+}
