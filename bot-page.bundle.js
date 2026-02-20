@@ -511,14 +511,11 @@ function setAvatar(url) {
       </div>
     `;
 
-    // --- IMPORTANT (Squarespace): mount UI OUTSIDE the code block wrapper ---
-// This avoids Squarespace's code-block "card" measuring / interaction quirks.
 const sqsBlock = anchor.closest(".sqs-block");
 if (sqsBlock && sqsBlock.parentNode) {
-  // Insert the UI right AFTER the whole Squarespace block
-  sqsBlock.parentNode.insertBefore(root, sqsBlock.nextSibling);
+  // Put the UI immediately BEFORE the Squarespace block (same visual position)
+  sqsBlock.parentNode.insertBefore(root, sqsBlock);
 } else {
-  // Fallback: original behaviour
   anchor.parentNode.insertBefore(root, anchor);
 }
 
