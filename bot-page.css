@@ -664,3 +664,8 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
   z-index: 5 !important;
   pointer-events: none;
 }
+
+/* Make accordion collapse reliable even if Squarespace overrides [hidden] */
+body.sca-botpage #scaBotPageRoot .sca-accBody[hidden]{
+  display: none !important;
+}
