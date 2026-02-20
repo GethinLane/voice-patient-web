@@ -918,3 +918,29 @@ body.sca-botpage #scaBotPageRoot .sca-planCredits{
   font-weight: 500; /* not bold-bold; tweak to 600 if you want even lighter */
   color: inherit;   /* matches whatever the tag text color is */
 }
+body.sca-botpage #scaBotPageRoot .sca-planCostTag{
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+
+  padding: 7px 12px;
+  border-radius: 0 0 10px 10px;
+  font-size: 13px;
+  font-weight: 700;
+
+  border: none;              /* remove outline */
+  box-shadow: none;          /* remove hard shadow */
+  background: rgba(255,255,255,.0); /* will be overridden when selected */
+  color: rgba(37,53,81,.70);
+
+  display: none;
+}
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
+  background: #253551;
+  color: rgba(255,255,255,.90);
+  border: none;          /* ensure no outline */
+  box-shadow: none;      /* keep it clean */
+}
