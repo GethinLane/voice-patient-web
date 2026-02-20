@@ -444,12 +444,6 @@ function setAvatar(url) {
     wrap.appendChild(contentNode);
     body.appendChild(wrap);
 
-    header.addEventListener("click", () => {
-      const expanded = header.getAttribute("aria-expanded") === "true";
-      header.setAttribute("aria-expanded", expanded ? "false" : "true");
-      body.hidden = expanded;
-    });
-
     item.appendChild(header);
     item.appendChild(body);
     acc.appendChild(item);
@@ -547,6 +541,26 @@ function setAvatar(url) {
       if (dhx) addAccItem(acc, { title: "Medication", contentNode: dhx, open: true });
       if (notesBox) addAccItem(acc, { title: "Medical Notes", contentNode: notesBox, open: false });
       if (resultsBox) addAccItem(acc, { title: "Investigation Results", contentNode: resultsBox, open: false });
+
+       // Delegate all accordion toggles from the container (survives Squarespace re-renders)
+if (!acc.__scaDelegated) {
+  acc.__scaDelegated = true;
+
+  acc.addEventListener("click", (e) => {
+    const header = e.target.closest(".sca-accHeader");
+    if (!header || !acc.contains(header)) return;
+
+    e.preventDefault();
+
+    const item = header.closest(".sca-accItem");
+    const body = item?.querySelector(".sca-accBody");
+    if (!body) return;
+
+    const expanded = header.getAttribute("aria-expanded") === "true";
+    header.setAttribute("aria-expanded", expanded ? "false" : "true");
+    body.hidden = expanded;
+  });
+}
     }
 
     // Hide original patientDataBox but keep it in DOM
