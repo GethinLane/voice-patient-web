@@ -511,11 +511,13 @@ function setAvatar(url) {
       </div>
     `;
 
-const sqsBlock = anchor.closest(".sqs-block");
-if (sqsBlock && sqsBlock.parentNode) {
-  // Put the UI immediately BEFORE the Squarespace block (same visual position)
-  sqsBlock.parentNode.insertBefore(root, sqsBlock);
+// --- Squarespace: mount outside .sqs-code-container (but keep position in the section) ---
+const codeContainer = anchor.closest(".sqs-code-container");
+if (codeContainer && codeContainer.parentNode) {
+  // Insert UI just BEFORE the code container, as a sibling (NOT inside it)
+  codeContainer.parentNode.insertBefore(root, codeContainer);
 } else {
+  // Fallback: original behaviour
   anchor.parentNode.insertBefore(root, anchor);
 }
 
