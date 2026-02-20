@@ -667,35 +667,47 @@ body.sca-botpage #scaBotPageRoot .sca-topTab{
   justify-content: center;
 }
 
-/* divider between tabs */
-body.sca-botpage #scaBotPageRoot .sca-topTab + input + label{
-  border-left: 1px solid rgba(255,255,255,.18);
-}
-
-/* Selected = white pill inside topbar */
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
-  background: rgba(255,255,255,.92);
-  color: #253551;
-}
-
-/* Make the status badge look good on the dark topbar */
-body.sca-botpage #scaBotPageRoot .sca-topbar .sca-badge{
-  border: 1px solid rgba(255,255,255,.22) !important;
-  background: rgba(255,255,255,.14) !important;
-  color: rgba(255,255,255,.90) !important;
-  border-radius: 999px;
-  padding: 10px 14px;
-  font-weight: 800;
-}
-
-/* Keep your existing state colours, but tuned for the dark bar */
-body.sca-botpage #scaBotPageRoot .sca-topbar .sca-badge-thinking{
-  background: rgba(255,255,255,.22) !important;
-}
-body.sca-botpage #scaBotPageRoot .sca-topbar .sca-badge-listening{
-  background: rgba(40, 220, 140, .22) !important;
-}
-body.sca-botpage #scaBotPageRoot .sca-topbar .sca-badge-talking{
-  background: rgba(255, 110, 140, .22) !important;
-}
+  .sca-planRow{
+    display:flex;
+    gap:10px;
+    margin-top:12px;
+  }
+  .sca-planPill{
+    flex:1;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 12px;
+    border-radius:14px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.04);
+    color:#fff;
+    cursor:pointer;
+    position:relative;
+    text-align:left;
+    font:inherit;
+  }
+  .sca-planPill.is-active{
+    background:rgba(255,255,255,.10);
+    border-color:rgba(255,255,255,.22);
+    outline:2px solid rgba(255,255,255,.12);
+  }
+  .sca-planAvatar{
+    width:34px;
+    height:34px;
+    border-radius:10px;
+    object-fit:cover;
+    flex:0 0 auto;
+  }
+  .sca-planText{ line-height:1.1; }
+  .sca-planTitle{ font-weight:600; }
+  .sca-planSub{ font-size:12px; opacity:.75; margin-top:2px; }
+  .sca-planBadge{
+    position:absolute;
+    top:8px;
+    right:8px;
+    font-size:11px;
+    padding:2px 8px;
+    border-radius:999px;
+    background:rgba(255,255,255,.16);
+  }
