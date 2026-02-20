@@ -807,3 +807,110 @@ body.sca-botpage #scaBotPageRoot .sca-planCost{
 body.sca-botpage #scaBotPageRoot .sca-planCost strong{
   color: #253551;
 }
+/* ---------- Plan tabs (Standard / Premium) ---------- */
+body.sca-botpage #scaBotPageRoot .sca-planBar{
+  margin: 0 6px 12px;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planTabs{
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 10px;                 /* more squared */
+  overflow: visible;                    /* allow cost tag to hang below */
+  border: 1px solid rgba(37,53,81,.18);
+  background: rgba(255,255,255,.70);
+  box-shadow: 0 10px 26px rgba(17,24,39,.08);
+}
+
+/* hide radios */
+body.sca-botpage #scaBotPageRoot .sca-planTabs input{
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planTab{
+  position: relative;
+  padding: 14px 16px 18px;            /* room for the hanging cost tab */
+  font-weight: 900;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+
+  color: #253551;
+  background: #ffffff;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* divider between Standard/Premium */
+body.sca-botpage #scaBotPageRoot #vpModePremium + label{
+  border-left: 1px solid rgba(37,53,81,.14);
+}
+
+/* Selected tab = dark blue */
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
+  background: #253551;
+  color: #fff;
+}
+
+/* Attached cost sub-tab (hidden unless selected) */
+body.sca-botpage #scaBotPageRoot .sca-planCostTag{
+  position: absolute;
+  left: 50%;
+  bottom: -14px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+
+  padding: 8px 12px;
+  border-radius: 0 0 10px 10px;        /* attached sub-tab look */
+  font-size: 14px;
+  font-weight: 700;
+
+  border: 1px solid rgba(0,0,0,.10);
+  background: rgba(255,255,255,.92);
+  color: rgba(37,53,81,.78);
+
+  box-shadow: 0 10px 24px rgba(17,24,39,.10);
+  display: none;                        /* only show for active */
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planCostTag strong{
+  color: #253551;
+  font-weight: 900;
+}
+
+/* Show cost tab ONLY for selected option */
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Make the cost tab match the selected theme (dark blue) */
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
+  background: #253551;
+  color: rgba(255,255,255,.90);
+  border-color: rgba(255,255,255,.22);
+}
+
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag strong,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag strong{
+  color: #fff;
+}
+
+/* the thin line across the top under the tabs */
+body.sca-botpage #scaBotPageRoot .sca-planUnderline{
+  height: 2px;
+  width: 100%;
+  margin-top: 18px;                     /* allow for the hanging cost tag */
+  border-radius: 999px;
+  background: rgba(37,53,81,.14);
+}
