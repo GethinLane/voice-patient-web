@@ -253,14 +253,14 @@
 
   function populatePatientData(records) {
     // These IDs must exist in your page HTML:
-    // #scaName, #scaAge, #patientPMHx, #patientDHx
+    // #sca-mainName, #sca-mainAge, #patientPMHx, #patientDHx
     const names = collectAndSortValues(records, "Name");
     const ages  = collectAndSortValues(records, "Age");
     const pmHx  = collectAndSortValues(records, "PMHx Record");
     const dHx   = collectAndSortValues(records, "DHx");
 
-    const nameEl = $("scaName");
-    const ageEl  = $("scaAge");
+    const nameEl = $("sca-mainName");
+    const ageEl  = $("sca-mainAge");
 
     if (nameEl) nameEl.textContent = names.join(", ") || "N/A";
     if (ageEl)  ageEl.textContent  = ages.join(", ") || "N/A";
@@ -350,9 +350,12 @@
   }
 
   // ---------------- Boot ----------------
-  function boot() {
-    // DO NOT CREATE HTML HERE. Just bind + populate.
-    bindAccordion();
+function boot() {
+  // Ensure page-scoped CSS activates
+  try { document.body.classList.add("sca-botpage"); } catch {}
+
+  // DO NOT CREATE HTML HERE. Just bind + populate.
+  bindAccordion();
 
     fetchAirtableCaseData().catch((e) => {
       console.error("[SCA] fetchAirtableCaseData failed:", e);
