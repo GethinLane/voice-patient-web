@@ -562,7 +562,7 @@ if (!acc.__scaDelegated) {
     const expanded = header.getAttribute("aria-expanded") === "true";
     header.setAttribute("aria-expanded", expanded ? "false" : "true");
     body.hidden = expanded;
-  });
+  }, true);
 }
     }
 
