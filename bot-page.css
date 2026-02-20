@@ -589,3 +589,25 @@ body.sca-botpage #scaBotPageRoot .sca-planCostTag{
   font-size: 15px; /* or 15px if you want it more obvious */
   ...
 }
+/* === Plan tabs tweak: square main bar, keep rounded sub-tab === */
+body.sca-botpage #scaBotPageRoot .sca-planTabs{
+  border-radius: 0 !important;   /* square outer corners */
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planTab{
+  border-radius: 0 !important;   /* ensure labels don't round */
+}
+
+/* keep the cost sub-tab rounded */
+body.sca-botpage #scaBotPageRoot .sca-planCostTag{
+  border-radius: 0 0 12px 12px !important;
+}
+   /* === Make Start/Stop segmented control square (to match plan tabs) === */
+body.sca-botpage #scaBotPageRoot .sca-seg{
+  border-radius: 0 !important;
+}
+
+body.sca-botpage #scaBotPageRoot #startBtn,
+body.sca-botpage #scaBotPageRoot #stopBtn{
+  border-radius: 0 !important;
+}
