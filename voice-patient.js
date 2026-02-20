@@ -67,7 +67,11 @@
   let lastGlow = 0.15;
 
 // ---------------- Helpers ----------------
-function $(id) { return document.getElementById(id); }
+function $(id) {
+  const els = Array.from(document.querySelectorAll(`#${CSS.escape(id)}`));
+  // Prefer a visible element (offsetParent !== null is a solid “is displayed” check)
+  return els.find((el) => el && el.offsetParent !== null) || els[0] || null;
+}
 
   // Voice agent picker (stored by Squarespace dropdown or set manually)
 function getForcedAgent() {
