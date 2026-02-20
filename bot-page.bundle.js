@@ -511,7 +511,16 @@ function setAvatar(url) {
       </div>
     `;
 
-    anchor.parentNode.insertBefore(root, anchor);
+    // --- IMPORTANT (Squarespace): mount UI OUTSIDE the code block wrapper ---
+// This avoids Squarespace's code-block "card" measuring / interaction quirks.
+const sqsBlock = anchor.closest(".sqs-block");
+if (sqsBlock && sqsBlock.parentNode) {
+  // Insert the UI right AFTER the whole Squarespace block
+  sqsBlock.parentNode.insertBefore(root, sqsBlock.nextSibling);
+} else {
+  // Fallback: original behaviour
+  anchor.parentNode.insertBefore(root, anchor);
+}
 
     // Move patient card host into avatar slot
     const avatarSlot = root.querySelector("#scaAvatarSlot");
