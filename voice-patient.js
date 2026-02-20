@@ -853,13 +853,11 @@ const data = await fetchJson(`${API_BASE}/api/start-session`, {
 });
 
 
-      // Tell the Squarespace overlay which avatar to show (if provided)
-if (data?.patientImageUrl) {
-  uiEmit({ avatarUrl: data.patientImageUrl, sessionId: data.sessionId || null });
-} else {
-  // optional: if no image, you could emit null to keep default
-  uiEmit({ avatarUrl: null });
-}
+      // Tell the Squarespace overlay which avatar to show (only if provided)
+      // IMPORTANT: do NOT emit avatarUrl:null, because that clears the already-loaded case image.
+      if (data?.patientImageUrl) {
+        uiEmit({ avatarUrl: data.patientImageUrl, sessionId: data.sessionId || null });
+      }
 
 
       if (!data?.ok) throw new Error(data?.error || "Start failed");
