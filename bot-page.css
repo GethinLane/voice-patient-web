@@ -722,13 +722,13 @@ body.sca-botpage #scaBotPageRoot .sca-planTab{
 body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
 body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
   background: #253551 !important;
-  color: #d3dde6 !important;
+  color: #d6dde9 !important;
 }
 
 /* Keep the Premium star consistent */
 body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planTabText,
 body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planTabText{
-  color: #d3dde6 !important;
+  color: #d6dde9 !important;
 }
 
 /* Cost sub-tab: same treatment */
@@ -758,7 +758,7 @@ body.sca-botpage #scaBotPageRoot .sca-planTab{
 /* Selected tab */
 body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
 body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
-  background: #d3dde6 !important;         /* selected background */
+  background: #d6dde9 !important;         /* selected background */
   color: #253551 !important;              /* selected text */
 }
 
@@ -776,7 +776,7 @@ body.sca-botpage #scaBotPageRoot .sca-planCostTag{
 
 body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
 body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
-  background: #d3dde6 !important;
+  background: #d6dde9 !important;
   color: #253551 !important;
 }
 
@@ -787,7 +787,7 @@ body.sca-botpage #scaBotPageRoot .sca-planCredits{
 }
 /* === Badge: Not Connected (idle) background d3dde6 === */
 body.sca-botpage #scaBotPageRoot .sca-badge.sca-badge-idle{
-  background: #d3dde6 !important;
+  background: #d6dde9 !important;
   color: #253551 !important;
   border-color: rgba(37,53,81,.18) !important;
 }
