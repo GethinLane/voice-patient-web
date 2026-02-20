@@ -61,6 +61,7 @@ body.sca-botpage #scaBotPageRoot .sca-left{
   min-width: 0;
   position: relative;
   z-index: 1;
+  overflow-x: clip;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-right{
