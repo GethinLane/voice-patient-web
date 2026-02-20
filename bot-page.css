@@ -669,3 +669,23 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
 body.sca-botpage #scaBotPageRoot .sca-accBody[hidden]{
   display: none !important;
 }
+
+/* 1) Make sure the right column always wins the click battle */
+body.sca-botpage #scaBotPageRoot .sca-right{
+  position: relative;
+  z-index: 50;
+}
+
+/* 2) Anything decorative around the orb should NEVER capture pointer events */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::before,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::after,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
+  pointer-events: none !important;
+}
+
+/* 3) Keep the actual image “normal” (optional, but safe) */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar *{
+  pointer-events: auto;
+}
