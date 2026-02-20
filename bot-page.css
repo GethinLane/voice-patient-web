@@ -794,3 +794,100 @@ body.sca-botpage #scaBotPageRoot .sca-badge.sca-badge-idle{
 body.sca-botpage #scaBotPageRoot .sca-badge.sca-badge-idle{
   opacity: .85;
 }
+/* === Bridge: apply the SAME plan selector styles outside #scaBotPageRoot === */
+/* Everything below mirrors the "Plan tabs (final)" section, but targets #scaPlanStandalone too. */
+
+body.sca-botpage #scaPlanStandalone .sca-planBar{
+  margin: 0 6px 12px;
+}
+
+body.sca-botpage #scaPlanStandalone .sca-planTabs{
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 0;               /* keep your squared outer corners */
+  overflow: visible;
+  border: 1px solid rgba(37,53,81,.18);
+  background: rgba(255,255,255,.70);
+  box-shadow: 0 10px 26px rgba(17,24,39,.08);
+}
+
+body.sca-botpage #scaPlanStandalone .sca-planTabs input{
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.sca-botpage #scaPlanStandalone .sca-planTab{
+  position: relative;
+  padding: 14px 16px 18px;
+  font-weight: 900;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(255,255,255,.70);
+  color: rgba(37,53,81,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+}
+
+/* divider between tabs */
+body.sca-botpage #scaPlanStandalone .sca-planTab + input + label{
+  border-left: 1px solid rgba(37,53,81,.14);
+}
+
+/* Selected = #d6dde9 background, #253551 text */
+body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label,
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label{
+  background: #d6dde9;
+  color: #253551;
+}
+
+body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label .sca-planTabText,
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planTabText{
+  color: #253551;
+}
+
+/* Cost sub-tab */
+body.sca-botpage #scaPlanStandalone .sca-planCostTag{
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 7px 12px;
+  border-radius: 0 0 12px 12px;   /* rounded sub-tab */
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: rgba(37,53,81,.70);
+  display: none;
+}
+
+body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label .sca-planCostTag,
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planCostTag{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #d6dde9;
+  color: #253551;
+}
+
+body.sca-botpage #scaPlanStandalone .sca-planCredits{
+  font-weight: inherit;
+  color: inherit;
+}
+
+/* Underline */
+body.sca-botpage #scaPlanStandalone .sca-planUnderline{
+  height: 2px;
+  width: 100%;
+  margin-top: 18px;
+  border-radius: 0;
+  background: rgba(37,53,81,.14);
+}
