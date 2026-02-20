@@ -82,14 +82,20 @@ body.sca-botpage #scaBotPageRoot .sca-accHeader{
   pointer-events: auto;
 }
 
-/* Left-column avatar visuals can bleed into the right column; make them non-interactive
-   so they can never steal clicks from accordion headers. */
+/* Decorative avatar visuals should never steal clicks,
+   but the patient card contains Start/Stop controls so it MUST stay interactive. */
 body.sca-botpage #scaBotPageRoot .sca-heroMedia,
-body.sca-botpage #scaBotPageRoot #sca-patient-card,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
   pointer-events: none;
+}
+
+/* Keep the card + controls clickable */
+body.sca-botpage #scaBotPageRoot #sca-patient-card,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-controls,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-controls *{
+  pointer-events: auto;
 }
 body.sca-botpage #scaBotPageRoot .sca-heroRow{
   display: flex;
@@ -684,7 +690,13 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
   pointer-events: none !important;
 }
 
-/* 3) Keep the actual image “normal” (optional, but safe) */
+/* 3) The controls MUST remain clickable */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-controls,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-controls *{
+  pointer-events: auto !important;
+}
+
+/* (Optional) keep avatar normal */
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar *{
   pointer-events: auto;
