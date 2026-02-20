@@ -135,7 +135,7 @@
 
       if (pmhx) addAccItem(acc, { title: "Medical History", contentNode: pmhx, open: true });
       if (dhx) addAccItem(acc, { title: "Medication", contentNode: dhx, open: true });
-      if (notesBox) addAccItem(acc, { title: "Medical Notes", contentNode: notesBox, open: true });
+      if (notesBox) addAccItem(acc, { title: "Medical Notes", contentNode: notesBox, open: false });
       if (resultsBox) addAccItem(acc, { title: "Investigation Results", contentNode: resultsBox, open: false });
     }
 

@@ -668,14 +668,9 @@ console.log("[VP] callObject exposed as window.__vpCallObject");
   // ---------- Cases ----------
   async function populateCaseDropdown() {
     const sel = $("caseSelect");
-    if (!sel) {
-      log("UI ERROR: caseSelect not found");
-      setStatus("caseSelect not found in page HTML");
-      return;
-    }
+    if (!sel) return;
 
     sel.innerHTML = `<option>Loading cases…</option>`;
-    setStatus("Loading cases…");
 
     try {
       const data = await fetchJson(`${API_BASE}/api/cases`, {
@@ -695,9 +690,7 @@ console.log("[VP] callObject exposed as window.__vpCallObject");
       }
 
       if (data.cases.length) sel.value = String(data.cases[data.cases.length - 1]);
-      setStatus("Cases loaded. Choose a case then Start.");
     } catch (e) {
-      setStatus("Failed to load cases.");
       sel.innerHTML = `<option>Error loading cases</option>`;
       log("[CASES] error", { error: e?.message || String(e) });
     }
@@ -923,7 +916,6 @@ if (data?.patientImageUrl) {
   window.addEventListener("DOMContentLoaded", () => {
     if (DEBUG_UI) ensureUiRoot();
 
-    const hasCaseSelect = !!$("caseSelect");
     const hasStartBtn = !!$("startBtn");
     const hasStopBtn = !!$("stopBtn");
     const hasStatus = !!$("status");

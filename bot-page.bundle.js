@@ -55,7 +55,7 @@
       <div class="sca-card">
         <div class="sca-header">
           <div class="sca-title">Patient</div>
-          <div id="sca-badge" class="sca-badge sca-badge-idle">Idle</div>
+          <div id="sca-badge" class="sca-badge sca-badge-idle">Not Connected</div>
         </div>
 
         <div class="sca-avatarWrap">
@@ -91,7 +91,7 @@
     ring.classList.remove("thinking");
 
     if (state === "idle") {
-      badge.textContent = "Idle";
+      badge.textContent = "Not Connected";
       badge.classList.add("sca-badge-idle");
     } else if (state === "thinking") {
       badge.textContent = "Thinking";
@@ -546,7 +546,7 @@ ctx.restore();
 
       if (pmhx) addAccItem(acc, { title: "Medical History", contentNode: pmhx, open: true });
       if (dhx) addAccItem(acc, { title: "Medication", contentNode: dhx, open: true });
-      if (notesBox) addAccItem(acc, { title: "Medical Notes", contentNode: notesBox, open: true });
+      if (notesBox) addAccItem(acc, { title: "Medical Notes", contentNode: notesBox, open: false });
       if (resultsBox) addAccItem(acc, { title: "Investigation Results", contentNode: resultsBox, open: false });
     }
 

@@ -35,8 +35,8 @@ body.sca-botpage #scaBotPageRoot{
 
 @media (max-width: 720px){
   body.sca-botpage #scaBotPageRoot{
-    margin: 12px;
-    padding: 14px;
+    margin: 6px;
+    padding: 10px;
     border-radius: 18px;
   }
 }
@@ -306,11 +306,11 @@ body.sca-botpage #scaBotPageRoot .sca-cleanList{
   margin: 0;
   padding-left: 18px;
   color: var(--sca-muted);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-cleanList li{
-  margin: 8px 0;
+  margin: 5px 0;
 }
 
 /* ---------------- Restyle your existing notes/results markup ---------------- */
@@ -455,38 +455,38 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
   --orb-bleed: 24px;
-  width: 380px !important;
-  height: 380px !important;
+  width: 304px !important;
+  height: 304px !important;
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-  width: 380px !important;
-  height: 380px !important;
+  width: 304px !important;
+  height: 304px !important;
   border: 0 !important;
 }
 
 @media (max-width: 720px){
   body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
     --orb-bleed: 16px;
-    width: min(82vw, 320px) !important;
-    height: min(82vw, 320px) !important;
+    width: min(90vw, 256px) !important;
+    height: min(90vw, 256px) !important;
   }
 
   body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-    width: min(82vw, 320px) !important;
-    height: min(82vw, 320px) !important;
+    width: min(90vw, 256px) !important;
+    height: min(90vw, 256px) !important;
   }
 }
 
 @media (max-width: 420px){
   body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-    width: min(86vw, 280px) !important;
-    height: min(86vw, 280px) !important;
+    width: min(92vw, 224px) !important;
+    height: min(92vw, 224px) !important;
   }
 
   body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-    width: min(86vw, 280px) !important;
-    height: min(86vw, 280px) !important;
+    width: min(92vw, 224px) !important;
+    height: min(92vw, 224px) !important;
   }
 }
 
