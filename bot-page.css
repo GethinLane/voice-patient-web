@@ -711,3 +711,39 @@ body.sca-botpage #scaBotPageRoot .sca-topTab{
     border-radius:999px;
     background:rgba(255,255,255,.16);
   }
+/* === Plan tabs: match Start/Stop vibe (grey when off, d3dde6 when on) === */
+
+/* Unselected tab text (greyed out) */
+body.sca-botpage #scaBotPageRoot .sca-planTab{
+  color: rgba(37,53,81,.45) !important;
+}
+
+/* Selected tab: dark background, light text */
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
+  background: #253551 !important;
+  color: #d3dde6 !important;
+}
+
+/* Keep the Premium star consistent */
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planTabText,
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planTabText{
+  color: #d3dde6 !important;
+}
+
+/* Cost sub-tab: same treatment */
+body.sca-botpage #scaBotPageRoot .sca-planCostTag{
+  color: rgba(37,53,81,.55) !important;
+}
+
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
+  background: #253551 !important;
+  color: rgba(211,221,230,.92) !important; /* d3dde6 with slight transparency */
+}
+
+/* Ensure the number matches the sentence */
+body.sca-botpage #scaBotPageRoot .sca-planCredits{
+  color: inherit !important;
+  font-weight: inherit !important;
+}
