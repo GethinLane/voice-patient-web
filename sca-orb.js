@@ -363,5 +363,14 @@ if (alpha <= 0.001) continue;
     if (typeof d.glow === "number") ORB.glow = clamp01(d.glow);
   });
 
-  window.addEventListener("DOMContentLoaded", start);
+  function startWhenReady() {
+  // Wait until the app shell has rendered the canvas
+  if (!document.getElementById("sca-orb-canvas")) {
+    requestAnimationFrame(startWhenReady);
+    return;
+  }
+  start();
+}
+
+window.addEventListener("DOMContentLoaded", startWhenReady);
 })();
