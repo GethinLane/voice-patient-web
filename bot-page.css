@@ -785,3 +785,9 @@ body.sca-botpage #scaBotPageRoot .sca-planCredits{
   color: inherit !important;
   font-weight: inherit !important;
 }
+/* === Badge: Not Connected (idle) background d3dde6 === */
+body.sca-botpage #scaBotPageRoot .sca-badge.sca-badge-idle{
+  background: #d3dde6 !important;
+  color: #253551 !important;
+  border-color: rgba(37,53,81,.18) !important;
+}
