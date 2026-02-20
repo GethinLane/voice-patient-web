@@ -914,3 +914,7 @@ body.sca-botpage #scaBotPageRoot .sca-planUnderline{
   border-radius: 999px;
   background: rgba(37,53,81,.14);
 }
+body.sca-botpage #scaBotPageRoot .sca-planCredits{
+  font-weight: 700; /* not bold-bold; tweak to 600 if you want even lighter */
+  color: inherit;   /* matches whatever the tag text color is */
+}
