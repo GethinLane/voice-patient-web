@@ -747,3 +747,41 @@ body.sca-botpage #scaBotPageRoot .sca-planCredits{
   color: inherit !important;
   font-weight: inherit !important;
 }
+/* === Plan tabs: selected bg #d3dde6, selected text #253551, unselected grey === */
+
+/* Default (unselected) look */
+body.sca-botpage #scaBotPageRoot .sca-planTab{
+  background: rgba(255,255,255,.70) !important;
+  color: rgba(37,53,81,.45) !important;   /* greyed out */
+}
+
+/* Selected tab */
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
+  background: #d3dde6 !important;         /* selected background */
+  color: #253551 !important;              /* selected text */
+}
+
+/* Keep inner text (and star) consistent */
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planTabText,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planTabText{
+  color: #253551 !important;
+}
+
+/* Cost sub-tab: unselected subtle, selected matches the selected tab */
+body.sca-botpage #scaBotPageRoot .sca-planCostTag{
+  color: rgba(37,53,81,.55) !important;
+  background: transparent !important;
+}
+
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
+  background: #d3dde6 !important;
+  color: #253551 !important;
+}
+
+/* Number same style as sentence */
+body.sca-botpage #scaBotPageRoot .sca-planCredits{
+  color: inherit !important;
+  font-weight: inherit !important;
+}
