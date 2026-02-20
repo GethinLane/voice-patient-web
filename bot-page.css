@@ -1,6 +1,10 @@
-/* bot-page.css */
-/* Scoped to this page only (JS adds body.sca-botpage). */
+/* bot-page.css
+   Cleaned + de-duplicated.
+   - Scoped to body.sca-botpage (added by JS)
+   - Later rules naturally win; no repeated blocks
+*/
 
+/* ---------------- Page shell ---------------- */
 body.sca-botpage{
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   background:
@@ -11,7 +15,9 @@ body.sca-botpage{
 }
 
 body.sca-botpage #scaBotPageRoot,
-body.sca-botpage #scaBotPageRoot * { box-sizing: border-box; }
+body.sca-botpage #scaBotPageRoot *{
+  box-sizing: border-box;
+}
 
 body.sca-botpage #scaBotPageRoot{
   --sca-ink: #253551;
@@ -41,6 +47,7 @@ body.sca-botpage #scaBotPageRoot{
   }
 }
 
+/* ---------------- Layout grid ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-grid{
   display: grid;
   grid-template-columns: 1.2fr 0.9fr;
@@ -53,7 +60,6 @@ body.sca-botpage #scaBotPageRoot .sca-grid{
   }
 }
 
-/* ---------------- Left column ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-left{
   display: flex;
   flex-direction: column;
@@ -70,8 +76,7 @@ body.sca-botpage #scaBotPageRoot .sca-right{
   z-index: 2;
 }
 
-
-/* Keep interaction layer on top in desktop mode */
+/* Keep interaction layer on top in desktop mode (prevents orb stealing clicks) */
 body.sca-botpage #scaBotPageRoot .sca-right,
 body.sca-botpage #scaBotPageRoot .sca-infoCard,
 body.sca-botpage #scaBotPageRoot .sca-accordion,
@@ -82,63 +87,25 @@ body.sca-botpage #scaBotPageRoot .sca-accHeader{
   pointer-events: auto;
 }
 
-/* Decorative avatar visuals should never steal clicks,
-   but the patient card contains Start/Stop controls so it MUST stay interactive. */
+/* Decorative avatar visuals should never steal clicks */
 body.sca-botpage #scaBotPageRoot .sca-heroMedia,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring,
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-  pointer-events: none;
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::before,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::after,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
+  pointer-events: none !important;
 }
 
-/* Keep the card + controls clickable */
+/* The patient card + controls MUST remain clickable */
 body.sca-botpage #scaBotPageRoot #sca-patient-card,
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-controls,
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-controls *{
+body.sca-botpage #scaBotPageRoot .sca-controls,
+body.sca-botpage #scaBotPageRoot .sca-controls *{
   pointer-events: auto;
 }
-body.sca-botpage #scaBotPageRoot .sca-heroRow{
-  display: flex;
-  align-items: flex-start;
-  padding: 8px 6px;
-}
 
-@media (max-width: 720px){
-  body.sca-botpage #scaBotPageRoot .sca-heroRow{
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-body.sca-botpage #scaBotPageRoot .sca-heroMedia{
-  position: relative;
-  width: 100%;
-  display: flex;
-  justify-content: center;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-heroTitle{
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-heroName{
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--sca-ink);
-  font-size: clamp(26px, 3.3vw, 40px);
-  line-height: 1.05;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-heroAge{
-  color: var(--sca-muted);
-  font-weight: 650;
-  font-size: 16px;
-}
-
-
-/* Big name block */
+/* ---------------- Main meta ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-mainMeta{
   padding: 0 6px 0;
 }
@@ -162,26 +129,26 @@ body.sca-botpage #scaBotPageRoot .sca-mainAge{
   body.sca-botpage #scaBotPageRoot .sca-mainName{
     font-size: clamp(26px, 9vw, 36px);
   }
-
   body.sca-botpage #scaBotPageRoot .sca-mainAge{
     margin-top: 8px;
     font-size: 16px;
   }
 }
 
-
-/* Bot update box */
+/* ---------------- Bot update box (right column) ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-botUpdate{
   background: rgba(255,255,255,.62);
   border: 1px solid var(--sca-border);
   border-radius: 16px;
   padding: 14px 14px 10px;
+  margin-bottom: 14px; /* replaces <br> spacing */
 }
 
 body.sca-botpage #scaBotPageRoot .sca-botUpdateHeader{
   display: flex;
   gap: 10px;
   align-items: center;
+  justify-content: space-between;
   margin-bottom: 8px;
 }
 
@@ -190,24 +157,34 @@ body.sca-botpage #scaBotPageRoot .sca-botUpdateTitle{
   color: var(--sca-ink);
 }
 
-body.sca-botpage #scaBotPageRoot .sca-botUpdateList{
-  margin: 0;
-  padding-left: 18px;
-  color: var(--sca-muted);
-  font-weight: 600;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-botUpdateList li{
-  margin: 6px 0;
-}
-
 body.sca-botpage #scaBotPageRoot #status{
   display: inline;
   font-weight: 650;
   color: var(--sca-muted);
 }
 
-/* Start/Stop segmented control */
+body.sca-botpage #scaBotPageRoot .sca-botUpdateList{
+  margin: 0;
+  padding-left: 18px;
+  color: var(--sca-muted);
+  font-weight: 600;
+  list-style: disc !important;
+  list-style-position: outside !important;
+  position: relative !important;
+  display: block !important;
+  overflow: hidden;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-botUpdateList li{
+  position: relative !important;
+  margin: 6px 0 !important;
+}
+
+/* ---------------- Start/Stop segmented control ---------------- */
+body.sca-botpage #scaBotPageRoot .sca-controls{
+  margin-top: 6px;
+}
+
 body.sca-botpage #scaBotPageRoot .sca-seg{
   display: flex;
   width: 100%;
@@ -240,7 +217,7 @@ body.sca-botpage #scaBotPageRoot #stopBtn{
 
 body.sca-botpage #scaBotPageRoot #startBtn:not(:disabled){
   background: #253551;
-  color: white;
+  color: #fff;
 }
 
 body.sca-botpage #scaBotPageRoot #startBtn:disabled{
@@ -303,6 +280,8 @@ body.sca-botpage #scaBotPageRoot .sca-accHeader{
   border: none;
   cursor: pointer;
   text-align: left;
+  position: relative;
+  z-index: 10000; /* wins against any orb layers */
 }
 
 body.sca-botpage #scaBotPageRoot .sca-accTitle{
@@ -327,6 +306,10 @@ body.sca-botpage #scaBotPageRoot .sca-accBody{
   padding: 0 16px 14px;
 }
 
+body.sca-botpage #scaBotPageRoot .sca-accBody[hidden]{
+  display: none !important; /* reliable collapse on Squarespace */
+}
+
 body.sca-botpage #scaBotPageRoot .sca-accContent{
   background: rgba(255,255,255,.55);
   border: 1px solid var(--sca-border);
@@ -345,14 +328,7 @@ body.sca-botpage #scaBotPageRoot .sca-cleanList li{
   margin: 5px 0;
 }
 
-/* ---------------- Restyle your existing notes/results markup ---------------- */
-/* Hide inner headings since accordion header provides them */
-body.sca-botpage #scaBotPageRoot #medicalNotesBox > h4,
-body.sca-botpage #scaBotPageRoot #resultsBox > h4{
-  display: none !important;
-}
-
-/* Your existing classes from the Airtable rendering */
+/* ---------------- Notes / Results markup ---------------- */
 body.sca-botpage #scaBotPageRoot .underline{
   font-weight: 900;
   color: var(--sca-ink);
@@ -385,25 +361,23 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
   height: auto;
 }
 
-/* Patient card base styles (moved out of JS) */
-#sca-patient-card { margin: 12px 0; }
+/* ---------------- Patient card base ---------------- */
+#sca-patient-card{ margin: 12px 0; }
 
-#sca-patient-card .sca-card{
-  max-width: 520px;
-  border: 1px solid rgba(0,0,0,.12);
-  border-radius: 16px;
-  padding: 14px 14px 16px;
-  background: #fff;
-  box-shadow: 0 10px 30px rgba(0,0,0,.06);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+#sca-patient-card .sca-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom: 6px;
 }
 
-#sca-patient-card .sca-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; }
 #sca-patient-card .sca-title{ font-weight: 800; }
 
 #sca-patient-card .sca-badge{
-  font-size: 14px; font-weight: 800;
-  padding: 8px 12px; border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 8px 12px;
+  border-radius: 999px;
   border: 1px solid rgba(0,0,0,.12);
 }
 
@@ -412,402 +386,112 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
 #sca-patient-card .sca-badge-listening{ background:#eaf8f0; color:#0c6a3b; border-color: rgba(12,106,59,.25); }
 #sca-patient-card .sca-badge-talking{ background:#fff1f3; color:#b0123a; border-color: rgba(176,18,58,.25); }
 
-#sca-patient-card .sca-avatarWrap{ display:flex; justify-content:center; align-items:center; padding: 10px 0 6px; }
+#sca-patient-card .sca-avatarWrap{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding: 10px 0 6px;
+}
 
 #sca-patient-card .sca-ring{
   --glow: 0.15;
-  --orb-bleed: 14px;
-  width: 176px; height: 176px;
+  --orb-bleed: 24px;
+  width: 304px;
+  height: 304px;
   border-radius: 50%;
-  display:flex; justify-content:center; align-items:center;
-  background: transparent;
-  box-shadow: none;
-  transition: none;
-  position: relative;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  position: relative !important;
   overflow: visible;
+  isolation: isolate;
+  background: transparent;
 }
 
 #sca-patient-card .sca-orbCanvas{
-  position: absolute;
+  position: absolute !important;
   inset: calc(var(--orb-bleed) * -1);
   width: calc(100% + (var(--orb-bleed) * 2));
   height: calc(100% + (var(--orb-bleed) * 2));
-  pointer-events: none;
-  z-index: 3;
-}
-
-#sca-patient-card .sca-ring.thinking::after{ content: none; }
-
-@keyframes scaBreath{
-  0%{ transform: scale(0.96); opacity: .35; }
-  50%{ transform: scale(1.04); opacity: .85; }
-  100%{ transform: scale(0.96); opacity: .35; }
+  z-index: 5 !important;
+  opacity: .9;
+  filter: blur(.4px);
 }
 
 #sca-patient-card .sca-avatar{
-  width: 176px; height: 176px;
+  width: 304px;
+  height: 304px;
   border-radius: 50%;
-  overflow:hidden;
-  background:#fff;
+  overflow: hidden;
+  background: #fff;
+  position: relative !important;
+  z-index: 1 !important;
   border: 0;
-  box-shadow: none;
-  position: relative;
-  z-index: 1;
 }
 
-#sca-patient-card .sca-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
+#sca-patient-card .sca-avatar img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 
-#sca-patient-card .sca-status{ font-size: 13px; font-weight: 700; margin-top: 6px; }
+#sca-patient-card .sca-status{
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 6px;
+}
 
-
-/* ---------------- Patient card overrides (keep your existing JS, just restyle) ---------------- */
+/* Patient card overrides (match your design) */
 body.sca-botpage #scaBotPageRoot #sca-patient-card{ margin: 0 !important; }
 
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-card{
-  max-width: none !important;
-  border: none !important;
-  border-radius: 0 !important;
-  padding: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header{
-  margin: 0 0 10px !important;
-  justify-content: flex-start !important;
-}
-
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-title{ display: none !important; }
-
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-status{ display: none !important; }
 
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
-  padding: 0 !important;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-  --orb-bleed: 24px;
-  width: 304px !important;
-  height: 304px !important;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-  width: 304px !important;
-  height: 304px !important;
-  border: 0 !important;
-}
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{ padding: 0 !important; }
 
 @media (max-width: 720px){
   body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
     --orb-bleed: 16px;
-    width: min(90vw, 256px) !important;
-    height: min(90vw, 256px) !important;
+    width: min(90vw, 256px);
+    height: min(90vw, 256px);
   }
-
   body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-    width: min(90vw, 256px) !important;
-    height: min(90vw, 256px) !important;
+    width: min(90vw, 256px);
+    height: min(90vw, 256px);
   }
 }
 
 @media (max-width: 420px){
   body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-    width: min(92vw, 224px) !important;
-    height: min(92vw, 224px) !important;
+    width: min(92vw, 224px);
+    height: min(92vw, 224px);
   }
-
   body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-    width: min(92vw, 224px) !important;
-    height: min(92vw, 224px) !important;
+    width: min(92vw, 224px);
+    height: min(92vw, 224px);
   }
-}
-
-/* ---------------- Hide the original patientDataBox but keep it in DOM for your existing JS ---------------- */
-body.sca-botpage #patientDataBox[data-sca-hidden="true"]{
-  display: none !important;
 }
 
 /* Hide broken-image fallback + alt text */
-#sca-avatar-img { display: none; }
-#sca-avatar-img.is-loaded { display: block; }
+#sca-avatar-img{ display: none; }
+#sca-avatar-img.is-loaded{ display: block; }
 
- /* Ensure avatar image fully fills the circle (prevents little grey “gaps”) */
 #sca-avatar-img{
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;     /* kills baseline gap at bottom */
+  display: block;
   border: 0;
   outline: 0;
 }
 
-/*---- New Added ADditions for Glow----*/
-/* ===== Reset: remove other effects for now ===== */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::before,
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::after{
-  content: none !important;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-  -webkit-mask-image: none !important;
-  mask-image: none !important;
-}
-
-/* ===== Blob mist layer (ONLY under blobs) ===== */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-  position: relative;
-  isolation: isolate;
-}
-
-/* This draws a soft background "field" for the blobs */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas::before{
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  pointer-events: none;
-
-  /* light blue mist */
-  background: radial-gradient(circle,
-    rgba(120, 190, 255, 0) 0%,
-    rgba(120, 190, 255, .10) 55%,
-    rgba(120, 190, 255, .18) 70%,
-    rgba(120, 190, 255, 0) 100%
-  );
-
-  /* blur so it feels like haze not paint */
-  filter: blur(16px);
-  opacity: .95;
-
-  /* donut mask: only visible where blobs are */
-  -webkit-mask-image: radial-gradient(circle,
-    rgba(0,0,0,0) 52%,
-    rgba(0,0,0,1) 62%,
-    rgba(0,0,0,1) 78%,
-    rgba(0,0,0,0) 100%);
-  mask-image: radial-gradient(circle,
-    rgba(0,0,0,0) 52%,
-    rgba(0,0,0,1) 62%,
-    rgba(0,0,0,1) 78%,
-    rgba(0,0,0,0) 100%);
-
-  z-index: 0;
-}
-
-/* Ensure the canvas sits above the mist */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
-  position: absolute; /* you already have absolute */
-  z-index: 1;
-  opacity: .9;
-  filter: blur(.4px);
-}
-
-/* Ensure avatar stays above/below as you prefer:
-   - if blobs should be over face edge: keep orbCanvas higher than avatar
-   - if blobs should be behind face: lower orbCanvas z-index to 0 and raise avatar
-*/
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-  position: relative;
-  z-index: 2;
-}
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::before{
-  content:"";
-  position:absolute;
-  inset:-24px;
-  border-radius:50%;
-  pointer-events:none;
-  z-index: 2; /* between avatar(1) and blobs(3) if you want */
-  background: radial-gradient(circle,
-    rgba(120,190,255,0) 0%,
-    rgba(120,190,255,.10) 55%,
-    rgba(120,190,255,.18) 70%,
-    rgba(120,190,255,0) 100%
-  );
-  filter: blur(18px);
-  opacity: .9;
-  -webkit-mask-image: radial-gradient(circle,
-    rgba(0,0,0,0) 52%,
-    rgba(0,0,0,1) 62%,
-    rgba(0,0,0,1) 78%,
-    rgba(0,0,0,0) 100%);
-  mask-image: radial-gradient(circle,
-    rgba(0,0,0,0) 52%,
-    rgba(0,0,0,1) 62%,
-    rgba(0,0,0,1) 78%,
-    rgba(0,0,0,0) 100%);
-}
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-  position: relative;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-  position: relative;
-  z-index: 1;          /* image */
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
-  position: absolute;
-  inset: calc(var(--orb-bleed) * -1);
-  width: calc(100% + (var(--orb-bleed) * 2));
-  height: calc(100% + (var(--orb-bleed) * 2));
-  z-index: 2;          /* mist + blobs */
-  pointer-events: none;
-}
-/* Ensure the ring is a stacking context */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-  position: relative !important;
-}
-
-/* Put the image behind */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-  position: relative !important;
-  z-index: 1 !important;
-}
-
-/* Put the canvas (mist + blobs) above the image */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
-  position: absolute !important;
-  z-index: 5 !important;
-  pointer-events: none;
-}
-
-/* Make accordion collapse reliable even if Squarespace overrides [hidden] */
-body.sca-botpage #scaBotPageRoot .sca-accBody[hidden]{
+/* Hide legacy patientDataBox if present */
+body.sca-botpage #patientDataBox[data-sca-hidden="true"]{
   display: none !important;
 }
 
-/* 1) Make sure the right column always wins the click battle */
-body.sca-botpage #scaBotPageRoot .sca-right{
-  position: relative;
-  z-index: 50;
-}
-
-/* 2) Anything decorative around the orb should NEVER capture pointer events */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring,
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::before,
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::after,
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
-  pointer-events: none !important;
-}
-
-/* 3) The controls MUST remain clickable */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-controls,
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-controls *{
-  pointer-events: auto !important;
-}
-
-/* (Optional) keep avatar normal */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar,
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar *{
-  pointer-events: auto;
-}
-body.sca-botpage #scaBotPageRoot .sca-right{
-  position: relative;
-  z-index: 9999;
-}
-body.sca-botpage #scaBotPageRoot .sca-accHeader{
-  position: relative;
-  z-index: 10000;
-}
-body.sca-botpage #scaBotPageRoot .sca-accItem{
-  cursor: pointer;
-}
-body.sca-botpage #scaBotPageRoot .sca-accHeader{
-  width: 100%;
-}
-/* --- Fix Squarespace/global UL/LI overrides that can push items outside the box --- */
-body.sca-botpage #scaBotPageRoot .sca-botUpdateList{
-  list-style: disc !important;
-  list-style-position: outside !important;
-  position: relative !important;
-  display: block !important;
-  overflow: hidden;            /* keeps visuals inside rounded box */
-}
-
-body.sca-botpage #scaBotPageRoot .sca-botUpdateList li{
-  position: relative !important;
-  margin: 6px 0 !important;
-}
-/* Controls placement when under Bot update */
-body.sca-botpage #scaBotPageRoot .sca-controls{
-  margin-top: 6px;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-controlsStatus{
-  margin-top: 10px;
-}
-/* ---------- Plan tabs (Standard / Premium) ---------- */
-body.sca-botpage #scaBotPageRoot .sca-planBar{
-  margin: 0 6px 10px;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-planTabs{
-  display: inline-flex;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1px solid rgba(37,53,81,.18);
-  background: rgba(255,255,255,.65);
-  box-shadow: 0 10px 26px rgba(17,24,39,.08);
-}
-
-/* hide native radios */
-body.sca-botpage #scaBotPageRoot .sca-planTabs input{
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-planTab{
-  padding: 12px 18px;
-  font-weight: 900;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  user-select: none;
-  color: #253551;
-  background: #ffffff;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* Selected tab = dark blue */
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
-  background: #253551;
-  color: #fff;
-}
-
-/* separator line between tabs */
-body.sca-botpage #scaBotPageRoot .sca-planTab + input + label{
-  border-left: 1px solid rgba(37,53,81,.14);
-}
-
-/* the thin line across the top under the tabs (your “little line”) */
-body.sca-botpage #scaBotPageRoot .sca-planUnderline{
-  height: 2px;
-  width: 100%;
-  margin-top: 8px;
-  border-radius: 999px;
-  background: rgba(37,53,81,.14);
-}
-
-/* Costs pill (dropdown-ish) */
-body.sca-botpage #scaBotPageRoot .sca-planCost{
-  margin-top: 10px;
-  border: 1px solid rgba(37,53,81,.14);
-  background: rgba(255,255,255,.70);
-  border-radius: 14px;
-  padding: 10px 14px;
-  font-weight: 700;
-  color: rgba(37,53,81,.78);
-  cursor: default; /* not actually a dropdown unless you want it */
-}
-
-body.sca-botpage #scaBotPageRoot .sca-planCost strong{
-  color: #253551;
-}
-/* ---------- Plan tabs (Standard / Premium) ---------- */
+/* ---------------- Plan tabs (final) ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-planBar{
   margin: 0 6px 12px;
 }
@@ -816,14 +500,13 @@ body.sca-botpage #scaBotPageRoot .sca-planTabs{
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  border-radius: 10px;                 /* more squared */
-  overflow: visible;                    /* allow cost tag to hang below */
+  border-radius: 10px;
+  overflow: visible;
   border: 1px solid rgba(37,53,81,.18);
   background: rgba(255,255,255,.70);
   box-shadow: 0 10px 26px rgba(17,24,39,.08);
 }
 
-/* hide radios */
 body.sca-botpage #scaBotPageRoot .sca-planTabs input{
   position: absolute;
   opacity: 0;
@@ -832,92 +515,32 @@ body.sca-botpage #scaBotPageRoot .sca-planTabs input{
 
 body.sca-botpage #scaBotPageRoot .sca-planTab{
   position: relative;
-  padding: 14px 16px 18px;            /* room for the hanging cost tab */
+  padding: 14px 16px 18px;
   font-weight: 900;
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
   user-select: none;
-
   color: #253551;
-  background: #ffffff;
-
+  background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* divider between Standard/Premium */
-body.sca-botpage #scaBotPageRoot #vpModePremium + label{
+/* divider between the two labels (matches your DOM order: label + input + label) */
+body.sca-botpage #scaBotPageRoot .sca-planTab + input + label{
   border-left: 1px solid rgba(37,53,81,.14);
 }
 
-/* Selected tab = dark blue */
+/* Selected tab */
 body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
 body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
   background: #253551;
   color: #fff;
 }
 
-/* Attached cost sub-tab (hidden unless selected) */
-body.sca-botpage #scaBotPageRoot .sca-planCostTag{
-  position: absolute;
-  left: 50%;
-  bottom: -14px;
-  transform: translateX(-50%);
-  white-space: nowrap;
-
-  padding: 8px 12px;
-  border-radius: 0 0 10px 10px;        /* attached sub-tab look */
-  font-size: 14px;
-  font-weight: 700;
-
-  border: 1px solid rgba(0,0,0,.10);
-  background: rgba(255,255,255,.92);
-  color: rgba(37,53,81,.78);
-
-  box-shadow: 0 10px 24px rgba(17,24,39,.10);
-  display: none;                        /* only show for active */
-}
-
-body.sca-botpage #scaBotPageRoot .sca-planCostTag strong{
-  color: #253551;
-  font-weight: 900;
-}
-
-/* Show cost tab ONLY for selected option */
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Make the cost tab match the selected theme (dark blue) */
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
-  background: #253551;
-  color: rgba(255,255,255,.90);
-  border-color: rgba(255,255,255,.22);
-}
-
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag strong,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag strong{
-  color: #fff;
-}
-
-/* the thin line across the top under the tabs */
-body.sca-botpage #scaBotPageRoot .sca-planUnderline{
-  height: 2px;
-  width: 100%;
-  margin-top: 18px;                     /* allow for the hanging cost tag */
-  border-radius: 999px;
-  background: rgba(37,53,81,.14);
-}
-body.sca-botpage #scaBotPageRoot .sca-planCredits{
-  font-weight: 500; /* not bold-bold; tweak to 600 if you want even lighter */
-  color: inherit;   /* matches whatever the tag text color is */
-}
+/* Cost sub-tab (clean: no outline) */
 body.sca-botpage #scaBotPageRoot .sca-planCostTag{
   position: absolute;
   left: 50%;
@@ -928,19 +551,36 @@ body.sca-botpage #scaBotPageRoot .sca-planCostTag{
   padding: 7px 12px;
   border-radius: 0 0 10px 10px;
   font-size: 13px;
-  font-weight: 700;
-
-  border: none;              /* remove outline */
-  box-shadow: none;          /* remove hard shadow */
-  background: rgba(255,255,255,.0); /* will be overridden when selected */
+  font-weight: 500;         /* make whole sentence lighter */
+  border: none;
+  box-shadow: none;
+  background: rgba(255,255,255,0);
   color: rgba(37,53,81,.70);
 
   display: none;
 }
+
 body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
 body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
   background: #253551;
   color: rgba(255,255,255,.90);
-  border: none;          /* ensure no outline */
-  box-shadow: none;      /* keep it clean */
+}
+
+/* credits number should match sentence weight */
+body.sca-botpage #scaBotPageRoot .sca-planCredits{
+  font-weight: inherit;
+  color: inherit;
+}
+
+/* Underline under tabs */
+body.sca-botpage #scaBotPageRoot .sca-planUnderline{
+  height: 2px;
+  width: 100%;
+  margin-top: 18px;
+  border-radius: 999px;
+  background: rgba(37,53,81,.14);
 }
