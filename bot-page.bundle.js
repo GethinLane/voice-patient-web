@@ -1,40 +1,20 @@
-/* bot-page.bundle.js
-   Merged:
-   - Patient card overlay (avatar + ring + badge + status + vp:ui listener)
-   - bot-page-ui shell + accordion + bindings
-   - Case fetch (proxy) -> window.airtableData -> airtableDataFetched
-   - Patient/Notes/Results population
-   - Case indicator sync
-   - Avatar loads on page load (from Airtable records; optional profile endpoint support)
+/* bot-page.bundle.js (simplified)
+   - Renders full UI into #sca-patient-card (single source of truth)
+   - NO orb rendering (handled by sca-orb.js)
+   - Fetches Airtable case data via proxy
+   - Populates: name/age, PMHx, DHx, notes (with photos), results
+   - Accordion behaviour + vp:ui badge/status updates
 */
 (() => {
   // ---------------- Config ----------------
-  // Existing proxy (kept)
   const PROXY_BASE_URL =
     window.PROXY_BASE_URL || "https://scarevision-airtable-proxy.vercel.app";
 
-  // OPTIONAL: if you later add a profile endpoint (CaseProfiles) in your proxy, set this true
-  // and implement /api/case-profile?caseId=123 returning { profile: { PatientImage: [...] } }.
   const ENABLE_PROFILE_FETCH = false;
   const PROFILE_ENDPOINT = "/api/case-profile?caseId=";
 
   const $ = (id) => document.getElementById(id);
   const clamp01 = (x) => Math.max(0, Math.min(1, Number(x || 0)));
-
-// --- Squarespace nudge: force code-block re-measure/reflow ---
-function scaNudgeSquarespaceLayout() {
-  // 1) trigger any resize-based re-measure routines
-  window.dispatchEvent(new Event("resize"));
-
-  // 2) force a synchronous reflow (cheap and effective)
-  const root = document.getElementById("scaBotPageRoot");
-  if (root) void root.offsetHeight;
-
-  // 3) if Squarespace is using observers, a double-rAF often helps
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
-  });
-}
 
   // ---------------- Case ID helpers ----------------
   function getCaseIdFromUrl() {
@@ -57,390 +37,167 @@ function scaNudgeSquarespaceLayout() {
     return n ? `Case ${n}` : null;
   }
 
-  // ---------------- Patient card overlay ----------------
-  function mountPatientCard() {
+  // ---------------- UI Mount ----------------
+  function mountAppShell() {
     const host = $("sca-patient-card");
-    if (!host) return;
+    if (!host) return null;
 
-    // Avoid double-mount
-    if (host.__scaMounted) return;
+    // Avoid double-mount (Squarespace can re-run scripts)
+    if (host.__scaMounted) return host;
     host.__scaMounted = true;
 
+    document.body.classList.add("sca-botpage");
+
     host.innerHTML = `
-      <div class="sca-card">
-        <div class="sca-header">
-          <div class="sca-title">Patient</div>
-          <div id="sca-badge" class="sca-badge sca-badge-idle">Not Connected</div>
-        </div>
+      <div id="scaBotPageRoot">
+        <div class="sca-grid">
+          <!-- LEFT -->
+          <div class="sca-left">
+            <div class="sca-heroRow">
+              <div class="sca-heroMedia">
+                <div class="sca-avatarWrap">
+                  <div class="sca-ring" id="sca-ring">
+                    <!-- canvas MUST exist for sca-orb.js -->
+                    <canvas id="sca-orb-canvas" class="sca-orbCanvas" width="500" height="500" aria-hidden="true"></canvas>
 
-        <div class="sca-avatarWrap">
-          <div class="sca-ring" id="sca-ring">
-            <canvas id="sca-orb-canvas" class="sca-orbCanvas" width="500" height="500" aria-hidden="true"></canvas>
-            <div class="sca-avatar">
-              <img id="sca-avatar-img"
-     alt=""
-     src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="
-     class="is-empty"
-/>
+                    <div class="sca-avatar">
+                      <img id="sca-avatar-img"
+                        alt=""
+                        src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="
+                        class="is-empty"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
+            <div class="sca-mainMeta">
+              <div class="sca-mainName" id="scaName">Loading…</div>
+              <div class="sca-mainAge">Age: <span id="scaAge">…</span></div>
+            </div>
+
+            <div class="sca-botUpdate">
+              <div class="sca-botUpdateHeader">
+                <div class="sca-botUpdateTitle">Bot update</div>
+                <div id="sca-badge" class="sca-badge sca-badge-idle" style="margin-left:auto;">Not Connected</div>
+              </div>
+              <ul class="sca-botUpdateList">
+                <li><span id="status">Waiting…</span></li>
+              </ul>
+            </div>
+
+            <!-- Standard / Premium button group (you asked for this) -->
+            <div class="sca-botUpdate" style="padding:12px 14px;">
+              <div style="font-weight:800; color: var(--sca-ink); margin-bottom:10px;">Bot type</div>
+              <div style="display:flex; gap:10px;">
+                <button id="botTypeStandard" type="button"
+                  style="flex:1; height:46px; border-radius:12px; border:1px solid var(--sca-border); background: rgba(255,255,255,.75); font-weight:800; cursor:pointer;">
+                  Standard
+                </button>
+                <button id="botTypePremium" type="button"
+                  style="flex:1; height:46px; border-radius:12px; border:1px solid var(--sca-border); background: rgba(255,255,255,.55); font-weight:800; cursor:pointer;">
+                  Premium
+                </button>
+              </div>
+            </div>
+
+            <!-- Start/Stop buttons: keep IDs the same -->
+            <div class="sca-seg">
+              <button id="startBtn" type="button">Start</button>
+              <button id="stopBtn" type="button">Stop</button>
             </div>
           </div>
-        </div>
 
-        <div id="sca-status" class="sca-status">Waiting…</div>
+          <!-- RIGHT -->
+          <aside class="sca-right">
+            <div class="sca-infoCard">
+              <div class="sca-infoHeader">
+                <div class="sca-infoHeaderTitle">Patient Information</div>
+              </div>
+
+              <div class="sca-accordion" id="scaAccordion"></div>
+            </div>
+          </aside>
+        </div>
       </div>
     `;
-  }
 
-  function setStatus(text) {
-    const el = $("sca-status");
-    if (el) el.textContent = text || "";
-  }
+    // Build accordion sections with NEW stable targets
+    const acc = host.querySelector("#scaAccordion");
+    if (acc && !acc.__scaBuilt) {
+      acc.__scaBuilt = true;
 
-  function setBadge(state) {
-    const badge = $("sca-badge");
-    const ring = $("sca-ring");
-    if (!badge || !ring) return;
+      addAccItem(acc, {
+        title: "Medical History",
+        contentNode: makeListNode("scaPMHxList"),
+        open: true
+      });
 
-    badge.className = "sca-badge";
-    ring.classList.remove("thinking");
+      addAccItem(acc, {
+        title: "Medication",
+        contentNode: makeListNode("scaDHxList"),
+        open: true
+      });
 
-    if (state === "idle") {
-      badge.textContent = "Not Connected";
-      badge.classList.add("sca-badge-idle");
-    } else if (state === "thinking") {
-      badge.textContent = "Thinking";
-      badge.classList.add("sca-badge-thinking");
-      ring.classList.add("thinking");
-    } else if (state === "listening") {
-      badge.textContent = "Listening";
-      badge.classList.add("sca-badge-listening");
-    } else if (state === "talking") {
-      badge.textContent = "Talking";
-      badge.classList.add("sca-badge-talking");
-    }
-  }
+      addAccItem(acc, {
+        title: "Medical Notes",
+        contentNode: makeDivNode("scaNotesWrap"),
+        open: false
+      });
 
-  function setGlow(glow01) {
-    const ring = $("sca-ring");
-    if (!ring) return;
-    ring.style.setProperty("--glow", String(clamp01(glow01)));
-  }
+      addAccItem(acc, {
+        title: "Investigation Results",
+        contentNode: makeDivNode("scaResultsWrap"),
+        open: false
+      });
 
-function setAvatar(url) {
-  const img = $("sca-avatar-img");
-  if (!img) return;
+      // One delegated click handler, capture phase
+      if (!acc.__scaDelegated) {
+        acc.__scaDelegated = true;
+        acc.addEventListener(
+          "click",
+          (e) => {
+            const header = e.target.closest(".sca-accHeader");
+            if (!header || !acc.contains(header)) return;
 
-  if (url) {
-    img.src = url;
-    img.classList.remove("is-empty");
-  } else {
-    img.src = "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
-    img.classList.add("is-empty");
-  }
-}
+            // Ignore clicks inside open body content
+            if (e.target.closest(".sca-accBody")) return;
 
-  // ---------------- Orb edge animation ----------------
-  const ORB_STATE = {
-    mode: "idle",
-    glow: 0.15,
+            e.preventDefault();
 
-    // per-particle in/out wobble (NOT whole-orb scaling)
-    pulseValue: 1,
-    pulseTarget: 1,
-    pulseFrames: 0,
+            const item = header.closest(".sca-accItem");
+            const body = item?.querySelector(".sca-accBody");
+            if (!body) return;
 
-    // keep orb size constant across states
-    baseScaleCurrent: 0.86,
-    baseScaleTarget: 0.86,
-
-    animationId: null,
-    particles: [],
-    lastMode: "idle"
-  };
-
-  function respawnEdgeParticle(p) {
-    const angle = Math.random() * Math.PI * 2;
-    const depth = Math.random();
-    const radiusNorm = 1.01 + depth * 0.1;
-
-    p.angle = angle;
-    p.radiusNorm = radiusNorm;
-    p.baseRadiusNorm = radiusNorm;
-    p.radialDir = Math.random() < 0.5 ? -1 : 1;
-
-    p.speed = 0.0008 + Math.random() * 0.002;
-    p.size = 1.2 + Math.random() * 1.8;
-    p.alpha = 0.2 + Math.random() * 0.55;
-
-    // fade lifecycle: t goes 0→1, alpha uses sin(pi*t), then respawn
-    p.t = 0;
-    p.tSpeed = 0.0015 + Math.random() * 0.0025;
-
-    // delay controls “gaps” where particle is not visible
-    const delayMax =
-      ORB_STATE.mode === "idle" ? 520 :
-      ORB_STATE.mode === "listening" ? 260 :
-      ORB_STATE.mode === "thinking" ? 200 :
-      160; // talking = most active
-    p.delay = Math.floor(Math.random() * delayMax);
-  }
-
-  function kickOrbParticles() {
-    // on state change: force a visible “re-seed” so blobs start appearing immediately
-    const parts = ORB_STATE.particles || [];
-    for (let i = 0; i < parts.length; i += 1) {
-      if (Math.random() < 0.35) {
-        parts[i].delay = Math.floor(Math.random() * 8);
-        parts[i].t = Math.random() * 0.25;
+            const expanded = header.getAttribute("aria-expanded") === "true";
+            header.setAttribute("aria-expanded", expanded ? "false" : "true");
+            body.hidden = expanded;
+          },
+          true
+        );
       }
     }
+
+    return host;
   }
 
-   
-  function createEdgeParticles() {
-    const count = 220;
-    const parts = [];
-    for (let i = 0; i < count; i += 1) {
-      const p = {};
-      respawnEdgeParticle(p);
-      // start staggered so they don’t all appear at once
-      p.t = Math.random();
-      parts.push(p);
-    }
-    ORB_STATE.particles = parts;
+  function makeListNode(id) {
+    const ul = document.createElement("ul");
+    ul.id = id;
+    ul.className = "sca-cleanList";
+    return ul;
   }
 
-
-  function chooseOrbPulse() {
-    const mode = ORB_STATE.mode;
-
-    // keep orb size constant always (no diameter pumping)
-    ORB_STATE.baseScaleTarget = 0.86;
-
-        if (mode === "talking") {
-      // bigger per-particle in/out variation (still no orb scaling)
-      ORB_STATE.pulseTarget = 0.97 + Math.random() * 0.07;  // 0.97–1.04
-      ORB_STATE.pulseFrames = 8 + Math.floor(Math.random() * 10);
-      return;
-    }
-
-
-    if (mode === "thinking") {
-      ORB_STATE.pulseTarget = 0.98 + Math.random() * 0.05;  // 0.98–1.03
-      ORB_STATE.pulseFrames = 14 + Math.floor(Math.random() * 16);
-      return;
-    }
-
-
-    if (mode === "listening") {
-      ORB_STATE.pulseTarget = 0.99 + Math.random() * 0.03;  // 0.99–1.02
-      ORB_STATE.pulseFrames = 24 + Math.floor(Math.random() * 26);
-      return;
-    }
-
-
-    // idle
-    ORB_STATE.pulseTarget = 1;
-    ORB_STATE.pulseFrames = 60;
+  function makeDivNode(id) {
+    const div = document.createElement("div");
+    div.id = id;
+    return div;
   }
 
-
-  function updateOrbDynamics() {
-    if (ORB_STATE.pulseFrames <= 0) chooseOrbPulse();
-    ORB_STATE.pulseFrames -= 1;
-
-    const talking = ORB_STATE.mode === "talking";
-    const idle = ORB_STATE.mode === "idle";
-    const pulseLerp = talking ? 0.08 : 0.04;
-    const scaleLerp = talking ? 0.07 : 0.04;
-
-    if (idle) {
-      ORB_STATE.pulseValue = 1;
-      ORB_STATE.baseScaleCurrent += (ORB_STATE.baseScaleTarget - ORB_STATE.baseScaleCurrent) * 0.03;
-      return;
-    }
-
-    ORB_STATE.pulseValue += (ORB_STATE.pulseTarget - ORB_STATE.pulseValue) * pulseLerp;
-    ORB_STATE.baseScaleCurrent += (ORB_STATE.baseScaleTarget - ORB_STATE.baseScaleCurrent) * scaleLerp;
-  }
-
-  function drawOrbFrame() {
-    const canvas = $("sca-orb-canvas");
-    if (!canvas) {
-      ORB_STATE.animationId = null;
-      return;
-    }
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      ORB_STATE.animationId = null;
-      return;
-    }
-
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const width = canvas.clientWidth || 500;
-    const height = canvas.clientHeight || 500;
-
-    const nextW = Math.round(width * dpr);
-    const nextH = Math.round(height * dpr);
-    if (canvas.width !== nextW || canvas.height !== nextH) {
-      canvas.width = nextW;
-      canvas.height = nextH;
-    }
-
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-
-    if (!ORB_STATE.particles.length) createEdgeParticles();
-    updateOrbDynamics();
-    ORB_STATE.tick = (ORB_STATE.tick || 0) + 1;
-
-    const cx = width / 2;
-    const cy = height / 2;
-    const avatarRadius = Math.min(width, height) * 0.5;
-    const ringCenter = avatarRadius * 1.02;
-
-    // ---- MIST DONUT (light blue -> near-white -> transparent) ----
-    const mistInner = ringCenter * 0.76;  // transparent inside (keeps face clean)
-    const mistMid   = ringCenter * 0.98;  // peak brightness around blob area
-    const mistOuter = ringCenter * 1.22;  // fade out beyond blobs
-
-    const mist = ctx.createRadialGradient(cx, cy, mistInner, cx, cy, mistOuter);
-
-    // Blue haze ramping up
-    mist.addColorStop(0.00, "rgba(255,255,255,0)");        // fully transparent
-    mist.addColorStop(0.42, "rgba(180,225,255,0.10)");     // pale blue
-    mist.addColorStop(0.58, "rgba(180,225,255,0.18)");     // stronger pale blue
-
-    // Near-white highlight (this is what makes it feel “misty/light”)
-    mist.addColorStop(0.70, "rgba(255,255,255,0.22)");     // soft white bloom
-    mist.addColorStop(0.78, "rgba(255,255,255,0.14)");     // taper
-
-    // Fade out
-    mist.addColorStop(1.00, "rgba(255,255,255,0)");
-
-    ctx.save();
-    ctx.fillStyle = mist;
-    ctx.fillRect(0, 0, width, height);
-    ctx.restore();
-
-    const talking = ORB_STATE.mode === "talking";
-    const thinking = ORB_STATE.mode === "thinking";
-    const listening = ORB_STATE.mode === "listening";
-    const idle = ORB_STATE.mode === "idle";
-    const movementBoost = idle ? 0 : talking ? 0.42 : (thinking || listening) ? 0.65 : 0.65;
-    const alphaBoost = talking ? 0.08 : (thinking || listening) ? 0.02 : -0.04;
-    const tint = 112 + Math.round(40 * ORB_STATE.glow);
-
-    for (const p of ORB_STATE.particles) {
-      p.angle += p.speed * movementBoost;
-
-      const pulseDelta = ORB_STATE.pulseValue - 1;
-
-      // stronger per-particle in/out when talking
-      const pulseAmp = talking ? 2.2 : thinking ? 1.5 : listening ? 1.2 : 0.9;
-
-      // extra "bouncy" wobble using time + angle (doesn't change orb diameter)
-      const wobble =
-        Math.sin((ORB_STATE.tick || 0) * (talking ? 0.10 : 0.07) + p.angle * 4.2) *
-        (talking ? 0.020 : thinking ? 0.013 : listening ? 0.010 : 0.006);
-
-      const radialShift = p.radialDir * pulseDelta * pulseAmp;
-      const effectiveNorm = p.baseRadiusNorm + radialShift + wobble;
-
-      p.radiusNorm = Math.max(0.995, Math.min(1.11, effectiveNorm));
-
-
-      const radius = ringCenter * p.radiusNorm * ORB_STATE.baseScaleCurrent;
-      const x = cx + Math.cos(p.angle) * radius;
-      const y = cy + Math.sin(p.angle) * radius;
-
-      // --- fade lifecycle: come/go even when not rotating ---
-      const idle = ORB_STATE.mode === "idle";
-      const talking = ORB_STATE.mode === "talking";
-      const thinking = ORB_STATE.mode === "thinking";
-      const listening = ORB_STATE.mode === "listening";
-
-            // MUCH slower in idle; longer life in every mode
-      const twinkleFactor =
-        idle ? 0.12 :
-        listening ? 0.35 :
-        thinking ? 0.50 :
-        talking ? 0.75 :
-        0.35;
-
-
-      if (p.delay > 0) {
-        p.delay -= 1;
-        continue; // not visible yet
-      }
-
-      p.t += p.tSpeed * twinkleFactor;
-      if (p.t >= 1) {
-        respawnEdgeParticle(p);
-        continue;
-      }
-
-      const lifeAlpha = Math.sin(Math.PI * p.t); // 0 → 1 → 0
-
-      let alpha = (p.alpha * lifeAlpha) + alphaBoost;
-      alpha = Math.max(0.02, Math.min(0.92, alpha));
-
-
-      const dotRadius = p.size * (talking ? 0.98 : 1);
-      const grad = ctx.createRadialGradient(x, y, 0, x, y, dotRadius * 3.6);
-      grad.addColorStop(0, `rgba(20, 101, 192, ${alpha})`);
-      grad.addColorStop(0.6, `rgba(85, ${tint}, 230, ${alpha * 0.55})`);
-      grad.addColorStop(1, "rgba(160, 210, 255, 0)");
-
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(x, y, dotRadius * 2.2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ORB_STATE.animationId = requestAnimationFrame(drawOrbFrame);
-  }
-
-  function startOrbAnimation() {
-    if (ORB_STATE.animationId) return;
-    chooseOrbPulse();
-    ORB_STATE.animationId = requestAnimationFrame(drawOrbFrame);
-  }
-
-  // Listen for voice-patient.js updates
-  window.addEventListener("vp:ui", (e) => {
-    const d = e.detail || {};
-    if (d.status) setStatus(d.status);
-    if (d.state) {
-      setBadge(d.state);
-
-      const nextMode = d.state;
-      const changed = nextMode !== ORB_STATE.mode;
-
-      ORB_STATE.mode = nextMode;
-      chooseOrbPulse();
-
-      if (changed) kickOrbParticles();
-    }
-
-
-    if (!d.state && typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) {
-      ORB_STATE.mode = "idle";
-      chooseOrbPulse();
-    }
-    if (typeof d.glow === "number") {
-      setGlow(d.glow);
-      ORB_STATE.glow = clamp01(d.glow);
-    }
-  });
-
-  // ---------------- bot-page-ui shell + accordion ----------------
   function addAccItem(acc, { title, contentNode, open }) {
     const item = document.createElement("section");
     item.className = "sca-accItem";
-    item.dataset.scaAccItem = "true";
 
     const header = document.createElement("button");
     header.type = "button";
@@ -465,160 +222,76 @@ function setAvatar(url) {
     acc.appendChild(item);
   }
 
-  function mountPageShell() {
-    if (window.__scaBotPageUiMounted) return;
-    window.__scaBotPageUiMounted = true;
+  // ---------------- Badge / Status / Avatar helpers ----------------
+  function setBadge(state) {
+    const badge = $("sca-badge");
+    if (!badge) return;
 
-    const anchor = $("sca-patient-card") || $("patientDataBox") || $("startBtn");
-    if (!anchor || !anchor.parentNode) return;
+    badge.className = "sca-badge";
 
-    document.body.classList.add("sca-botpage");
-
-    const root = document.createElement("div");
-    root.id = "scaBotPageRoot";
-    root.innerHTML = `
-      <div class="sca-grid">
-        <div class="sca-left">
-          <div class="sca-heroRow">
-            <div class="sca-heroMedia">
-              <div id="scaAvatarSlot"></div>
-            </div>
-          </div>
-
-          <div class="sca-mainMeta">
-            <div class="sca-mainName" data-bind="name">Loading…</div>
-            <div class="sca-mainAge">Age: <span data-bind="age">…</span></div>
-          </div>
-
-          <div class="sca-botUpdate">
-            <div class="sca-botUpdateHeader">
-              <div class="sca-botUpdateTitle">Bot update</div>
-            </div>
-            <ul class="sca-botUpdateList" id="scaBotUpdateList"></ul>
-          </div>
-
-          <div class="sca-seg" id="scaSegSlot"></div>
-        </div>
-
-        <aside class="sca-right">
-          <div class="sca-infoCard">
-            <div class="sca-infoHeader">
-              <div class="sca-infoHeaderTitle">Patient Information</div>
-            </div>
-            <div class="sca-accordion" id="scaAccordion"></div>
-          </div>
-        </aside>
-      </div>
-    `;
-
-// --- Squarespace: mount outside .sqs-code-container (but keep position in the section) ---
-const codeContainer = anchor.closest(".sqs-code-container");
-if (codeContainer && codeContainer.parentNode) {
-  // Insert UI just BEFORE the code container, as a sibling (NOT inside it)
-  codeContainer.parentNode.insertBefore(root, codeContainer);
-} else {
-  // Fallback: original behaviour
-  anchor.parentNode.insertBefore(root, anchor);
-}
-
-    // Move patient card host into avatar slot
-    const avatarSlot = root.querySelector("#scaAvatarSlot");
-    const cardHost = $("sca-patient-card");
-    if (avatarSlot && cardHost) avatarSlot.appendChild(cardHost);
-
-    // Keep caseIndicator hidden (it remains in the original hidden box for compatibility)
-
-    // Bot update list contains #status from voice-patient.js
-    const updateList = root.querySelector("#scaBotUpdateList");
-    const statusEl = $("status");
-    if (updateList) {
-      if (statusEl) {
-        const li = document.createElement("li");
-        li.appendChild(statusEl);
-        updateList.appendChild(li);
-      } else {
-        updateList.innerHTML = `<li>Status element (#status) not found.</li>`;
-      }
+    if (state === "idle") {
+      badge.textContent = "Not Connected";
+      badge.classList.add("sca-badge-idle");
+    } else if (state === "thinking") {
+      badge.textContent = "Thinking";
+      badge.classList.add("sca-badge-thinking");
+    } else if (state === "listening") {
+      badge.textContent = "Listening";
+      badge.classList.add("sca-badge-listening");
+    } else if (state === "talking") {
+      badge.textContent = "Talking";
+      badge.classList.add("sca-badge-talking");
     }
-
-    // Start/Stop into seg
-    const segSlot = root.querySelector("#scaSegSlot");
-    const startBtn = $("startBtn");
-    const stopBtn = $("stopBtn");
-    if (segSlot) {
-      if (startBtn) segSlot.appendChild(startBtn);
-      if (stopBtn) segSlot.appendChild(stopBtn);
-    }
-
-    // Accordion
-    const acc = root.querySelector("#scaAccordion");
-    if (acc) {
-      const pmhx = $("patientPMHx");
-      const dhx = $("patientDHx");
-      const notesBox = $("medicalNotesBox");
-      const resultsBox = $("resultsBox");
-
-      if (pmhx) pmhx.classList.add("sca-cleanList");
-      if (dhx) dhx.classList.add("sca-cleanList");
-
-      if (pmhx) addAccItem(acc, { title: "Medical History", contentNode: pmhx, open: true });
-      if (dhx) addAccItem(acc, { title: "Medication", contentNode: dhx, open: true });
-      if (notesBox) addAccItem(acc, { title: "Medical Notes", contentNode: notesBox, open: false });
-      if (resultsBox) addAccItem(acc, { title: "Investigation Results", contentNode: resultsBox, open: false });
-
-if (!acc.__scaDelegated) {
-  acc.__scaDelegated = true;
-
-  acc.addEventListener("click", (e) => {
-    // Click anywhere in the row should toggle
-    const item = e.target.closest("[data-sca-acc-item='true']");
-    if (!item || !acc.contains(item)) return;
-
-    // But ignore clicks inside the body content (links, text selection, etc.)
-    const clickedInsideBody = e.target.closest(".sca-accBody");
-    if (clickedInsideBody) return;
-
-    const header = item.querySelector(".sca-accHeader");
-    const body = item.querySelector(".sca-accBody");
-    if (!header || !body) return;
-
-    const expanded = header.getAttribute("aria-expanded") === "true";
-    header.setAttribute("aria-expanded", expanded ? "false" : "true");
-    body.hidden = expanded;
-   scaNudgeSquarespaceLayout();
-  }, true);
-}
-    }
-
-    // Hide original patientDataBox but keep it in DOM
-    const patientDataBox = $("patientDataBox");
-    if (patientDataBox) patientDataBox.setAttribute("data-sca-hidden", "true");
-
-    // Bind name/age (Airtable script writes #patientName/#patientAge)
-    const nameSpan = $("patientName");
-    const ageSpan = $("patientAge");
-
-    const sync = () => {
-      const name = (nameSpan?.textContent || "").trim();
-      const age = (ageSpan?.textContent || "").trim();
-
-      root.querySelectorAll("[data-bind='name']").forEach((el) => { el.textContent = name || "Loading…"; });
-      root.querySelectorAll("[data-bind='age']").forEach((el) => { el.textContent = age || "…"; });
-    };
-
-    sync();
-
-    const mo = new MutationObserver(sync);
-    if (nameSpan) mo.observe(nameSpan, { childList: true, subtree: true, characterData: true });
-    if (ageSpan) mo.observe(ageSpan, { childList: true, subtree: true, characterData: true });
   }
+
+  function setStatus(text) {
+    const el = $("status");
+    if (el) el.textContent = text || "";
+  }
+
+  function setGlow(glow01) {
+    // orb.js reads CSS vars; keep this for compatibility
+    const ring = $("sca-ring");
+    if (!ring) return;
+    ring.style.setProperty("--glow", String(clamp01(glow01)));
+  }
+
+  function setAvatar(url) {
+    const img = $("sca-avatar-img");
+    if (!img) return;
+
+    if (url) {
+      img.src = url;
+      img.classList.remove("is-empty");
+      img.classList.add("is-loaded");
+    } else {
+      img.src = "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
+      img.classList.add("is-empty");
+      img.classList.remove("is-loaded");
+    }
+  }
+
+  // Listen for voice-patient.js updates (badge + status only)
+  window.addEventListener("vp:ui", (e) => {
+    const d = e.detail || {};
+    if (typeof d.status === "string") setStatus(d.status);
+    if (typeof d.state === "string") setBadge(d.state);
+    if (typeof d.glow === "number") setGlow(d.glow);
+
+    // If disconnected, force idle badge
+    if (!d.state && typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) {
+      setBadge("idle");
+    }
+  });
 
   // ---------------- Airtable fetch (proxy) ----------------
   async function fetchJson(url) {
     const resp = await fetch(url, { cache: "no-store" });
     const text = await resp.text();
     let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch {}
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {}
     if (!resp.ok) {
       const msg = (data && (data.error || data.message)) || `HTTP ${resp.status}`;
       const err = new Error(msg);
@@ -630,7 +303,6 @@ if (!acc.__scaDelegated) {
     return data;
   }
 
-  // Attachment -> best URL
   function pickAttachmentUrl(att) {
     if (!att) return null;
     if (Array.isArray(att) && att.length) {
@@ -644,31 +316,6 @@ if (!acc.__scaDelegated) {
     return null;
   }
 
-     // ✅ NEW: read profile image out of /api/case payload (because you updated /api/case.js already)
-  function findPatientImageFromApiPayload(data) {
-    if (!data) return null;
-
-    // 1) direct URL field (if you added it)
-    if (typeof data.profilePatientImageUrl === "string" && data.profilePatientImageUrl) {
-      return data.profilePatientImageUrl;
-    }
-
-    // 2) profile object with PatientImage attachment (common shape)
-    const prof = data.profile || data.caseProfile || data.profileFields || null;
-    if (prof) {
-      const url = pickAttachmentUrl(prof.PatientImage);
-      if (url) return url;
-    }
-
-    // 3) debug object shape (if present)
-    if (data.debugPatientImage && typeof data.debugPatientImage.url === "string") {
-      return data.debugPatientImage.url || null;
-    }
-
-    return null;
-  }
-
-  // Try to find PatientImage in the Case table rows (only works if you put it there)
   function findPatientImageFromCaseRecords(records) {
     for (const r of records || []) {
       const url = pickAttachmentUrl(r?.fields?.PatientImage);
@@ -684,8 +331,7 @@ if (!acc.__scaDelegated) {
       const url = `${PROXY_BASE_URL}${PROFILE_ENDPOINT}${encodeURIComponent(caseId)}`;
       const data = await fetchJson(url);
       const prof = data?.profile || data?.fields || data || null;
-      const urlFromProf = pickAttachmentUrl(prof?.PatientImage);
-      return urlFromProf || null;
+      return pickAttachmentUrl(prof?.PatientImage) || null;
     } catch {
       return null;
     }
@@ -695,40 +341,34 @@ if (!acc.__scaDelegated) {
     const table = getCaseTableName();
     if (!table) return;
 
-    window.airtableData = window.airtableData || null;
-
     const url = `${PROXY_BASE_URL}/api/case?table=${encodeURIComponent(table)}`;
     const data = await fetchJson(url);
 
     const records = data.records || [];
     window.airtableData = records;
 
-    // Avatar on page load:
-    // 1) try PatientImage stored in Case table rows (only works if you put it there)
+    // Avatar url
     let avatarUrl = findPatientImageFromCaseRecords(records);
 
-    // 2) ✅ NEW: your /api/case returns CaseProfiles data as { profile: { patientImageUrl: "..." } }
+    // Your /api/case can also return profile.patientImageUrl
     if (!avatarUrl) {
       avatarUrl =
         (typeof data?.profile?.patientImageUrl === "string" && data.profile.patientImageUrl) ||
         null;
     }
 
-     setAvatar(avatarUrl);
-
-
-    // 3) optional old path (only if you later enable a separate profile endpoint)
+    // optional profile endpoint
     if (!avatarUrl) {
       const caseId = getCaseIdFromUrl();
       avatarUrl = await fetchCaseProfileImage(caseId);
     }
 
+    setAvatar(avatarUrl);
+
     document.dispatchEvent(new Event("airtableDataFetched"));
   }
 
-
-
-  // ---------------- Patient info rendering ----------------
+  // ---------------- Rendering helpers ----------------
   function getAirtableRecordsOrExit(contextLabel) {
     const records = window.airtableData;
     if (!records || records.length === 0) {
@@ -765,29 +405,29 @@ if (!acc.__scaDelegated) {
     const pmHx  = collectAndSortValues(records, "PMHx Record");
     const dHx   = collectAndSortValues(records, "DHx");
 
-    const nameEl = $("patientName");
-    const ageEl  = $("patientAge");
+    const nameEl = $("scaName");
+    const ageEl  = $("scaAge");
 
     if (nameEl) nameEl.textContent = names.join(", ") || "N/A";
     if (ageEl)  ageEl.textContent  = ages.join(", ") || "N/A";
 
-    renderList($("patientPMHx"), pmHx);
-    renderList($("patientDHx"), dHx);
+    renderList($("scaPMHxList"), pmHx);
+    renderList($("scaDHxList"), dHx);
   }
 
   function populateMedicalNotes(records) {
     const medicalNotes        = collectAndSortValues(records, "Medical Notes");
     const medicalNotesContent = collectAndSortValues(records, "Medical Notes Content");
-    const medicalNotesPhotos  = collectAndSortValues(records, "Notes Photo"); // attachments per row
+    const medicalNotesPhotos  = collectAndSortValues(records, "Notes Photo");
 
-    const medicalNotesDiv = $("medicalNotes");
+    const medicalNotesDiv = $("scaNotesWrap");
     if (!medicalNotesDiv) return;
     medicalNotesDiv.innerHTML = "";
 
     for (let i = 0; i < medicalNotes.length; i++) {
       const note = medicalNotes[i];
       const content = medicalNotesContent[i] || "";
-      const photos = medicalNotesPhotos[i]; // array of attachments for this row
+      const photos = medicalNotesPhotos[i];
 
       const noteElement = document.createElement("div");
       const contentElement = document.createElement("div");
@@ -823,7 +463,7 @@ if (!acc.__scaDelegated) {
     const results        = collectAndSortValues(records, "Results");
     const resultsContent = collectAndSortValues(records, "Results Content");
 
-    const resultsDiv = $("resultsContent");
+    const resultsDiv = $("scaResultsWrap");
     if (!resultsDiv) return;
     resultsDiv.innerHTML = "";
 
@@ -855,35 +495,22 @@ if (!acc.__scaDelegated) {
 
   // ---------------- Boot ----------------
   function boot() {
-    // 1) Mount patient card early so avatar can be set
-    mountPatientCard();
-    startOrbAnimation();
+    // 1) Build UI (must exist for orb.js + population targets)
+    mountAppShell();
 
-    // 2) Build shell & move nodes
-    mountPageShell();
+    // 2) Fetch Airtable
+    fetchAirtableCaseData().catch((e) => {
+      console.error("[SCA] fetchAirtableCaseData failed:", e);
+      if (typeof window.uiEmit === "function") window.uiEmit({ avatarUrl: null });
+    });
 
-    // 3) Load Airtable data
-fetchAirtableCaseData().catch((e) => {
-  console.error("[SCA] fetchAirtableCaseData failed:", e);
+    // 3) Populate when data arrives
+    document.addEventListener("airtableDataFetched", populateAllThree);
 
-  // keep uiEmit behaviour (but don't crash if it's missing)
-  if (typeof window.uiEmit === "function") {
-    window.uiEmit({ avatarUrl: null });
-  }
-});
-
-    // 4) Populate patient info when data arrives
-    document.addEventListener("airtableDataFetched", () => {
-  populateAllThree();
-  scaNudgeSquarespaceLayout();
-});
-
-    // Fallback if something pre-set airtableData
+    // Fallback if data was already present
     if (window.airtableData && Array.isArray(window.airtableData) && window.airtableData.length) {
       populateAllThree();
-       scaNudgeSquarespaceLayout();
     }
-
   }
 
   window.addEventListener("DOMContentLoaded", boot);
