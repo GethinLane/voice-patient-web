@@ -791,3 +791,6 @@ body.sca-botpage #scaBotPageRoot .sca-badge.sca-badge-idle{
   color: #253551 !important;
   border-color: rgba(37,53,81,.18) !important;
 }
+body.sca-botpage #scaBotPageRoot .sca-badge.sca-badge-idle{
+  opacity: .85;
+}
