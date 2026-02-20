@@ -21,6 +21,21 @@
   const $ = (id) => document.getElementById(id);
   const clamp01 = (x) => Math.max(0, Math.min(1, Number(x || 0)));
 
+// --- Squarespace nudge: force code-block re-measure/reflow ---
+function scaNudgeSquarespaceLayout() {
+  // 1) trigger any resize-based re-measure routines
+  window.dispatchEvent(new Event("resize"));
+
+  // 2) force a synchronous reflow (cheap and effective)
+  const root = document.getElementById("scaBotPageRoot");
+  if (root) void root.offsetHeight;
+
+  // 3) if Squarespace is using observers, a double-rAF often helps
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+  });
+}
+
   // ---------------- Case ID helpers ----------------
   function getCaseIdFromUrl() {
     try {
@@ -562,6 +577,7 @@ if (!acc.__scaDelegated) {
     const expanded = header.getAttribute("aria-expanded") === "true";
     header.setAttribute("aria-expanded", expanded ? "false" : "true");
     body.hidden = expanded;
+   scaNudgeSquarespaceLayout();
   }, true);
 }
     }
@@ -849,11 +865,15 @@ fetchAirtableCaseData().catch((e) => {
 });
 
     // 4) Populate patient info when data arrives
-    document.addEventListener("airtableDataFetched", populateAllThree);
+    document.addEventListener("airtableDataFetched", () => {
+  populateAllThree();
+  scaNudgeSquarespaceLayout();
+});
 
     // Fallback if something pre-set airtableData
     if (window.airtableData && Array.isArray(window.airtableData) && window.airtableData.length) {
       populateAllThree();
+       scaNudgeSquarespaceLayout();
     }
 
   }
