@@ -981,3 +981,4 @@ window.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => { bindOnce(); }, 250);
   setTimeout(() => { bindOnce(); }, 1000);
 });
+})();
