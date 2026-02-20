@@ -853,11 +853,7 @@ const data = await fetchJson(`${API_BASE}/api/start-session`, {
 });
 
 
-      // Tell the Squarespace overlay which avatar to show (only if provided)
-      // IMPORTANT: do NOT emit avatarUrl:null, because that clears the already-loaded case image.
-      if (data?.patientImageUrl) {
-        uiEmit({ avatarUrl: data.patientImageUrl, sessionId: data.sessionId || null });
-      }
+      // Avatar is loaded on page load by bot-page.bundle.js — no avatar updates needed here.
 
 
       if (!data?.ok) throw new Error(data?.error || "Start failed");
