@@ -689,3 +689,11 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar *{
   pointer-events: auto;
 }
+body.sca-botpage #scaBotPageRoot .sca-right{
+  position: relative;
+  z-index: 9999;
+}
+body.sca-botpage #scaBotPageRoot .sca-accHeader{
+  position: relative;
+  z-index: 10000;
+}
