@@ -59,12 +59,37 @@ body.sca-botpage #scaBotPageRoot .sca-left{
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  position: relative;
+  z-index: 1;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-right{
   min-width: 0;
+  position: relative;
+  z-index: 2;
 }
 
+
+/* Keep interaction layer on top in desktop mode */
+body.sca-botpage #scaBotPageRoot .sca-right,
+body.sca-botpage #scaBotPageRoot .sca-infoCard,
+body.sca-botpage #scaBotPageRoot .sca-accordion,
+body.sca-botpage #scaBotPageRoot .sca-accItem,
+body.sca-botpage #scaBotPageRoot .sca-accHeader{
+  position: relative;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+/* Left-column avatar visuals can bleed into the right column; make them non-interactive
+   so they can never steal clicks from accordion headers. */
+body.sca-botpage #scaBotPageRoot .sca-heroMedia,
+body.sca-botpage #scaBotPageRoot #sca-patient-card,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring,
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
+  pointer-events: none;
+}
 body.sca-botpage #scaBotPageRoot .sca-heroRow{
   display: flex;
   align-items: flex-start;
