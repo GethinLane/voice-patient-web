@@ -715,3 +715,24 @@ body.sca-botpage #scaBotPageRoot .sca-accItem{
 body.sca-botpage #scaBotPageRoot .sca-accHeader{
   width: 100%;
 }
+/* --- Fix Squarespace/global UL/LI overrides that can push items outside the box --- */
+body.sca-botpage #scaBotPageRoot .sca-botUpdateList{
+  list-style: disc !important;
+  list-style-position: outside !important;
+  position: relative !important;
+  display: block !important;
+  overflow: hidden;            /* keeps visuals inside rounded box */
+}
+
+body.sca-botpage #scaBotPageRoot .sca-botUpdateList li{
+  position: relative !important;
+  margin: 6px 0 !important;
+}
+/* Controls placement when under Bot update */
+body.sca-botpage #scaBotPageRoot .sca-controls{
+  margin-top: 6px;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-controlsStatus{
+  margin-top: 10px;
+}
