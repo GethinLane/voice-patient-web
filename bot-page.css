@@ -33,6 +33,14 @@ body.sca-botpage #scaBotPageRoot{
   backdrop-filter: blur(14px);
 }
 
+@media (max-width: 720px){
+  body.sca-botpage #scaBotPageRoot{
+    margin: 12px;
+    padding: 14px;
+    border-radius: 18px;
+  }
+}
+
 body.sca-botpage #scaBotPageRoot .sca-grid{
   display: grid;
   grid-template-columns: 1.2fr 0.9fr;
@@ -50,6 +58,11 @@ body.sca-botpage #scaBotPageRoot .sca-left{
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-right{
+  min-width: 0;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-heroRow{
@@ -113,6 +126,17 @@ body.sca-botpage #scaBotPageRoot .sca-mainAge{
   margin-top: 14px;
 }
 
+@media (max-width: 720px){
+  body.sca-botpage #scaBotPageRoot .sca-mainName{
+    font-size: clamp(26px, 9vw, 36px);
+  }
+
+  body.sca-botpage #scaBotPageRoot .sca-mainAge{
+    margin-top: 8px;
+    font-size: 16px;
+  }
+}
+
 
 /* Bot update box */
 body.sca-botpage #scaBotPageRoot .sca-botUpdate{
@@ -172,6 +196,14 @@ body.sca-botpage #scaBotPageRoot #stopBtn{
   font-weight: 850;
   cursor: pointer;
   color: var(--sca-ink);
+}
+
+@media (max-width: 720px){
+  body.sca-botpage #scaBotPageRoot #startBtn,
+  body.sca-botpage #scaBotPageRoot #stopBtn{
+    height: 58px;
+    font-size: clamp(24px, 8vw, 30px);
+  }
 }
 
 body.sca-botpage #scaBotPageRoot #startBtn:not(:disabled){
@@ -317,6 +349,8 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
   border-radius: 14px;
   border: 1px solid var(--sca-border);
   box-shadow: 0 12px 28px rgba(17,24,39,.08);
+  max-width: 100%;
+  height: auto;
 }
 
 /* Patient card base styles (moved out of JS) */
@@ -429,6 +463,31 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
   width: 380px !important;
   height: 380px !important;
   border: 0 !important;
+}
+
+@media (max-width: 720px){
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+    --orb-bleed: 16px;
+    width: min(82vw, 320px) !important;
+    height: min(82vw, 320px) !important;
+  }
+
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
+    width: min(82vw, 320px) !important;
+    height: min(82vw, 320px) !important;
+  }
+}
+
+@media (max-width: 420px){
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+    width: min(86vw, 280px) !important;
+    height: min(86vw, 280px) !important;
+  }
+
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
+    width: min(86vw, 280px) !important;
+    height: min(86vw, 280px) !important;
+  }
 }
 
 /* ---------------- Hide the original patientDataBox but keep it in DOM for your existing JS ---------------- */
