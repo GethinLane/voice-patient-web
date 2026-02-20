@@ -1,8 +1,4 @@
-/* bot-page.css
-   Cleaned + de-duplicated.
-   - Scoped to body.sca-botpage (added by JS)
-   - Later rules naturally win; no repeated blocks
-*/
+/* bot-page.css — streamlined (single final rule set) */
 
 /* ---------------- Page shell ---------------- */
 body.sca-botpage{
@@ -22,12 +18,9 @@ body.sca-botpage #scaBotPageRoot *{
 body.sca-botpage #scaBotPageRoot{
   --sca-ink: #253551;
   --sca-muted: rgba(37,53,81,.72);
-  --sca-faint: rgba(37,53,81,.55);
   --sca-border: rgba(37,53,81,.12);
   --sca-surface: rgba(255,255,255,.68);
-  --sca-surface-2: rgba(255,255,255,.58);
   --sca-shadow: 0 18px 55px rgba(17, 24, 39, .10);
-  --sca-accent: #476c67;
 
   max-width: 1180px;
   margin: 28px auto;
@@ -76,19 +69,7 @@ body.sca-botpage #scaBotPageRoot .sca-right{
   z-index: 2;
 }
 
-/* Keep interaction layer on top in desktop mode (prevents orb stealing clicks) */
-body.sca-botpage #scaBotPageRoot .sca-right,
-body.sca-botpage #scaBotPageRoot .sca-infoCard,
-body.sca-botpage #scaBotPageRoot .sca-accordion,
-body.sca-botpage #scaBotPageRoot .sca-accItem,
-body.sca-botpage #scaBotPageRoot .sca-accHeader{
-  position: relative;
-  z-index: 20;
-  pointer-events: auto;
-}
-
-/* Decorative avatar visuals should never steal clicks */
-body.sca-botpage #scaBotPageRoot .sca-heroMedia,
+/* Prevent orb/canvas layers from stealing clicks (accordion + buttons must work) */
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar,
@@ -98,8 +79,6 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
   pointer-events: none !important;
 }
 
-/* The patient card + controls MUST remain clickable */
-body.sca-botpage #scaBotPageRoot #sca-patient-card,
 body.sca-botpage #scaBotPageRoot .sca-controls,
 body.sca-botpage #scaBotPageRoot .sca-controls *{
   pointer-events: auto;
@@ -135,13 +114,13 @@ body.sca-botpage #scaBotPageRoot .sca-mainAge{
   }
 }
 
-/* ---------------- Bot update box (right column) ---------------- */
+/* ---------------- Bot update box ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-botUpdate{
   background: rgba(255,255,255,.62);
   border: 1px solid var(--sca-border);
   border-radius: 16px;
   padding: 14px 14px 10px;
-  margin-bottom: 14px; /* replaces <br> spacing */
+  margin-bottom: 14px;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-botUpdateHeader{
@@ -168,19 +147,15 @@ body.sca-botpage #scaBotPageRoot .sca-botUpdateList{
   padding-left: 18px;
   color: var(--sca-muted);
   font-weight: 600;
-  list-style: disc !important;
-  list-style-position: outside !important;
-  position: relative !important;
-  display: block !important;
-  overflow: hidden;
+  list-style: disc;
+  list-style-position: outside;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-botUpdateList li{
-  position: relative !important;
-  margin: 6px 0 !important;
+  margin: 6px 0;
 }
 
-/* ---------------- Start/Stop segmented control ---------------- */
+/* ---------------- Start/Stop segmented control (square) ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-controls{
   margin-top: 6px;
 }
@@ -188,7 +163,7 @@ body.sca-botpage #scaBotPageRoot .sca-controls{
 body.sca-botpage #scaBotPageRoot .sca-seg{
   display: flex;
   width: 100%;
-  border-radius: 20px;
+  border-radius: 0;              /* square */
   overflow: hidden;
   border: 1px solid var(--sca-border);
   background: rgba(31,41,55,.05);
@@ -205,6 +180,7 @@ body.sca-botpage #scaBotPageRoot #stopBtn{
   font-weight: 850;
   cursor: pointer;
   color: var(--sca-ink);
+  border-radius: 0;              /* square */
 }
 
 @media (max-width: 720px){
@@ -238,7 +214,7 @@ body.sca-botpage #scaBotPageRoot #stopBtn:disabled{
   cursor: not-allowed;
 }
 
-/* ---------------- Right column (Patient Information) ---------------- */
+/* ---------------- Right column: info card + accordion ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-infoCard{
   background: #d6dde9;
   border: 1px solid var(--sca-border);
@@ -280,8 +256,6 @@ body.sca-botpage #scaBotPageRoot .sca-accHeader{
   border: none;
   cursor: pointer;
   text-align: left;
-  position: relative;
-  z-index: 10000; /* wins against any orb layers */
 }
 
 body.sca-botpage #scaBotPageRoot .sca-accTitle{
@@ -307,7 +281,7 @@ body.sca-botpage #scaBotPageRoot .sca-accBody{
 }
 
 body.sca-botpage #scaBotPageRoot .sca-accBody[hidden]{
-  display: none !important; /* reliable collapse on Squarespace */
+  display: none !important;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-accContent{
@@ -353,17 +327,7 @@ body.sca-botpage #scaBotPageRoot .quote-box-results{
   border-left: 4px solid rgba(64, 99, 180, .55);
 }
 
-body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
-  border-radius: 14px;
-  border: 1px solid var(--sca-border);
-  box-shadow: 0 12px 28px rgba(17,24,39,.08);
-  max-width: 100%;
-  height: auto;
-}
-
-/* ---------------- Patient card base ---------------- */
-#sca-patient-card{ margin: 12px 0; }
-
+/* ---------------- Patient card + orb sizing ---------------- */
 #sca-patient-card .sca-header{
   display:flex;
   justify-content:space-between;
@@ -381,7 +345,14 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
   border: 1px solid rgba(0,0,0,.12);
 }
 
-#sca-patient-card .sca-badge-idle{ background:#f5f5f5; color:#444; }
+/* Idle badge should be d6dde9 */
+#sca-patient-card .sca-badge-idle{
+  background: #d6dde9;
+  color: #253551;
+  border-color: rgba(37,53,81,.18);
+  opacity: .85;
+}
+
 #sca-patient-card .sca-badge-thinking{ background:#eef4ff; color:#1c4fb8; border-color: rgba(28,79,184,.25); }
 #sca-patient-card .sca-badge-listening{ background:#eaf8f0; color:#0c6a3b; border-color: rgba(12,106,59,.25); }
 #sca-patient-card .sca-badge-talking{ background:#fff1f3; color:#b0123a; border-color: rgba(176,18,58,.25); }
@@ -394,7 +365,6 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
 }
 
 #sca-patient-card .sca-ring{
-  --glow: 0.15;
   --orb-bleed: 24px;
   width: 304px;
   height: 304px;
@@ -402,18 +372,17 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
   display:flex;
   justify-content:center;
   align-items:center;
-  position: relative !important;
+  position: relative;
   overflow: visible;
-  isolation: isolate;
   background: transparent;
 }
 
 #sca-patient-card .sca-orbCanvas{
-  position: absolute !important;
+  position: absolute;
   inset: calc(var(--orb-bleed) * -1);
   width: calc(100% + (var(--orb-bleed) * 2));
   height: calc(100% + (var(--orb-bleed) * 2));
-  z-index: 5 !important;
+  z-index: 5;
   opacity: .9;
   filter: blur(.4px);
 }
@@ -424,8 +393,8 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
   border-radius: 50%;
   overflow: hidden;
   background: #fff;
-  position: relative !important;
-  z-index: 1 !important;
+  position: relative;
+  z-index: 1;
   border: 0;
 }
 
@@ -436,47 +405,32 @@ body.sca-botpage #scaBotPageRoot #medicalNotesBox img{
   display: block;
 }
 
-#sca-patient-card .sca-status{
-  font-size: 13px;
-  font-weight: 700;
-  margin-top: 6px;
-}
-
-/* Patient card overrides (match your design) */
-body.sca-botpage #scaBotPageRoot #sca-patient-card{ margin: 0 !important; }
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-title{ display: none !important; }
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-status{ display: none !important; }
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{ padding: 0 !important; }
-
 @media (max-width: 720px){
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+  #sca-patient-card .sca-ring{
     --orb-bleed: 16px;
     width: min(90vw, 256px);
     height: min(90vw, 256px);
   }
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
+  #sca-patient-card .sca-avatar{
     width: min(90vw, 256px);
     height: min(90vw, 256px);
   }
 }
 
 @media (max-width: 420px){
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+  #sca-patient-card .sca-ring{
     width: min(92vw, 224px);
     height: min(92vw, 224px);
   }
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
+  #sca-patient-card .sca-avatar{
     width: min(92vw, 224px);
     height: min(92vw, 224px);
   }
 }
 
-/* Hide broken-image fallback + alt text */
+/* Image load state */
 #sca-avatar-img{ display: none; }
 #sca-avatar-img.is-loaded{ display: block; }
-
 #sca-avatar-img{
   width: 100%;
   height: 100%;
@@ -491,7 +445,7 @@ body.sca-botpage #patientDataBox[data-sca-hidden="true"]{
   display: none !important;
 }
 
-/* ---------------- Plan tabs (final) ---------------- */
+/* ---------------- Plan tabs (FINAL, single behavior) ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-planBar{
   margin: 0 6px 12px;
 }
@@ -500,7 +454,7 @@ body.sca-botpage #scaBotPageRoot .sca-planTabs{
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  border-radius: 10px;
+  border-radius: 0; /* square outer */
   overflow: visible;
   border: 1px solid rgba(37,53,81,.18);
   background: rgba(255,255,255,.70);
@@ -521,14 +475,15 @@ body.sca-botpage #scaBotPageRoot .sca-planTab{
   line-height: 1;
   cursor: pointer;
   user-select: none;
-  color: #253551;
-  background: #fff;
+  background: rgba(255,255,255,.70);
+  color: rgba(37,53,81,.45); /* unselected grey */
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 0;
 }
 
-/* divider between the two labels (matches your DOM order: label + input + label) */
+/* Divider between tabs (label + input + label order) */
 body.sca-botpage #scaBotPageRoot .sca-planTab + input + label{
   border-left: 1px solid rgba(37,53,81,.14);
 }
@@ -536,331 +491,26 @@ body.sca-botpage #scaBotPageRoot .sca-planTab + input + label{
 /* Selected tab */
 body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
 body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
-  background: #253551;
-  color: #fff;
-}
-
-/* Cost sub-tab (clean: no outline) */
-body.sca-botpage #scaBotPageRoot .sca-planCostTag{
-  position: absolute;
-  left: 50%;
-  bottom: -12px;
-  transform: translateX(-50%);
-  white-space: nowrap;
-
-  padding: 7px 12px;
-  border-radius: 0 0 10px 10px;
-  font-size: 13px;
-  font-weight: 500;         /* make whole sentence lighter */
-  border: none;
-  box-shadow: none;
-  background: rgba(255,255,255,0);
-  color: rgba(37,53,81,.70);
-
-  display: none;
-}
-
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-
-  background: #253551;
-  color: rgba(255,255,255,.90);
-}
-
-/* credits number should match sentence weight */
-body.sca-botpage #scaBotPageRoot .sca-planCredits{
-  font-weight: inherit;
-  color: inherit;
-}
-
-/* Underline under tabs */
-body.sca-botpage #scaBotPageRoot .sca-planUnderline{
-  height: 2px;
-  width: 100%;
-  margin-top: 18px;
-  border-radius: 999px;
-  background: rgba(37,53,81,.14);
-}
-body.sca-botpage #scaBotPageRoot .sca-planCostTag{
-  ...
-  font-size: 15px; /* or 15px if you want it more obvious */
-  ...
-}
-/* === Plan tabs tweak: square main bar, keep rounded sub-tab === */
-body.sca-botpage #scaBotPageRoot .sca-planTabs{
-  border-radius: 0 !important;   /* square outer corners */
-}
-
-body.sca-botpage #scaBotPageRoot .sca-planTab{
-  border-radius: 0 !important;   /* ensure labels don't round */
-}
-
-/* keep the cost sub-tab rounded */
-body.sca-botpage #scaBotPageRoot .sca-planCostTag{
-  border-radius: 0 0 12px 12px !important;
-}
-   /* === Make Start/Stop segmented control square (to match plan tabs) === */
-body.sca-botpage #scaBotPageRoot .sca-seg{
-  border-radius: 0 !important;
-}
-
-body.sca-botpage #scaBotPageRoot #startBtn,
-body.sca-botpage #scaBotPageRoot #stopBtn{
-  border-radius: 0 !important;
-}
-/* === Top segmented toggle bar (nav-style) === */
-body.sca-botpage #scaBotPageRoot .sca-topbar{
-  background: #253551;
-  border-radius: 16px;
-  padding: 14px 16px;
-  margin-bottom: 16px;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 12px;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-topLeft{
-  min-height: 1px;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-topCenter{
-  display: flex;
-  justify-content: center;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-topRight{
-  display: flex;
-  justify-content: flex-end;
-}
-
-/* Center segmented toggle */
-body.sca-botpage #scaBotPageRoot .sca-topTabs{
-  display: inline-grid;
-  grid-template-columns: 1fr 1fr;
-  border-radius: 12px;
-  overflow: hidden;
-  background: rgba(255,255,255,.14);
-  border: 1px solid rgba(255,255,255,.22);
-}
-
-body.sca-botpage #scaBotPageRoot .sca-topTabs input{
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-topTab{
-  padding: 10px 18px;
-  font-weight: 800;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  user-select: none;
-  color: rgba(255,255,255,.88);
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-  .sca-planRow{
-    display:flex;
-    gap:10px;
-    margin-top:12px;
-  }
-  .sca-planPill{
-    flex:1;
-    display:flex;
-    align-items:center;
-    gap:10px;
-    padding:10px 12px;
-    border-radius:14px;
-    border:1px solid rgba(255,255,255,.10);
-    background:rgba(255,255,255,.04);
-    color:#fff;
-    cursor:pointer;
-    position:relative;
-    text-align:left;
-    font:inherit;
-  }
-  .sca-planPill.is-active{
-    background:rgba(255,255,255,.10);
-    border-color:rgba(255,255,255,.22);
-    outline:2px solid rgba(255,255,255,.12);
-  }
-  .sca-planAvatar{
-    width:34px;
-    height:34px;
-    border-radius:10px;
-    object-fit:cover;
-    flex:0 0 auto;
-  }
-  .sca-planText{ line-height:1.1; }
-  .sca-planTitle{ font-weight:600; }
-  .sca-planSub{ font-size:12px; opacity:.75; margin-top:2px; }
-  .sca-planBadge{
-    position:absolute;
-    top:8px;
-    right:8px;
-    font-size:11px;
-    padding:2px 8px;
-    border-radius:999px;
-    background:rgba(255,255,255,.16);
-  }
-/* === Plan tabs: match Start/Stop vibe (grey when off, d3dde6 when on) === */
-
-/* Unselected tab text (greyed out) */
-body.sca-botpage #scaBotPageRoot .sca-planTab{
-  color: rgba(37,53,81,.45) !important;
-}
-
-/* Selected tab: dark background, light text */
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
-  background: #253551 !important;
-  color: #d6dde9 !important;
-}
-
-/* Keep the Premium star consistent */
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planTabText,
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planTabText{
-  color: #d6dde9 !important;
-}
-
-/* Cost sub-tab: same treatment */
-body.sca-botpage #scaBotPageRoot .sca-planCostTag{
-  color: rgba(37,53,81,.55) !important;
-}
-
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
-  background: #253551 !important;
-  color: rgba(211,221,230,.92) !important; /* d3dde6 with slight transparency */
-}
-
-/* Ensure the number matches the sentence */
-body.sca-botpage #scaBotPageRoot .sca-planCredits{
-  color: inherit !important;
-  font-weight: inherit !important;
-}
-/* === Plan tabs: selected bg #d3dde6, selected text #253551, unselected grey === */
-
-/* Default (unselected) look */
-body.sca-botpage #scaBotPageRoot .sca-planTab{
-  background: rgba(255,255,255,.70) !important;
-  color: rgba(37,53,81,.45) !important;   /* greyed out */
-}
-
-/* Selected tab */
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
-  background: #d6dde9 !important;         /* selected background */
-  color: #253551 !important;              /* selected text */
-}
-
-/* Keep inner text (and star) consistent */
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planTabText,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planTabText{
-  color: #253551 !important;
-}
-
-/* Cost sub-tab: unselected subtle, selected matches the selected tab */
-body.sca-botpage #scaBotPageRoot .sca-planCostTag{
-  color: rgba(37,53,81,.55) !important;
-  background: transparent !important;
-}
-
-body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
-body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
-  background: #d6dde9 !important;
-  color: #253551 !important;
-}
-
-/* Number same style as sentence */
-body.sca-botpage #scaBotPageRoot .sca-planCredits{
-  color: inherit !important;
-  font-weight: inherit !important;
-}
-/* === Badge: Not Connected (idle) background d3dde6 === */
-body.sca-botpage #scaBotPageRoot .sca-badge.sca-badge-idle{
-  background: #d6dde9 !important;
-  color: #253551 !important;
-  border-color: rgba(37,53,81,.18) !important;
-}
-body.sca-botpage #scaBotPageRoot .sca-badge.sca-badge-idle{
-  opacity: .85;
-}
-/* === Bridge: apply the SAME plan selector styles outside #scaBotPageRoot === */
-/* Everything below mirrors the "Plan tabs (final)" section, but targets #scaPlanStandalone too. */
-
-body.sca-botpage #scaPlanStandalone .sca-planBar{
-  margin: 0 6px 12px;
-}
-
-body.sca-botpage #scaPlanStandalone .sca-planTabs{
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-radius: 0;               /* keep your squared outer corners */
-  overflow: visible;
-  border: 1px solid rgba(37,53,81,.18);
-  background: rgba(255,255,255,.70);
-  box-shadow: 0 10px 26px rgba(17,24,39,.08);
-}
-
-body.sca-botpage #scaPlanStandalone .sca-planTabs input{
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-body.sca-botpage #scaPlanStandalone .sca-planTab{
-  position: relative;
-  padding: 14px 16px 18px;
-  font-weight: 900;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  user-select: none;
-  background: rgba(255,255,255,.70);
-  color: rgba(37,53,81,.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0;
-}
-
-/* divider between tabs */
-body.sca-botpage #scaPlanStandalone .sca-planTab + input + label{
-  border-left: 1px solid rgba(37,53,81,.14);
-}
-
-/* Selected = #d6dde9 background, #253551 text */
-body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label,
-body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label{
   background: #d6dde9;
   color: #253551;
 }
 
-body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label .sca-planTabText,
-body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planTabText{
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planTabText,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planTabText{
   color: #253551;
 }
 
 /* Cost sub-tab */
-body.sca-botpage #scaPlanStandalone .sca-planCostTag{
+body.sca-botpage #scaBotPageRoot .sca-planCostTag{
   position: absolute;
   left: 50%;
   bottom: -12px;
   transform: translateX(-50%);
   white-space: nowrap;
+
   padding: 7px 12px;
-  border-radius: 0 0 12px 12px;   /* rounded sub-tab */
-  font-size: 14px;
+  border-radius: 0 0 12px 12px; /* rounded sub-tab */
+  font-size: 14px;             /* adjust here */
   font-weight: 500;
   border: none;
   box-shadow: none;
@@ -869,8 +519,8 @@ body.sca-botpage #scaPlanStandalone .sca-planCostTag{
   display: none;
 }
 
-body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label .sca-planCostTag,
-body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planCostTag{
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -878,16 +528,53 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planCost
   color: #253551;
 }
 
-body.sca-botpage #scaPlanStandalone .sca-planCredits{
+body.sca-botpage #scaBotPageRoot .sca-planCredits{
   font-weight: inherit;
   color: inherit;
 }
 
-/* Underline */
-body.sca-botpage #scaPlanStandalone .sca-planUnderline{
+body.sca-botpage #scaBotPageRoot .sca-planUnderline{
   height: 2px;
   width: 100%;
   margin-top: 18px;
   border-radius: 0;
   background: rgba(37,53,81,.14);
 }
+
+/* ---------------- OPTIONAL: If plan selector is outside #scaBotPageRoot ---------------- */
+/*
+body.sca-botpage #scaPlanStandalone .sca-planBar{ margin: 0 6px 12px; }
+body.sca-botpage #scaPlanStandalone .sca-planTabs{ width:100%; display:grid; grid-template-columns:1fr 1fr; border-radius:0; overflow:visible; border:1px solid rgba(37,53,81,.18); background:rgba(255,255,255,.70); box-shadow:0 10px 26px rgba(17,24,39,.08); }
+body.sca-botpage #scaPlanStandalone .sca-planTabs input{ position:absolute; opacity:0; pointer-events:none; }
+body.sca-botpage #scaPlanStandalone .sca-planTab{ position:relative; padding:14px 16px 18px; font-weight:900; font-size:20px; line-height:1; cursor:pointer; user-select:none; background:rgba(255,255,255,.70); color:rgba(37,53,81,.45); display:flex; align-items:center; justify-content:center; border-radius:0; }
+body.sca-botpage #scaPlanStandalone .sca-planTab + input + label{ border-left:1px solid rgba(37,53,81,.14); }
+body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label,
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label{ background:#d6dde9; color:#253551; }
+body.sca-botpage #scaPlanStandalone .sca-planCostTag{ position:absolute; left:50%; bottom:-12px; transform:translateX(-50%); white-space:nowrap; padding:7px 12px; border-radius:0 0 12px 12px; font-size:14px; font-weight:500; border:none; box-shadow:none; background:transparent; color:rgba(37,53,81,.70); display:none; }
+body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label .sca-planCostTag,
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planCostTag{ display:inline-flex; align-items:center; gap:6px; background:#d6dde9; color:#253551; }
+body.sca-botpage #scaPlanStandalone .sca-planUnderline{ height:2px; width:100%; margin-top:18px; border-radius:0; background:rgba(37,53,81,.14); }
+*/
+
+/* ---------------- OPTIONAL: Debug card if outside #scaBotPageRoot ---------------- */
+/*
+body.sca-botpage #vpDebugCard{
+  background:#d6dde9;
+  border:1px solid rgba(37,53,81,.12);
+  border-radius:20px;
+  overflow:hidden;
+}
+body.sca-botpage #vpDebugCard .sca-infoHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 16px;
+  background:rgba(31,41,55,.05);
+  border-bottom:1px solid rgba(37,53,81,.12);
+}
+body.sca-botpage #vpDebugCard .sca-infoHeaderTitle{
+  font-weight:900;
+  color:#253551;
+  font-size:20px;
+}
+*/
