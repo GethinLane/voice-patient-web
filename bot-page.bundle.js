@@ -1,15 +1,18 @@
-/* bot-page.bundle.js (simplified)
-   - Renders full UI into #sca-patient-card (single source of truth)
+/* bot-page.bundle.js (simplified + robust)
+   - Single UI mount into #sca-patient-card
    - NO orb rendering (handled by sca-orb.js)
+   - Provides the required IDs for voice-patient.js: #startBtn #stopBtn #status
+   - Provides mode selector compatible with voice-patient.js (name="vpMode")
    - Fetches Airtable case data via proxy
    - Populates: name/age, PMHx, DHx, notes (with photos), results
-   - Accordion behaviour + vp:ui badge/status updates
+   - Accordion behaviour + vp:ui badge/status/glow/avatar updates
 */
 (() => {
   // ---------------- Config ----------------
   const PROXY_BASE_URL =
     window.PROXY_BASE_URL || "https://scarevision-airtable-proxy.vercel.app";
 
+  // Only needed if you later re-enable an extra endpoint
   const ENABLE_PROFILE_FETCH = false;
   const PROFILE_ENDPOINT = "/api/case-profile?caseId=";
 
@@ -48,11 +51,16 @@
 
     document.body.classList.add("sca-botpage");
 
+    // IMPORTANT:
+    // - startBtn/stopBtn/status must exist exactly once
+    // - vpMode radios must exist for voice-patient.js getSelectedMode()
     host.innerHTML = `
       <div id="scaBotPageRoot">
         <div class="sca-grid">
+
           <!-- LEFT -->
           <div class="sca-left">
+
             <div class="sca-heroRow">
               <div class="sca-heroMedia">
                 <div class="sca-avatarWrap">
@@ -61,7 +69,8 @@
                     <canvas id="sca-orb-canvas" class="sca-orbCanvas" width="500" height="500" aria-hidden="true"></canvas>
 
                     <div class="sca-avatar">
-                      <img id="sca-avatar-img"
+                      <img
+                        id="sca-avatar-img"
                         alt=""
                         src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="
                         class="is-empty"
@@ -87,9 +96,17 @@
               </ul>
             </div>
 
-            <!-- Standard / Premium button group (you asked for this) -->
+            <!-- Mode selector: MUST be input[name="vpMode"] for voice-patient.js -->
             <div class="sca-botUpdate" style="padding:12px 14px;">
               <div style="font-weight:800; color: var(--sca-ink); margin-bottom:10px;">Bot type</div>
+
+              <!-- Hidden radios (source of truth for voice-patient.js) -->
+              <div style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;">
+                <label><input type="radio" name="vpMode" id="vpModeStandard" value="standard" checked> Standard</label>
+                <label><input type="radio" name="vpMode" id="vpModePremium" value="premium"> Premium</label>
+              </div>
+
+              <!-- Pretty buttons that toggle the radios -->
               <div style="display:flex; gap:10px;">
                 <button id="botTypeStandard" type="button"
                   style="flex:1; height:46px; border-radius:12px; border:1px solid var(--sca-border); background: rgba(255,255,255,.75); font-weight:800; cursor:pointer;">
@@ -102,11 +119,12 @@
               </div>
             </div>
 
-            <!-- Start/Stop buttons: keep IDs the same -->
+            <!-- Start/Stop buttons: IDs required by voice-patient.js -->
             <div class="sca-seg">
               <button id="startBtn" type="button">Start</button>
-              <button id="stopBtn" type="button">Stop</button>
+              <button id="stopBtn" type="button" disabled>Stop</button>
             </div>
+
           </div>
 
           <!-- RIGHT -->
@@ -119,40 +137,21 @@
               <div class="sca-accordion" id="scaAccordion"></div>
             </div>
           </aside>
+
         </div>
       </div>
     `;
 
-    // Build accordion sections with NEW stable targets
+    // Build accordion sections with stable targets
     const acc = host.querySelector("#scaAccordion");
     if (acc && !acc.__scaBuilt) {
       acc.__scaBuilt = true;
 
-      addAccItem(acc, {
-        title: "Medical History",
-        contentNode: makeListNode("scaPMHxList"),
-        open: true
-      });
+      addAccItem(acc, { title: "Medical History", contentNode: makeListNode("scaPMHxList"), open: true });
+      addAccItem(acc, { title: "Medication", contentNode: makeListNode("scaDHxList"), open: true });
+      addAccItem(acc, { title: "Medical Notes", contentNode: makeDivNode("scaNotesWrap"), open: false });
+      addAccItem(acc, { title: "Investigation Results", contentNode: makeDivNode("scaResultsWrap"), open: false });
 
-      addAccItem(acc, {
-        title: "Medication",
-        contentNode: makeListNode("scaDHxList"),
-        open: true
-      });
-
-      addAccItem(acc, {
-        title: "Medical Notes",
-        contentNode: makeDivNode("scaNotesWrap"),
-        open: false
-      });
-
-      addAccItem(acc, {
-        title: "Investigation Results",
-        contentNode: makeDivNode("scaResultsWrap"),
-        open: false
-      });
-
-      // One delegated click handler, capture phase
       if (!acc.__scaDelegated) {
         acc.__scaDelegated = true;
         acc.addEventListener(
@@ -161,7 +160,7 @@
             const header = e.target.closest(".sca-accHeader");
             if (!header || !acc.contains(header)) return;
 
-            // Ignore clicks inside open body content
+            // ignore clicks inside body content
             if (e.target.closest(".sca-accBody")) return;
 
             e.preventDefault();
@@ -178,6 +177,9 @@
         );
       }
     }
+
+    // Wire the pretty mode buttons to the radios (voice-patient reads radios)
+    wireModeButtons();
 
     return host;
   }
@@ -222,6 +224,39 @@
     acc.appendChild(item);
   }
 
+  // ---------------- Mode selector wiring ----------------
+  function wireModeButtons() {
+    const btnStd = $("botTypeStandard");
+    const btnPre = $("botTypePremium");
+    const rStd = $("vpModeStandard");
+    const rPre = $("vpModePremium");
+    if (!btnStd || !btnPre || !rStd || !rPre) return;
+
+    // restore previous selection
+    try {
+      const saved = String(localStorage.getItem("vp_mode") || "").toLowerCase();
+      if (saved === "premium") rPre.checked = true;
+      else rStd.checked = true;
+    } catch {}
+
+    const paint = () => {
+      const isPremium = !!rPre.checked;
+      btnStd.style.background = isPremium ? "rgba(255,255,255,.55)" : "rgba(255,255,255,.85)";
+      btnPre.style.background = isPremium ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.55)";
+    };
+
+    const setMode = (mode) => {
+      if (mode === "premium") rPre.checked = true;
+      else rStd.checked = true;
+      paint();
+      try { localStorage.setItem("vp_mode", mode); } catch {}
+    };
+
+    btnStd.addEventListener("click", () => setMode("standard"));
+    btnPre.addEventListener("click", () => setMode("premium"));
+    paint();
+  }
+
   // ---------------- Badge / Status / Avatar helpers ----------------
   function setBadge(state) {
     const badge = $("sca-badge");
@@ -250,7 +285,6 @@
   }
 
   function setGlow(glow01) {
-    // orb.js reads CSS vars; keep this for compatibility
     const ring = $("sca-ring");
     if (!ring) return;
     ring.style.setProperty("--glow", String(clamp01(glow01)));
@@ -271,12 +305,15 @@
     }
   }
 
-  // Listen for voice-patient.js updates (badge + status only)
+  // Listen for voice-patient.js updates
   window.addEventListener("vp:ui", (e) => {
     const d = e.detail || {};
     if (typeof d.status === "string") setStatus(d.status);
     if (typeof d.state === "string") setBadge(d.state);
     if (typeof d.glow === "number") setGlow(d.glow);
+
+    // optional: avatar updates from start-session payload
+    if ("avatarUrl" in d) setAvatar(d.avatarUrl || null);
 
     // If disconnected, force idle badge
     if (!d.state && typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) {
@@ -289,9 +326,7 @@
     const resp = await fetch(url, { cache: "no-store" });
     const text = await resp.text();
     let data = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {}
+    try { data = text ? JSON.parse(text) : null; } catch {}
     if (!resp.ok) {
       const msg = (data && (data.error || data.message)) || `HTTP ${resp.status}`;
       const err = new Error(msg);
@@ -350,14 +385,14 @@
     // Avatar url
     let avatarUrl = findPatientImageFromCaseRecords(records);
 
-    // Your /api/case can also return profile.patientImageUrl
+    // /api/case can also return profile.patientImageUrl
     if (!avatarUrl) {
       avatarUrl =
         (typeof data?.profile?.patientImageUrl === "string" && data.profile.patientImageUrl) ||
         null;
     }
 
-    // optional profile endpoint
+    // optional extra endpoint
     if (!avatarUrl) {
       const caseId = getCaseIdFromUrl();
       avatarUrl = await fetchCaseProfileImage(caseId);
@@ -372,7 +407,7 @@
   function getAirtableRecordsOrExit(contextLabel) {
     const records = window.airtableData;
     if (!records || records.length === 0) {
-      console.error(`No records found or failed to fetch records (${contextLabel}).`);
+      console.error(`[SCA] No records found (${contextLabel}).`);
       return null;
     }
     return records;
@@ -420,26 +455,26 @@
     const medicalNotesContent = collectAndSortValues(records, "Medical Notes Content");
     const medicalNotesPhotos  = collectAndSortValues(records, "Notes Photo");
 
-    const medicalNotesDiv = $("scaNotesWrap");
-    if (!medicalNotesDiv) return;
-    medicalNotesDiv.innerHTML = "";
+    const wrap = $("scaNotesWrap");
+    if (!wrap) return;
+    wrap.innerHTML = "";
 
     for (let i = 0; i < medicalNotes.length; i++) {
       const note = medicalNotes[i];
       const content = medicalNotesContent[i] || "";
       const photos = medicalNotesPhotos[i];
 
-      const noteElement = document.createElement("div");
-      const contentElement = document.createElement("div");
+      const noteEl = document.createElement("div");
+      const contentEl = document.createElement("div");
 
-      noteElement.classList.add("underline");
-      contentElement.classList.add("quote-box", "quote-box-medical");
+      noteEl.classList.add("underline");
+      contentEl.classList.add("quote-box", "quote-box-medical");
 
-      noteElement.textContent = (i > 0 ? "\n" : "") + note;
-      contentElement.innerHTML = content.replace(/\n/g, "<br>") + "<br>";
+      noteEl.textContent = (i > 0 ? "\n" : "") + note;
+      contentEl.innerHTML = content.replace(/\n/g, "<br>") + "<br>";
 
-      medicalNotesDiv.appendChild(noteElement);
-      medicalNotesDiv.appendChild(contentElement);
+      wrap.appendChild(noteEl);
+      wrap.appendChild(contentEl);
 
       if (photos && Array.isArray(photos) && photos.length > 0) {
         photos.forEach((photo) => {
@@ -453,7 +488,7 @@
           img.style.height = "auto";
           img.style.display = "block";
           img.style.margin = "10px auto";
-          medicalNotesDiv.appendChild(img);
+          wrap.appendChild(img);
         });
       }
     }
@@ -463,9 +498,9 @@
     const results        = collectAndSortValues(records, "Results");
     const resultsContent = collectAndSortValues(records, "Results Content");
 
-    const resultsDiv = $("scaResultsWrap");
-    if (!resultsDiv) return;
-    resultsDiv.innerHTML = "";
+    const wrap = $("scaResultsWrap");
+    if (!wrap) return;
+    wrap.innerHTML = "";
 
     for (let i = 0; i < results.length; i++) {
       const title = results[i];
@@ -480,13 +515,13 @@
       titleEl.textContent = (i > 0 ? "\n" : "") + title;
       contentEl.innerHTML = content.replace(/\n/g, "<br>") + "<br>";
 
-      resultsDiv.appendChild(titleEl);
-      resultsDiv.appendChild(contentEl);
+      wrap.appendChild(titleEl);
+      wrap.appendChild(contentEl);
     }
   }
 
-  function populateAllThree() {
-    const records = getAirtableRecordsOrExit("Bot page (patient + notes + results)");
+  function populateAll() {
+    const records = getAirtableRecordsOrExit("patient+notes+results");
     if (!records) return;
     populatePatientData(records);
     populateMedicalNotes(records);
@@ -495,23 +530,27 @@
 
   // ---------------- Boot ----------------
   function boot() {
-    // 1) Build UI (must exist for orb.js + population targets)
+    // Mount ASAP
     mountAppShell();
 
-    // 2) Fetch Airtable
+    // Airtable
     fetchAirtableCaseData().catch((e) => {
       console.error("[SCA] fetchAirtableCaseData failed:", e);
-      if (typeof window.uiEmit === "function") window.uiEmit({ avatarUrl: null });
+      // DO NOT call window.uiEmit here (voice-patient's uiEmit is internal)
     });
 
-    // 3) Populate when data arrives
-    document.addEventListener("airtableDataFetched", populateAllThree);
+    document.addEventListener("airtableDataFetched", populateAll);
 
-    // Fallback if data was already present
+    // Fallback if data already present
     if (window.airtableData && Array.isArray(window.airtableData) && window.airtableData.length) {
-      populateAllThree();
+      populateAll();
     }
   }
 
-  window.addEventListener("DOMContentLoaded", boot);
+  // Run immediately if possible (helps voice-patient bind early)
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
 })();
