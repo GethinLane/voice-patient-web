@@ -59,10 +59,14 @@ body.sca-botpage #scaBotPageRoot .sca-left{
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  position: relative;
+  z-index: 1;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-right{
   min-width: 0;
+  position: relative;
+  z-index: 2;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-heroRow{
