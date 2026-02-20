@@ -913,35 +913,71 @@ if (data?.patientImageUrl) {
   }
 
   // ---------- Boot ----------
-  window.addEventListener("DOMContentLoaded", () => {
-    if (DEBUG_UI) ensureUiRoot();
+window.addEventListener("DOMContentLoaded", () => {
+  if (DEBUG_UI) ensureUiRoot();
 
-    const hasStartBtn = !!$("startBtn");
-    const hasStopBtn = !!$("stopBtn");
-    const hasStatus = !!$("status");
+  // Wait for required elements to exist (bundle might mount after DOMContentLoaded)
+  function findUiEls() {
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn  = document.getElementById("stopBtn");
+    const status   = document.getElementById("status");
+    return { startBtn, stopBtn, status };
+  }
 
-if (!hasStartBtn || !hasStopBtn || !hasStatus) {
-  const msg = "Missing required elements: startBtn/stopBtn/status.";
-  setStatus(msg);
-  log("[BOOT] missing elements", { hasStartBtn, hasStopBtn, hasStatus });
-  return;
-}
+  function bindOnce() {
+    const { startBtn, stopBtn, status } = findUiEls();
 
-    const startBtn = $("startBtn");
-    const stopBtn = $("stopBtn");
+    // If multiple exist (duplicate IDs), pick the visible one
+    const pickVisible = (id) => {
+      const els = Array.from(document.querySelectorAll(`#${CSS.escape(id)}`));
+      return els.find((el) => el.offsetParent !== null) || els[0] || null;
+    };
 
-    startBtn.addEventListener("click", startConsultation);
-    stopBtn.addEventListener("click", () => { stopConsultation(false).catch(() => {}); });
+    const sBtn = pickVisible("startBtn");
+    const xBtn = pickVisible("stopBtn");
+    const stEl = pickVisible("status");
+
+    const ok = !!(sBtn && xBtn && stEl);
+    if (!ok) return false;
+
+    // Prevent double-binding if code runs twice
+    if (window.__vpBound) return true;
+    window.__vpBound = true;
+
+    // Swap to the visible ones
+    // (so the rest of the script's helpers still work)
+    // NOTE: your helpers use $(id) each time, so this is just sanity.
+    log("[BOOT] binding UI elements", {
+      startBtn: !!sBtn, stopBtn: !!xBtn, status: !!stEl
+    });
+
+    sBtn.addEventListener("click", startConsultation);
+    xBtn.addEventListener("click", () => { stopConsultation(false).catch(() => {}); });
 
     window.addEventListener("beforeunload", () => {
       try { unmountDailyCustomAudio(); } catch {}
     });
 
+    // Initial UI state
     setUiConnected(false);
     setStatus("Not connected");
     uiEmit({ state: "idle", glow: 0.15, status: "Waiting…", sessionId: null });
 
     populateCaseDropdown();
     setCountdownText("");
+    return true;
+  }
+
+  // Try immediately
+  if (bindOnce()) return;
+
+  // Otherwise observe until UI appears
+  const obs = new MutationObserver(() => {
+    if (bindOnce()) obs.disconnect();
   });
-})();
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+
+  // Also try a small timed retry (Squarespace can be weird)
+  setTimeout(() => { bindOnce(); }, 250);
+  setTimeout(() => { bindOnce(); }, 1000);
+});
