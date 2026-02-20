@@ -736,3 +736,74 @@ body.sca-botpage #scaBotPageRoot .sca-controls{
 body.sca-botpage #scaBotPageRoot .sca-controlsStatus{
   margin-top: 10px;
 }
+/* ---------- Plan tabs (Standard / Premium) ---------- */
+body.sca-botpage #scaBotPageRoot .sca-planBar{
+  margin: 0 6px 10px;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planTabs{
+  display: inline-flex;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(37,53,81,.18);
+  background: rgba(255,255,255,.65);
+  box-shadow: 0 10px 26px rgba(17,24,39,.08);
+}
+
+/* hide native radios */
+body.sca-botpage #scaBotPageRoot .sca-planTabs input{
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planTab{
+  padding: 12px 18px;
+  font-weight: 900;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  color: #253551;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Selected tab = dark blue */
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
+  background: #253551;
+  color: #fff;
+}
+
+/* separator line between tabs */
+body.sca-botpage #scaBotPageRoot .sca-planTab + input + label{
+  border-left: 1px solid rgba(37,53,81,.14);
+}
+
+/* the thin line across the top under the tabs (your “little line”) */
+body.sca-botpage #scaBotPageRoot .sca-planUnderline{
+  height: 2px;
+  width: 100%;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: rgba(37,53,81,.14);
+}
+
+/* Costs pill (dropdown-ish) */
+body.sca-botpage #scaBotPageRoot .sca-planCost{
+  margin-top: 10px;
+  border: 1px solid rgba(37,53,81,.14);
+  background: rgba(255,255,255,.70);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-weight: 700;
+  color: rgba(37,53,81,.78);
+  cursor: default; /* not actually a dropdown unless you want it */
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planCost strong{
+  color: #253551;
+}
