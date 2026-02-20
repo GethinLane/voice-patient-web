@@ -425,6 +425,7 @@ function setAvatar(url) {
   function addAccItem(acc, { title, contentNode, open }) {
     const item = document.createElement("section");
     item.className = "sca-accItem";
+    item.dataset.scaAccItem = "true";
 
     const header = document.createElement("button");
     header.type = "button";
@@ -542,19 +543,21 @@ function setAvatar(url) {
       if (notesBox) addAccItem(acc, { title: "Medical Notes", contentNode: notesBox, open: false });
       if (resultsBox) addAccItem(acc, { title: "Investigation Results", contentNode: resultsBox, open: false });
 
-       // Delegate all accordion toggles from the container (survives Squarespace re-renders)
 if (!acc.__scaDelegated) {
   acc.__scaDelegated = true;
 
   acc.addEventListener("click", (e) => {
-    const header = e.target.closest(".sca-accHeader");
-    if (!header || !acc.contains(header)) return;
+    // Click anywhere in the row should toggle
+    const item = e.target.closest("[data-sca-acc-item='true']");
+    if (!item || !acc.contains(item)) return;
 
-    e.preventDefault();
+    // But ignore clicks inside the body content (links, text selection, etc.)
+    const clickedInsideBody = e.target.closest(".sca-accBody");
+    if (clickedInsideBody) return;
 
-    const item = header.closest(".sca-accItem");
-    const body = item?.querySelector(".sca-accBody");
-    if (!body) return;
+    const header = item.querySelector(".sca-accHeader");
+    const body = item.querySelector(".sca-accBody");
+    if (!header || !body) return;
 
     const expanded = header.getAttribute("aria-expanded") === "true";
     header.setAttribute("aria-expanded", expanded ? "false" : "true");
