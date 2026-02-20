@@ -35,8 +35,8 @@ body.sca-botpage #scaBotPageRoot{
 
 @media (max-width: 720px){
   body.sca-botpage #scaBotPageRoot{
-    margin: 6px;
-    padding: 10px;
+    margin: 12px;
+    padding: 12px;
     border-radius: 18px;
   }
 }
