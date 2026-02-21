@@ -594,3 +594,18 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
 body.sca-botpage #scaBotPageRoot .sca-mainMeta{
   margin-top: 6px !important;
 }
+/* Put the state badge top-left on the patient card, and hide "Patient" label */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header{
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  margin-bottom: 16px !important;
+}
+
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-title{
+  display: none !important; /* removes the "Patient" text */
+}
+
+/* Ensure badge looks good left-aligned */
+body.sca-botpage #scaBotPageRoot #sca-patient-card #sca-badge{
+  margin-left: 0 !important;
+}
