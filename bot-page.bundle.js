@@ -17,6 +17,23 @@
   const $ = (id) => document.getElementById(id);
   const clamp01 = (x) => Math.max(0, Math.min(1, Number(x || 0)));
 
+     // ---------------- Timer colouring (driven by vp:ui) ----------------
+  function setTimerClass(remainingSec) {
+    const el = $("vpTimer");
+    if (!el) return;
+
+    el.classList.remove("vpTimer--safe", "vpTimer--warn", "vpTimer--danger");
+
+    const s = Math.max(0, Math.floor(Number(remainingSec)));
+
+    // 12:00 → 7:00 inclusive
+    if (s >= 7 * 60) el.classList.add("vpTimer--safe");
+    // 6:59 → 1:00 inclusive
+    else if (s >= 60) el.classList.add("vpTimer--warn");
+    // 0:59 → 0:00
+    else el.classList.add("vpTimer--danger");
+  }
+
   // ---------------- Case ID helpers ----------------
   function getCaseIdFromUrl() {
     try {
@@ -148,6 +165,9 @@
     if (typeof d.glow === "number") setGlow(d.glow);
 
     if ("avatarUrl" in d) setAvatar(d.avatarUrl || null);
+
+    // ✅ Timer colouring (voice-patient emits timerRemainingSec)
+    if (typeof d.timerRemainingSec === "number") setTimerClass(d.timerRemainingSec);
   });
 
   // ---------------- Airtable fetch (proxy) ----------------
