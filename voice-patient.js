@@ -63,8 +63,48 @@
   let holdUntilMs = 0;
 
   // UI state
-  let uiState = "idle"; // idle | thinking | listening | talking | error
+let uiState = "idle"; // idle | connecting | waiting | thinking | listening | talking | error
   let lastGlow = 0.15;
+
+  // ---------------- Remote presence (agent join gating) ----------------
+let remotePresent = false;  // any non-local participant
+let agentPresent  = false;  // treat as "agent is here" (can refine by name/id)
+let waitingSinceMs = 0;
+
+function computeRemotePresence() {
+  if (!callObject) return { remotePresent: false, agentPresent: false };
+
+  const parts = callObject.participants?.() || {};
+  const remotes = Object.values(parts).filter((p) => p && !p.local);
+
+  const anyRemote = remotes.length > 0;
+
+  // Optional: if you can identify the agent more strictly, adjust this
+  const anyAgent = remotes.some((p) => {
+    const name = String(p.user_name || "").toLowerCase();
+    const uid  = String(p.user_id || "").toLowerCase();
+    return name.includes("pipecat") || name.includes("agent") || uid.includes("pipecat");
+  });
+
+  return { remotePresent: anyRemote, agentPresent: anyAgent || anyRemote };
+}
+
+function refreshPresenceAndUi() {
+  const p = computeRemotePresence();
+  remotePresent = p.remotePresent;
+  agentPresent = p.agentPresent;
+
+  // If we're connected locally but agent isn't here yet, show waiting
+  if (callObject && !agentPresent) {
+    if (!waitingSinceMs) waitingSinceMs = Date.now();
+    if (uiState !== "waiting") setUiState("waiting");
+    emitUi("waiting", 0.16);
+  } else if (callObject && agentPresent && uiState === "waiting") {
+    waitingSinceMs = 0;
+    setUiState("thinking");
+    emitUi("thinking", 0.18);
+  }
+}
 
 // ---------------- Helpers ----------------
 function $(id) {
@@ -491,6 +531,12 @@ async function fetchJson(url, options) {
       const now = Date.now();
       let state = uiState;
       let glow = 0.18;
+            // If agent hasn't joined yet, keep UI in waiting and don't run talk/listen/thinking logic
+      if (!agentPresent) {
+        if (uiState !== "waiting") setUiState("waiting");
+        emitUi("waiting", 0.16);
+        return;
+      }
 
       // Prioritize bot talking over listening to avoid echo picking up
       if (smoothRemote > remoteTh) {
@@ -545,6 +591,11 @@ async function fetchJson(url, options) {
       startAudioOff: false,
     });
 
+    // Presence gating: track when the remote agent joins/leaves
+callObject.on("participant-joined", () => refreshPresenceAndUi());
+callObject.on("participant-left",  () => refreshPresenceAndUi());
+callObject.on("participant-updated", () => refreshPresenceAndUi());
+
     // ✅ DEBUG: expose callObject so we can inspect tracks from browser console
 window.__vpCallObject = callObject;
 console.log("[VP] callObject exposed as window.__vpCallObject");
@@ -597,6 +648,8 @@ console.log("[VP] callObject exposed as window.__vpCallObject");
 
     // Join
     await callObject.join({ url: dailyRoom, token: dailyToken });
+    // Update presence immediately after join (agent may or may not be in yet)
+refreshPresenceAndUi();
 
     // Make sure audio context is running (must be after user gesture)
     ensureAudioContext();
@@ -646,6 +699,10 @@ console.log("[VP] callObject exposed as window.__vpCallObject");
       callObject = null;
     }
 
+    remotePresent = false;
+agentPresent = false;
+waitingSinceMs = 0;
+    
     uiState = "idle";
     emitUi("idle", 0.15);
   }
@@ -863,6 +920,8 @@ const data = await fetchJson(`${API_BASE}/api/start-session`, {
       updateMeta();
 
       setStatus(`Connecting audio (${getCaseLabel()})…`);
+      setUiState("connecting");
+emitUi("connecting", 0.15);
       await mountDailyCustomAudio(data.dailyRoom, data.dailyToken);
 
       startCountdown(MAX_SESSION_SECONDS);
