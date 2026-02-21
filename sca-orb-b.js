@@ -38,7 +38,7 @@
 
   // --- Style knobs ---
   const CFG = {
-    count: 560,
+    count: 800,
 
     // particles (larger + brighter)
     sizeMin: 2.0,
@@ -189,7 +189,7 @@
   }
 
 
-  function drawElectricRing(ctx, cx, cy, avatarRadius) {
+ // function drawElectricRing(ctx, cx, cy, avatarRadius) {
     // Irregular, crackly electric-blue ring (additive)
     const baseR = avatarRadius * CFG.ringBaseMul;
     const steps = CFG.ringSteps;
