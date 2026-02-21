@@ -65,6 +65,7 @@
   // UI state
 let uiState = "idle"; // idle | connecting | waiting | thinking | listening | talking | error
   let lastGlow = 0.15;
+  let vpIsStarting = false;
 
   // ---------------- Remote presence (agent join gating) ----------------
 let remotePresent = false;  // any non-local participant
@@ -649,7 +650,8 @@ console.log("[VP] callObject exposed as window.__vpCallObject");
     // Join
     await callObject.join({ url: dailyRoom, token: dailyToken });
     // Update presence immediately after join (agent may or may not be in yet)
-refreshPresenceAndUi();
+    refreshPresenceAndUi();
+    vpIsStarting = false;
 
     // Make sure audio context is running (must be after user gesture)
     ensureAudioContext();
@@ -678,7 +680,7 @@ refreshPresenceAndUi();
     startLevelLoop();
   }
 
-  async function unmountDailyCustomAudio() {
+  async function unmountDailyCustomAudio({ suppressIdleEmit = false } = {}) {
     stopLevelLoop();
 
     destroyMeter(localMeter);
@@ -703,8 +705,10 @@ refreshPresenceAndUi();
 agentPresent = false;
 waitingSinceMs = 0;
     
+    if (!suppressIdleEmit) {
     uiState = "idle";
     emitUi("idle", 0.15);
+}
   }
 
   // On-demand debug — no spam
@@ -866,6 +870,8 @@ waitingSinceMs = 0;
 
     try {
       setUiConnected(true);
+      
+      vpIsStarting = true;
       setUiState("connecting");
       emitUi("connecting", 0.15);
       setStatus(`Starting session (${getCaseLabel()})…`);
@@ -876,10 +882,11 @@ const caseId = urlCase || 1;
 
       const { userId, email } = await ensureIdentity({ timeoutMs: 2500, intervalMs: 150 });
       if (!userId && !email) {
-        setStatus("Couldn't detect MemberSpace login. Refresh the page, then try again.");
-        setUiConnected(false);
-        return;
-      }
+  vpIsStarting = false;
+  setStatus("Couldn't detect MemberSpace login. Refresh the page, then try again.");
+  setUiConnected(false);
+  return;
+}
 
       const mode = getSelectedMode();
 
@@ -892,6 +899,7 @@ const caseId = urlCase || 1;
 );
 
 if (!credits?.canStart) {
+  vpIsStarting = false;
   setStatus(`Not enough credits for ${mode}. You have ${credits.creditsRemaining}, need ${credits.required}.`);
   setUiConnected(false);
   return;
@@ -929,6 +937,7 @@ emitUi("connecting", 0.15);
       startCountdown(MAX_SESSION_SECONDS);
       setStatus(`Connected (${getCaseLabel()}). Talk, then press Stop.`);
 } catch (e) {
+      vpIsStarting = false;
   // ✅ Credits gate from /api/start-session
   if (e?.status === 402) {
     const available = e?.data?.credits?.available;
@@ -948,7 +957,7 @@ emitUi("connecting", 0.15);
 
   setStatus("Error starting. Add ?vpdebug=1 for details.");
   setUiConnected(false);
-  await unmountDailyCustomAudio();
+  await unmountDailyCustomAudio({ suppressIdleEmit: true });
   stopCountdown("start failed");
   log("[START] error", { error: e?.message || String(e), status: e?.status, data: e?.data });
 }
@@ -959,7 +968,7 @@ emitUi("connecting", 0.15);
     if (DEBUG_UI) ensureUiRoot();
 
     stopCountdown(auto ? "auto stop" : "manual stop");
-    await unmountDailyCustomAudio();
+    await unmountDailyCustomAudio({ suppressIdleEmit: true });
 
     setUiConnected(false);
     setStatus(auto ? "Time limit reached. Grading in progress…" : "Stopped. Grading in progress…");
