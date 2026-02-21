@@ -609,3 +609,15 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-title{
 body.sca-botpage #scaBotPageRoot #sca-patient-card #sca-badge{
   margin-left: 0 !important;
 }
+/* === Desktop: make orb + avatar ~30% bigger === */
+@media (min-width: 981px){
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+    width: 395px !important;   /* 304 * 1.30 ≈ 395 */
+    height: 395px !important;
+  }
+
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
+    width: 395px !important;
+    height: 395px !important;
+  }
+}
