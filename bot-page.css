@@ -634,3 +634,9 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card #sca-badge{
     margin-bottom: 8px !important;
   }
 }
+/* === Fix orb clipping: increase canvas bleed area on desktop === */
+@media (min-width: 981px){
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+    --orb-bleed: 120px !important; /* was ~24px; needs ~110px+ at 395px ring */
+  }
+}
