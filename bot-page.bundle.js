@@ -80,28 +80,44 @@
 
   // ---------------- vp:ui -> page elements (optional bridge) ----------------
   function setBadge(state) {
-    const badge = $("sca-badge");
-    if (!badge) return;
+  const badge = $("sca-badge");
+  if (!badge) return;
 
-    badge.className = "sca-badge";
+  badge.className = "sca-badge";
 
-    if (state === "idle") {
-      badge.textContent = "Not Connected";
-      badge.classList.add("sca-badge-idle");
-    } else if (state === "thinking") {
-      badge.textContent = "Thinking";
-      badge.classList.add("sca-badge-thinking");
-    } else if (state === "listening") {
-      badge.textContent = "Listening";
-      badge.classList.add("sca-badge-listening");
-    } else if (state === "talking") {
-      badge.textContent = "Talking";
-      badge.classList.add("sca-badge-talking");
-    } else {
-      badge.textContent = "Not Connected";
-      badge.classList.add("sca-badge-idle");
-    }
+  if (state === "idle") {
+    badge.textContent = "Not Connected";
+    badge.classList.add("sca-badge-idle");
+
+  } else if (state === "connecting") {
+    badge.textContent = "Connecting…";
+    badge.classList.add("sca-badge-connecting"); // add CSS or let it fall back visually
+
+  } else if (state === "waiting") {
+    badge.textContent = "Waiting for patient…";
+    badge.classList.add("sca-badge-waiting"); // add CSS or let it fall back visually
+
+  } else if (state === "thinking") {
+    badge.textContent = "Thinking";
+    badge.classList.add("sca-badge-thinking");
+
+  } else if (state === "listening") {
+    badge.textContent = "Listening";
+    badge.classList.add("sca-badge-listening");
+
+  } else if (state === "talking") {
+    badge.textContent = "Talking";
+    badge.classList.add("sca-badge-talking");
+
+  } else if (state === "error") {
+    badge.textContent = "Error";
+    badge.classList.add("sca-badge-error");
+
+  } else {
+    badge.textContent = "Not Connected";
+    badge.classList.add("sca-badge-idle");
   }
+}
 
   function setGlow(glow01) {
     const ring = $("sca-ring");
