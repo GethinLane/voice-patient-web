@@ -542,7 +542,7 @@ body.sca-botpage #scaBotPageRoot .sca-planUnderline{
 }
 
 /* ---------------- OPTIONAL: If plan selector is outside #scaBotPageRoot ---------------- */
-/*
+
 body.sca-botpage #scaPlanStandalone .sca-planBar{ margin: 0 6px 12px; }
 body.sca-botpage #scaPlanStandalone .sca-planTabs{ width:100%; display:grid; grid-template-columns:1fr 1fr; border-radius:0; overflow:visible; border:1px solid rgba(37,53,81,.18); background:rgba(255,255,255,.70); box-shadow:0 10px 26px rgba(17,24,39,.08); }
 body.sca-botpage #scaPlanStandalone .sca-planTabs input{ position:absolute; opacity:0; pointer-events:none; }
@@ -554,7 +554,7 @@ body.sca-botpage #scaPlanStandalone .sca-planCostTag{ position:absolute; left:50
 body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label .sca-planCostTag,
 body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planCostTag{ display:inline-flex; align-items:center; gap:6px; background:#d6dde9; color:#253551; }
 body.sca-botpage #scaPlanStandalone .sca-planUnderline{ height:2px; width:100%; margin-top:18px; border-radius:0; background:rgba(37,53,81,.14); }
-*/
+
 
 /* ---------------- OPTIONAL: Debug card if outside #scaBotPageRoot ---------------- */
 /*
@@ -578,3 +578,19 @@ body.sca-botpage #vpDebugCard .sca-infoHeaderTitle{
   font-size:20px;
 }
 */
+/* === Add breathing room between: badge row → orb → name/age (without clipping orb overflow) === */
+
+/* Space under the Patient + badge row */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header{
+  margin-bottom: 16px !important;
+}
+
+/* Space under the orb/avatar block */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
+  margin-bottom: 22px !important;
+}
+
+/* Space before the name/age block */
+body.sca-botpage #scaBotPageRoot .sca-mainMeta{
+  margin-top: 6px !important;
+}
