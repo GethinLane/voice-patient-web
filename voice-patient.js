@@ -1042,6 +1042,7 @@ async function stopConsultation(auto = false) {
   } finally {
     // Always release the stop lock even if Daily throws
     stoppingNow = false;
+    setUiConnected(false);
   }
 }
 

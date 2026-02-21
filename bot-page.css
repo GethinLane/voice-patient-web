@@ -202,6 +202,10 @@ body.sca-botpage #scaBotPageRoot #startBtn:disabled{
   cursor: not-allowed;
 }
 
+body.sca-botpage #stopBtn{
+  display: none !important;
+}
+
 /* ---------------- Right column: info card + accordion ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-infoCard{
   background: #d6dde9;
