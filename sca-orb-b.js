@@ -1,16 +1,21 @@
 /* sca-orb.js
-   Punchy electric orb renderer for #sca-orb-canvas (WHITE background tuned)
-   - Larger, brighter particles
-   - Crisp cores + additive glow
-   - Frequent visible streaks (tangent arcs)
-   - Controlled bloom pass (screen + blur) for "electric" feel
-   - Subtle ring scaffold + halo (no dark vignette / no step 6)
-   - Listens to window "vp:ui" events for mode + glow
+   Punchy electric orb for WHITE backgrounds
+   - Central irregular electric-blue ring (crackly + additive)
+   - Dark #253551 edge-cover donut to hide canvas/avatar edge artifacts
+   - Larger, brighter particles with crisp cores
+   - Frequent visible streaks
+   - Controlled bloom pass (screen + blur)
+   - Listens to window "vp:ui" events (state + glow)
+
+   Assumes:
+   - Canvas id:  sca-orb-canvas
+   - Ring element id: sca-ring
+   - Avatar element: #sca-ring .sca-avatar
 */
 
 (() => {
   const $ = (id) => document.getElementById(id);
-  const clamp01 = (x) => Math.max(0, Math.min(1, Number(x || 0)));
+  const clamp01 = (x) => Math.max(0, Math.min(1, Number(x ?? 0)));
 
   const ORB = {
     mode: "idle",
@@ -20,48 +25,63 @@
     pulseTarget: 1,
     pulseFrames: 0,
 
-    baseScale: 1,
     tick: 0,
     animationId: null,
     particles: []
   };
 
-  // --- Distribution around the ring ---
+  // --- Particle distribution around the ring ---
   const ORB_INNER_NORM  = 0.86;
   const ORB_CENTER_NORM = 1.04;
   const ORB_OUTER_NORM  = 1.22;
-  const ORB_CENTER_BIAS = 2.4; // cluster strength
+  const ORB_CENTER_BIAS = 2.4;
 
-  // --- Look & feel knobs (white background) ---
-  const CONFIG = {
-    count: 240,
+  // --- Style knobs (white background) ---
+  const CFG = {
+    count: 260,
 
-    // particle size (larger than before)
-    sizeMin: 1.9,
-    sizeMax: 3.9,
+    // particles
+    sizeMin: 2.0,
+    sizeMax: 4.2,
+    alphaMin: 0.32,
+    alphaMax: 0.78,
 
-    // brightness
-    alphaMin: 0.30,
-    alphaMax: 0.70,
+    // streaks
+    streakCadence: 6,      // lower = more frequent streaks
+    streakWidth: 2.0,
 
-    // streak frequency (lower = more)
-    streakCadence: 7,
-
-    // bloom
+    // bloom pass
     bloomOn: true,
     bloomBlurPx: 7,
     bloomAlpha: 0.62,
     bloomRadiusMul: 2.9,
 
-    // ring scaffold visibility (helps on white)
-    ringLineAlpha: 0.22,
-    ringOuterAlpha: 0.10
+    // electric ring
+    ringSteps: 120,
+    ringBaseMul: 1.045,    // relative to avatarRadius
+    ringIrregularPx: 6.0,  // maximum wobble amount
+    ringStrokeMin: 1.1,
+    ringStrokeMax: 2.4,
+    ringAlpha: 0.55,       // additive alpha
+
+    // edge cover donut
+    edgeCoverAlpha: 0.23   // 0..0.35 range usually
   };
+
+  // --- helpers for irregular ring ---
+  function ringNoise(theta, tick, seed) {
+    // Cheap smooth-ish noise from a few sine waves
+    return (
+      Math.sin(theta * 3.0 + tick * 0.015 + seed * 1.7) * 0.55 +
+      Math.sin(theta * 7.0 - tick * 0.020 + seed * 2.9) * 0.30 +
+      Math.sin(theta * 13.0 + tick * 0.010 + seed * 0.7) * 0.15
+    );
+  }
 
   function respawn(p) {
     const angle = Math.random() * Math.PI * 2;
 
-    // Biased-to-center sampling
+    // Biased-to-center sampling for radiusNorm (cluster around ring)
     const u = Math.random();
     const v = Math.random();
     const mix = Math.pow((u + v) * 0.5, ORB_CENTER_BIAS);
@@ -79,39 +99,39 @@
 
     p.radialDir = Math.random() < 0.5 ? -1 : 1;
 
-    // Movement personality (organic)
+    // movement personality
     const r = Math.random();
-    p.radialAmp = 0.70 + (r * r) * 2.10;           // ~0.70–2.80 (skewed smaller)
-    p.wobbleAmp = 0.006 + Math.random() * 0.020;   // 0.006–0.026
-    p.wobbleFreq = 0.055 + Math.random() * 0.11;
+    p.radialAmp = 0.75 + (r * r) * 2.1;           // ~0.75–2.85 skewed smaller
+    p.wobbleAmp = 0.006 + Math.random() * 0.020;  // 0.006–0.026
+    p.wobbleFreq = 0.055 + Math.random() * 0.115;
     p.wobblePhase = Math.random() * Math.PI * 2;
 
-    p.speed = 0.0010 + Math.random() * 0.0024;
+    p.speed = 0.0010 + Math.random() * 0.0025;
 
-    // Larger + brighter defaults
-    p.size  = CONFIG.sizeMin + Math.random() * (CONFIG.sizeMax - CONFIG.sizeMin);
-    p.alpha = CONFIG.alphaMin + Math.random() * (CONFIG.alphaMax - CONFIG.alphaMin);
+    // larger, brighter particles
+    p.size  = CFG.sizeMin + Math.random() * (CFG.sizeMax - CFG.sizeMin);
+    p.alpha = CFG.alphaMin + Math.random() * (CFG.alphaMax - CFG.alphaMin);
 
-    // Lifecycle
+    // lifecycle
     p.t = 0;
-    p.tSpeed = 0.0042 + Math.random() * 0.0028;
+    p.tSpeed = 0.0042 + Math.random() * 0.0030;
 
-    // Delay by mode (idle calmer)
+    // delay by mode
     const delayMax =
       ORB.mode === "idle" ? 520 :
       ORB.mode === "listening" ? 300 :
       ORB.mode === "thinking" ? 220 :
-      170; // talking
+      170;
 
     p.delay = Math.floor(Math.random() * delayMax);
 
-    // Stable seed for streak cadence
+    // stable seed for streak cadence + ring correlation
     p.seed = Math.floor(Math.random() * 1_000_000);
   }
 
   function seedParticles() {
     const parts = [];
-    for (let i = 0; i < CONFIG.count; i += 1) {
+    for (let i = 0; i < CFG.count; i += 1) {
       const p = {};
       respawn(p);
       p.t = Math.random(); // stagger start
@@ -123,8 +143,8 @@
   function kickParticles() {
     const parts = ORB.particles || [];
     for (let i = 0; i < parts.length; i += 1) {
-      if (Math.random() < 0.38) {
-        parts[i].delay = Math.floor(Math.random() * 18);
+      if (Math.random() < 0.40) {
+        parts[i].delay = Math.floor(Math.random() * 16);
         parts[i].t = Math.random() * 0.22;
       }
     }
@@ -133,15 +153,13 @@
   function choosePulse() {
     const mode = ORB.mode;
 
-    ORB.baseScale = 1; // keep overall size constant
-
     if (mode === "talking") {
-      ORB.pulseTarget = 0.965 + Math.random() * 0.085; // 0.965–1.05
+      ORB.pulseTarget = 0.965 + Math.random() * 0.090; // 0.965–1.055
       ORB.pulseFrames = 8 + Math.floor(Math.random() * 10);
       return;
     }
     if (mode === "thinking") {
-      ORB.pulseTarget = 0.975 + Math.random() * 0.060; // 0.975–1.035
+      ORB.pulseTarget = 0.975 + Math.random() * 0.065; // 0.975–1.04
       ORB.pulseFrames = 14 + Math.floor(Math.random() * 18);
       return;
     }
@@ -171,6 +189,269 @@
     ORB.pulseValue += (ORB.pulseTarget - ORB.pulseValue) * pulseLerp;
   }
 
+  function drawEdgeCover(ctx, cx, cy, width, height, avatarRadius) {
+    // Dark donut to hide edge artifacts and canvas bleed on white UI
+    const edge = avatarRadius;
+
+    const coverInner = edge * 0.985;
+    const coverMid   = edge * 1.06;
+    const coverOuter = edge * 1.30;
+
+    const cover = ctx.createRadialGradient(cx, cy, coverInner, cx, cy, coverOuter);
+    cover.addColorStop(0.00, "rgba(37,53,81,0)");
+    cover.addColorStop((coverMid - coverInner) / (coverOuter - coverInner), `rgba(37,53,81,${CFG.edgeCoverAlpha})`);
+    cover.addColorStop(1.00, "rgba(37,53,81,0)");
+
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = cover;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
+  function drawElectricRing(ctx, cx, cy, avatarRadius) {
+    // Irregular, crackly electric-blue ring (additive)
+    const baseR = avatarRadius * CFG.ringBaseMul;
+    const steps = CFG.ringSteps;
+
+    // mode-based energy
+    const idle = ORB.mode === "idle";
+    const talking = ORB.mode === "talking";
+    const thinking = ORB.mode === "thinking";
+    const listening = ORB.mode === "listening";
+
+    const energy =
+      idle ? 0.25 :
+      listening ? 0.55 :
+      thinking ? 0.70 :
+      talking ? 1.00 : 0.55;
+
+    const irregular = CFG.ringIrregularPx * energy;
+    const alpha = CFG.ringAlpha * (0.75 + ORB.glow * 0.65);
+
+    // Draw a few layered strokes for depth
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (let layer = 0; layer < 3; layer += 1) {
+      const layerSeed = 1000 + layer * 77;
+      const lw = (CFG.ringStrokeMin + Math.random() * (CFG.ringStrokeMax - CFG.ringStrokeMin)) * (layer === 0 ? 1.0 : 0.85);
+
+      // Slightly different radii per layer
+      const layerR = baseR + (layer - 1) * 1.4;
+
+      ctx.lineWidth = lw;
+
+      // Color per layer (white-hot highlights + electric blue)
+      if (layer === 0) ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.40})`;
+      if (layer === 1) ctx.strokeStyle = `rgba(90,170,255,${alpha * 0.75})`;
+      if (layer === 2) ctx.strokeStyle = `rgba(10,110,255,${alpha * 0.65})`;
+
+      ctx.beginPath();
+
+      let started = false;
+      for (let i = 0; i <= steps; i += 1) {
+        const t = i / steps;
+        const theta = t * Math.PI * 2;
+
+        // irregular offset
+        const n = ringNoise(theta, ORB.tick, layerSeed);
+        const r = layerR + n * irregular;
+
+        const x = cx + Math.cos(theta) * r;
+        const y = cy + Math.sin(theta) * r;
+
+        // create "broken" arc segments
+        const breakChance = 0.08 + layer * 0.02; // more breaks in outer layers
+        const breaker = Math.sin(theta * 9 + ORB.tick * 0.06 + layerSeed) * 0.5 + 0.5; // 0..1
+        const shouldBreak = breaker < breakChance;
+
+        if (shouldBreak) {
+          if (started) {
+            ctx.stroke();
+            ctx.beginPath();
+            started = false;
+          }
+          continue;
+        }
+
+        if (!started) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+
+      if (started) ctx.stroke();
+    }
+
+    // Add a few quick "zap" strokes (tangent-ish)
+    if (!idle) {
+      const zaps = 6 + Math.floor(energy * 8);
+      for (let k = 0; k < zaps; k += 1) {
+        const theta = (k / zaps) * Math.PI * 2 + (ORB.tick * 0.01);
+        const n = ringNoise(theta, ORB.tick, 4242 + k);
+        const r = baseR + n * irregular;
+
+        const x = cx + Math.cos(theta) * r;
+        const y = cy + Math.sin(theta) * r;
+
+        const tangent = theta + Math.PI / 2;
+        const len = 8 + Math.random() * 14;
+
+        const x2 = x + Math.cos(tangent) * len;
+        const y2 = y + Math.sin(tangent) * len;
+
+        const sg = ctx.createLinearGradient(x, y, x2, y2);
+        sg.addColorStop(0.0, `rgba(255,255,255,${alpha * 0.7})`);
+        sg.addColorStop(0.35, `rgba(150,220,255,${alpha * 0.55})`);
+        sg.addColorStop(1.0, "rgba(0,0,0,0)");
+
+        ctx.save();
+        ctx.strokeStyle = sg;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawParticles(ctx, cx, cy, ringRadius, movementBoost, twinkleFactor, alphaBoost, glowLift) {
+    const talking = ORB.mode === "talking";
+    const thinking = ORB.mode === "thinking";
+    const listening = ORB.mode === "listening";
+    const idle = ORB.mode === "idle";
+
+    const frameDots = [];
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    for (const p of ORB.particles) {
+      p.angle += p.speed * movementBoost;
+
+      if (p.delay > 0) { p.delay -= 1; continue; }
+
+      p.t += p.tSpeed * twinkleFactor;
+      if (p.t >= 1) { respawn(p); continue; }
+
+      const lifeAlpha = Math.sin(Math.PI * p.t);
+
+      const pulseDelta = ORB.pulseValue - 1;
+      const pulseAmp = talking ? 2.4 : thinking ? 1.7 : listening ? 1.35 : 1.05;
+
+      const wobbleAmpMul  = idle ? 0.75 : 1.0;
+      const wobbleFreqMul = idle ? 0.30 : 1.0;
+
+      const wobble =
+        Math.sin(ORB.tick * (p.wobbleFreq * wobbleFreqMul) + p.wobblePhase + p.angle * 3.7) *
+        (p.wobbleAmp * wobbleAmpMul);
+
+      const effectiveNorm =
+        p.baseRadiusNorm +
+        (p.radialDir * pulseDelta * pulseAmp * p.radialAmp) +
+        wobble;
+
+      p.radiusNorm = Math.max(ORB_INNER_NORM, Math.min(ORB_OUTER_NORM, effectiveNorm));
+
+      const radius = ringRadius * p.radiusNorm;
+      const x = cx + Math.cos(p.angle) * radius;
+      const y = cy + Math.sin(p.angle) * radius;
+
+      let alpha = (p.alpha * lifeAlpha) + alphaBoost + glowLift;
+      alpha = Math.max(0.0, Math.min(1.0, alpha));
+      if (alpha <= 0.001) continue;
+
+      // size: large + crisp
+      const pulseSize = 1 + Math.min(0.60, Math.abs(pulseDelta) * (talking ? 15 : 10));
+      const lifeSize  = 0.80 + 0.20 * lifeAlpha;
+
+      const distFromCenter = Math.abs(p.radiusNorm - ORB_CENTER_NORM);
+      const spreadHalf = Math.max(0.0001, (ORB_OUTER_NORM - ORB_INNER_NORM) * 0.5);
+      const t = Math.min(1, distFromCenter / spreadHalf);
+      const sizeFalloff = 1 - (0.55 * t);
+
+      const dotRadius = p.size * 1.55 * pulseSize * lifeSize * sizeFalloff;
+
+      const core = Math.max(1.35, dotRadius * 0.78);
+      const glow = dotRadius * 2.6;
+
+      const g = ctx.createRadialGradient(x, y, 0, x, y, glow);
+      g.addColorStop(0.00, `rgba(255,255,255,${alpha})`);
+      g.addColorStop(0.14, `rgba(140,210,255,${alpha * 0.97})`);
+      g.addColorStop(0.38, `rgba(20,110,255,${alpha * 0.68})`);
+      g.addColorStop(1.00, "rgba(0,0,0,0)");
+
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, core, 0, Math.PI * 2);
+      ctx.fill();
+
+      // frequent streaks
+      if (!idle && ((ORB.tick + p.seed) % CFG.streakCadence === 0)) {
+        const tangent = p.angle + Math.PI / 2;
+        const len = 12 + (p.seed % 16); // 12–27 px
+
+        const x2 = x + Math.cos(tangent) * len;
+        const y2 = y + Math.sin(tangent) * len;
+
+        const sg = ctx.createLinearGradient(x, y, x2, y2);
+        sg.addColorStop(0.0, `rgba(255,255,255,${alpha * 0.95})`);
+        sg.addColorStop(0.35, `rgba(160,225,255,${alpha * 0.75})`);
+        sg.addColorStop(1.0, "rgba(0,0,0,0)");
+
+        ctx.save();
+        ctx.strokeStyle = sg;
+        ctx.lineWidth = CFG.streakWidth;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      frameDots.push({ x, y, alpha, r: dotRadius });
+    }
+
+    ctx.restore();
+
+    return frameDots;
+  }
+
+  function drawBloom(ctx, frameDots) {
+    if (!CFG.bloomOn || !frameDots.length) return;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.filter = `blur(${CFG.bloomBlurPx}px)`;
+    ctx.globalAlpha = CFG.bloomAlpha;
+
+    for (const d of frameDots) {
+      const r = Math.max(7, d.r * CFG.bloomRadiusMul);
+      const bg = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, r);
+      bg.addColorStop(0.00, `rgba(80,150,255,${d.alpha * 0.55})`);
+      bg.addColorStop(0.50, `rgba(30,120,255,${d.alpha * 0.22})`);
+      bg.addColorStop(1.00, "rgba(0,0,0,0)");
+
+      ctx.fillStyle = bg;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.filter = "none";
+    ctx.restore();
+  }
+
   function draw() {
     const canvas = $("sca-orb-canvas");
     if (!canvas) { ORB.animationId = null; return; }
@@ -198,7 +479,7 @@
     if (!ORB.particles.length) seedParticles();
     updateDynamics();
 
-    // Anchor to ring element (true center/radius)
+    // --- Anchor orb to ring element ---
     const ringEl = document.getElementById("sca-ring");
     const ringRect = ringEl?.getBoundingClientRect();
     const canvasRect = canvas.getBoundingClientRect();
@@ -213,7 +494,7 @@
       ringRadius = ringRect.width / 2;
     }
 
-    // Avatar radius
+    // --- Avatar radius ---
     const avatarEl = document.querySelector("#sca-ring .sca-avatar");
     const avatarRect = avatarEl?.getBoundingClientRect();
     let avatarRadius = ringRadius * 0.5;
@@ -224,191 +505,34 @@
     const listening = ORB.mode === "listening";
     const idle = ORB.mode === "idle";
 
-    // Motion/energy by mode
-    const movementBoost = idle ? 0.05 : talking ? 0.70 : (thinking || listening) ? 0.52 : 0.45;
+    // Motion/energy
+    const movementBoost = idle ? 0.05 : talking ? 0.72 : (thinking || listening) ? 0.54 : 0.45;
 
-    // Alpha lift tuned for white background
+    // White-background alpha lift
     const alphaBoost = talking ? 0.10 : (thinking || listening) ? 0.05 : 0.02;
 
     // lifecycle speed
     const twinkleFactor =
       idle ? 0.12 :
-      listening ? 0.40 :
-      thinking ? 0.56 :
-      talking ? 0.82 :
-      0.40;
+      listening ? 0.42 :
+      thinking ? 0.58 :
+      talking ? 0.86 :
+      0.42;
 
-    // Slight user-driven glow (from vp:ui)
+    // vp:ui glow influence
     const glowLift = 0.06 + ORB.glow * 0.20;
 
-    // ------------------------------------------------------------
-    // 1) Ring scaffold + halo (helps readability on white)
-    // ------------------------------------------------------------
-    const edge = avatarRadius;
+    // 1) Edge cover donut behind everything
+    drawEdgeCover(ctx, cx, cy, width, height, avatarRadius);
 
-    // ring line (subtle navy)
-    ctx.save();
-    ctx.globalCompositeOperation = "source-over";
-    ctx.lineCap = "round";
+    // 2) Irregular electric ring in the center band
+    drawElectricRing(ctx, cx, cy, avatarRadius);
 
-    ctx.lineWidth = 1.6;
-    ctx.strokeStyle = `rgba(18,55,120,${CONFIG.ringLineAlpha})`;
-    ctx.beginPath();
-    ctx.arc(cx, cy, edge * 1.02, 0, Math.PI * 2);
-    ctx.stroke();
+    // 3) Particles + streaks on top
+    const frameDots = drawParticles(ctx, cx, cy, ringRadius, movementBoost, twinkleFactor, alphaBoost, glowLift);
 
-    // faint outer light
-    ctx.lineWidth = 4.0;
-    ctx.strokeStyle = `rgba(50,120,255,${CONFIG.ringOuterAlpha})`;
-    ctx.beginPath();
-    ctx.arc(cx, cy, edge * 1.06, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-
-    // subtle halo (blue lift, no milky wash)
-    const inner = edge * 0.92;
-    const peak = edge * 1.05;
-    const outer = edge * 1.55;
-
-    const halo = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
-    const tPeak = (peak - inner) / (outer - inner);
-
-    halo.addColorStop(0.00, "rgba(255,255,255,0)");
-    halo.addColorStop(Math.max(0, Math.min(1, tPeak)), `rgba(60,140,255,${0.14 + ORB.glow * 0.12})`);
-    halo.addColorStop(1.00, "rgba(255,255,255,0)");
-
-    ctx.save();
-    ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = halo;
-    ctx.fillRect(0, 0, width, height);
-    ctx.restore();
-
-    // Collect dots for bloom
-    const frameDots = [];
-
-    // ------------------------------------------------------------
-    // 2) Crisp particle cores (additive)
-    // ------------------------------------------------------------
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-
-    for (const p of ORB.particles) {
-      p.angle += p.speed * movementBoost;
-
-      if (p.delay > 0) { p.delay -= 1; continue; }
-
-      p.t += p.tSpeed * twinkleFactor;
-      if (p.t >= 1) { respawn(p); continue; }
-
-      const lifeAlpha = Math.sin(Math.PI * p.t);
-
-      // in/out wobble
-      const pulseDelta = ORB.pulseValue - 1;
-      const pulseAmp = talking ? 2.4 : thinking ? 1.7 : listening ? 1.35 : 1.05;
-
-      const wobbleAmpMul  = idle ? 0.75 : 1.0;
-      const wobbleFreqMul = idle ? 0.30 : 1.0;
-
-      const wobble =
-        Math.sin(ORB.tick * (p.wobbleFreq * wobbleFreqMul) + p.wobblePhase + p.angle * 3.7) *
-        (p.wobbleAmp * wobbleAmpMul);
-
-      const effectiveNorm =
-        p.baseRadiusNorm +
-        (p.radialDir * pulseDelta * pulseAmp * p.radialAmp) +
-        wobble;
-
-      p.radiusNorm = Math.max(ORB_INNER_NORM, Math.min(ORB_OUTER_NORM, effectiveNorm));
-
-      const radius = ringRadius * p.radiusNorm * ORB.baseScale;
-      const x = cx + Math.cos(p.angle) * radius;
-      const y = cy + Math.sin(p.angle) * radius;
-
-      // brighter on white
-      let alpha = (p.alpha * lifeAlpha) + alphaBoost + glowLift;
-      alpha = Math.max(0.0, Math.min(1.0, alpha));
-      if (alpha <= 0.001) continue;
-
-      // size swell + less harsh falloff (keeps particles large)
-      const pulseSize = 1 + Math.min(0.60, Math.abs(pulseDelta) * (talking ? 15 : 10));
-      const lifeSize  = 0.80 + 0.20 * lifeAlpha;
-
-      const distFromCenter = Math.abs(p.radiusNorm - ORB_CENTER_NORM);
-      const spreadHalf = Math.max(0.0001, (ORB_OUTER_NORM - ORB_INNER_NORM) * 0.5);
-      const t = Math.min(1, distFromCenter / spreadHalf);
-      const sizeFalloff = 1 - (0.55 * t);
-
-      const dotRadius = p.size * 1.55 * pulseSize * lifeSize * sizeFalloff;
-
-      // crisp core + tight glow
-      const core = Math.max(1.35, dotRadius * 0.78);
-      const glow = dotRadius * 2.6;
-
-      const g = ctx.createRadialGradient(x, y, 0, x, y, glow);
-      g.addColorStop(0.00, `rgba(255,255,255,${alpha})`);
-      g.addColorStop(0.14, `rgba(140,210,255,${alpha * 0.97})`);
-      g.addColorStop(0.38, `rgba(20,110,255,${alpha * 0.68})`);
-      g.addColorStop(1.00, "rgba(0,0,0,0)");
-
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(x, y, core, 0, Math.PI * 2);
-      ctx.fill();
-
-      // streaks (tangent arcs) — frequent & visible
-      if (!idle && ((ORB.tick + p.seed) % CONFIG.streakCadence === 0)) {
-        const tangent = p.angle + Math.PI / 2;
-        const len = 11 + (p.seed % 15); // 11–25 px
-
-        const x2 = x + Math.cos(tangent) * len;
-        const y2 = y + Math.sin(tangent) * len;
-
-        const sg = ctx.createLinearGradient(x, y, x2, y2);
-        sg.addColorStop(0.0, `rgba(255,255,255,${alpha * 0.95})`);
-        sg.addColorStop(0.35, `rgba(160,225,255,${alpha * 0.75})`);
-        sg.addColorStop(1.0, "rgba(0,0,0,0)");
-
-        ctx.save();
-        ctx.strokeStyle = sg;
-        ctx.lineWidth = 1.9;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      frameDots.push({ x, y, alpha, r: dotRadius });
-    }
-
-    ctx.restore();
-
-    // ------------------------------------------------------------
-    // 3) Bloom pass (screen + blur) — makes it feel electric
-    // ------------------------------------------------------------
-    if (CONFIG.bloomOn && frameDots.length) {
-      ctx.save();
-      ctx.globalCompositeOperation = "screen";
-      ctx.filter = `blur(${CONFIG.bloomBlurPx}px)`;
-      ctx.globalAlpha = CONFIG.bloomAlpha;
-
-      for (const d of frameDots) {
-        const r = Math.max(7, d.r * CONFIG.bloomRadiusMul);
-        const bg = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, r);
-        bg.addColorStop(0.00, `rgba(80,150,255,${d.alpha * 0.55})`);
-        bg.addColorStop(0.50, `rgba(30,120,255,${d.alpha * 0.22})`);
-        bg.addColorStop(1.00, "rgba(0,0,0,0)");
-
-        ctx.fillStyle = bg;
-        ctx.beginPath();
-        ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.filter = "none";
-      ctx.restore();
-    }
+    // 4) Bloom pass to unify / electrify
+    drawBloom(ctx, frameDots);
 
     ORB.animationId = requestAnimationFrame(draw);
   }
