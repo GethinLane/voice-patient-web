@@ -38,7 +38,7 @@
 
   // --- Style knobs ---
   const CFG = {
-    count: 800,
+    count: 400,
 
     // particles (larger + brighter)
     sizeMin: 2.0,
@@ -369,7 +369,7 @@ function drawElectricRing(ctx, cx, cy, avatarRadius) {
       ctx.fill();
 
       // frequent streaks
-      if (!idle && ((ORB.tick + p.seed) % CFG.streakCadence === 0)) {
+      if (false && !idle && ((ORB.tick + p.seed) % CFG.streakCadence === 0)) {
         const tangent = p.angle + Math.PI / 2;
         const len = 12 + (p.seed % 16);
 
