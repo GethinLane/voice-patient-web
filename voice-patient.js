@@ -866,6 +866,8 @@ waitingSinceMs = 0;
 
     try {
       setUiConnected(true);
+      setUiState("connecting");
+      emitUi("connecting", 0.15);
       setStatus(`Starting session (${getCaseLabel()})…`);
 
 const urlCase = getCaseIdFromUrl();
