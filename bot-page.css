@@ -671,3 +671,8 @@ body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--warn{ color: #253551; }
 
 /* 0:59 → 0:00 */
 body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--danger{ color: #b0123a; }
+
+#sca-patient-card .sca-orbCanvas{
+  filter: none !important;
+  opacity: 1;
+}
