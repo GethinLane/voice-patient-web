@@ -30,6 +30,7 @@ let stoppingNow = false;   // true while stopConsultation is running
   const MAX_SESSION_SECONDS = 12 * 60;
   let countdownTimer = null;
   let countdownEndsAt = null;
+  let countdownHasStarted = false;
 
   // Grading guard
   let readyEmptyCount = 0;
@@ -103,11 +104,18 @@ function refreshPresenceAndUi() {
     if (!waitingSinceMs) waitingSinceMs = Date.now();
     if (uiState !== "waiting") setUiState("waiting");
     emitUi("waiting", 0.16);
-  } else if (callObject && agentPresent && uiState === "waiting") {
+} else if (callObject && agentPresent) {
+  if (!countdownHasStarted) {
+    countdownHasStarted = true;
+    startCountdown(MAX_SESSION_SECONDS);
+  }
+
+  if (uiState === "waiting") {
     waitingSinceMs = 0;
     setUiState("thinking");
     emitUi("thinking", 0.18);
   }
+}
 }
 
 // ---------------- Helpers ----------------
@@ -298,12 +306,10 @@ function log(message, obj) {
       (extra.note ? ` | ${extra.note}` : "");
   }
 
-  function setCountdownText(text) {
-    if (!DEBUG_UI) return;
-    ensureUiRoot();
-    const el = document.getElementById("vp-timer");
-    if (el) el.textContent = text || "";
-  }
+function setCountdownText(text) {
+  const el = document.getElementById("vpTimer");
+  if (el) el.textContent = text || "";
+}
 
   function setStatus(text) {
     const el = $("status");
@@ -351,6 +357,7 @@ async function fetchJson(url, options) {
     if (countdownTimer) clearInterval(countdownTimer);
     countdownTimer = null;
     countdownEndsAt = null;
+    countdownHasStarted = false;
     if (DEBUG_UI) {
       if (reason) setCountdownText(`Timer stopped (${reason})`);
       else setCountdownText("");
@@ -968,7 +975,7 @@ emitUi("connecting", 0.15);
 await mountDailyCustomAudio(data.dailyRoom, data.dailyToken);
 if (!stillCurrent()) return;
 
-      startCountdown(MAX_SESSION_SECONDS);
+      
       setStatus(`Connected (${getCaseLabel()}). Talk, then press Stop.`);
 } catch (e) {
       vpIsStarting = false;
