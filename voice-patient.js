@@ -21,6 +21,7 @@
   let gradingPollTries = 0;
   let startRunId = 0;        // increments on each start/stop to cancel in-flight starts
 let stoppingNow = false;   // true while stopConsultation is running
+  let dailyConnected = false; // true when local client is joining/joined to a Daily meeting
 
   const GRADING_POLL_INTERVAL_MS = 6000; // every 6s
   const GRADING_POLL_MAX_TRIES = 20;     // 120s max
@@ -602,13 +603,18 @@ async function fetchJson(url, options) {
 
   async function mountDailyCustomAudio(dailyRoom, dailyToken) {
     await loadDailyJsOnce();
-    await unmountDailyCustomAudio();
+    await unmountDailyCustomAudio({ suppressIdleEmit: true });
 
     // Create call object
     callObject = window.Daily.createCallObject({
       startVideoOff: true,
       startAudioOff: false,
     });
+
+    // Daily meeting lifecycle -> stable "connected" truth
+callObject.on("joining-meeting", () => { dailyConnected = true; });
+callObject.on("joined-meeting",  () => { dailyConnected = true; });
+callObject.on("left-meeting",    () => { dailyConnected = false; });
 
     // Presence gating: track when the remote agent joins/leaves
 callObject.on("participant-joined", () => refreshPresenceAndUi());
@@ -718,6 +724,7 @@ startLevelLoop();
       try { callObject.destroy?.(); } catch {}
       callObject = null;
     }
+    dailyConnected = false;
 
     remotePresent = false;
 agentPresent = false;
@@ -984,7 +991,7 @@ if (!stillCurrent()) return;
 
   setStatus("Error starting. Add ?vpdebug=1 for details.");
   setUiConnected(false);
-  await unmountDailyCustomAudio({ suppressIdleEmit: true });
+  await unmountDailyCustomAudio();
   stopCountdown("start failed");
   log("[START] error", { error: e?.message || String(e), status: e?.status, data: e?.data });
 }
@@ -1068,7 +1075,7 @@ window.addEventListener("DOMContentLoaded", () => {
     });
 
 // Only show idle if we're truly not connected to Daily AND not mid-start
-if (!isInDailyCall() && !vpIsStarting && uiState === "idle") {
+if (!dailyConnected && !callObject && !vpIsStarting) {
   setUiConnected(false);
   setStatus("Not connected");
   uiEmit({ state: "idle", glow: 0.15, status: "Waiting…", sessionId: null });
