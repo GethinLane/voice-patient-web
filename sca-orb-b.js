@@ -189,7 +189,7 @@
   }
 
 
- // function drawElectricRing(ctx, cx, cy, avatarRadius) {
+function drawElectricRing(ctx, cx, cy, avatarRadius) {
     // Irregular, crackly electric-blue ring (additive)
     const baseR = avatarRadius * CFG.ringBaseMul;
     const steps = CFG.ringSteps;
@@ -492,7 +492,7 @@
     // NO background halo here:
 
     // 2) Electric irregular ring
-    drawElectricRing(ctx, cx, cy, avatarRadius);
+  //  drawElectricRing(ctx, cx, cy, avatarRadius);
 
     // 3) Particles + streaks
     const frameDots = drawParticles(ctx, cx, cy, ringRadius, movementBoost, twinkleFactor, alphaBoost, glowLift);
