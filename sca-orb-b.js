@@ -32,7 +32,7 @@
 
   // --- Particle distribution around the ring ---
   const ORB_INNER_NORM  = 0.86;
-  const ORB_CENTER_NORM = 1.04;
+  const ORB_CENTER_NORM = 1.0;
   const ORB_OUTER_NORM  = 1.22;
   const ORB_CENTER_BIAS = 2.4;
 
