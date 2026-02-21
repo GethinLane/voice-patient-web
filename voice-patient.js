@@ -141,6 +141,22 @@ function clamp01(x) {
   return Math.max(0, Math.min(1, Number(x || 0)));
 }
 
+  function isInDailyCall() {
+  try {
+    if (!callObject) return false;
+
+    // Daily meeting state (varies by daily-js version, but joined/joining are common)
+    const ms = callObject.meetingState?.();
+    if (ms === "joined" || ms === "joining") return true;
+
+    // Fallback: local participant exists implies callObject is alive
+    const parts = callObject.participants?.() || {};
+    return !!parts?.local;
+  } catch {
+    return false;
+  }
+}
+
 // ✅ Add this
 function getCaseIdFromUrl() {
   try {
@@ -677,9 +693,9 @@ console.log("[VP] callObject exposed as window.__vpCallObject");
     noiseLocal = noiseRemote = 0.0025;
     holdUntilMs = 0;
 
-    setUiState("thinking");
-    emitUi("thinking", 0.18);
-    startLevelLoop();
+setUiState("waiting");
+emitUi("waiting", 0.16);
+startLevelLoop();
   }
 
   async function unmountDailyCustomAudio({ suppressIdleEmit = false } = {}) {
@@ -1051,10 +1067,12 @@ window.addEventListener("DOMContentLoaded", () => {
       try { unmountDailyCustomAudio(); } catch {}
     });
 
-    // Initial UI state
-    setUiConnected(false);
-    setStatus("Not connected");
-    uiEmit({ state: "idle", glow: 0.15, status: "Waiting…", sessionId: null });
+// Only show idle if we're truly not connected to Daily AND not mid-start
+if (!isInDailyCall() && !vpIsStarting && uiState === "idle") {
+  setUiConnected(false);
+  setStatus("Not connected");
+  uiEmit({ state: "idle", glow: 0.15, status: "Waiting…", sessionId: null });
+}
 
     populateCaseDropdown();
     setCountdownText("");
