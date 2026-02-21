@@ -188,25 +188,6 @@
     ORB.pulseValue += (ORB.pulseTarget - ORB.pulseValue) * pulseLerp;
   }
 
-  function drawEdgeCover(ctx, cx, cy, width, height, avatarRadius) {
-    // Dark donut to hide edge artifacts and canvas bleed on white UI
-    const edge = avatarRadius;
-
-    const coverInner = edge * 0.985;
-    const coverMid   = edge * 1.06;
-    const coverOuter = edge * 1.30;
-
-    const cover = ctx.createRadialGradient(cx, cy, coverInner, cx, cy, coverOuter);
-    cover.addColorStop(0.00, "rgba(37,53,81,0)");
-    cover.addColorStop((coverMid - coverInner) / (coverOuter - coverInner), `rgba(37,53,81,${CFG.edgeCoverAlpha})`);
-    cover.addColorStop(1.00, "rgba(37,53,81,0)");
-
-    ctx.save();
-    ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = cover;
-    ctx.fillRect(0, 0, width, height);
-    ctx.restore();
-  }
 
   function drawElectricRing(ctx, cx, cy, avatarRadius) {
     // Irregular, crackly electric-blue ring (additive)
@@ -509,8 +490,6 @@
     const glowLift = 0.06 + ORB.glow * 0.20;
 
     // NO background halo here:
-    // 1) Edge cover donut
-    drawEdgeCover(ctx, cx, cy, width, height, avatarRadius);
 
     // 2) Electric irregular ring
     drawElectricRing(ctx, cx, cy, avatarRadius);
