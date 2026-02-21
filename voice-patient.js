@@ -19,6 +19,8 @@
   let currentSessionId = null;
   let gradingPollTimer = null;
   let gradingPollTries = 0;
+  let startRunId = 0;        // increments on each start/stop to cancel in-flight starts
+let stoppingNow = false;   // true while stopConsultation is running
 
   const GRADING_POLL_INTERVAL_MS = 6000; // every 6s
   const GRADING_POLL_MAX_TRIES = 20;     // 120s max
@@ -859,6 +861,10 @@ waitingSinceMs = 0;
   async function startConsultation() {
     if (DEBUG_UI) ensureUiRoot();
 
+      const myRun = ++startRunId;   // claim this start attempt
+  stoppingNow = false;          // allow starting even if a previous stop happened
+  const stillCurrent = () => myRun === startRunId && !stoppingNow;
+
     stopGradingPoll("new session");
     stopCountdown("new session");
 
@@ -881,6 +887,7 @@ const caseId = urlCase || 1;
 
 
       const { userId, email } = await ensureIdentity({ timeoutMs: 2500, intervalMs: 150 });
+      if (!stillCurrent()) return;
       if (!userId && !email) {
   vpIsStarting = false;
   setStatus("Couldn't detect MemberSpace login. Refresh the page, then try again.");
@@ -897,6 +904,7 @@ const caseId = urlCase || 1;
   `${API_BASE}/api/credits?userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(email)}&mode=${encodeURIComponent(mode)}`,
   { method: "GET", cache: "no-store", mode: "cors" }
 );
+      if (!stillCurrent()) return;
 
 if (!credits?.canStart) {
   vpIsStarting = false;
@@ -918,6 +926,7 @@ const data = await fetchJson(`${API_BASE}/api/start-session`, {
   body: JSON.stringify(payload),
   mode: "cors",
 });
+      if (!stillCurrent()) return;
 
 
       // Avatar is loaded on page load by bot-page.bundle.js — no avatar updates needed here.
@@ -932,7 +941,9 @@ const data = await fetchJson(`${API_BASE}/api/start-session`, {
       setStatus(`Connecting audio (${getCaseLabel()})…`);
       setUiState("connecting");
 emitUi("connecting", 0.15);
-      await mountDailyCustomAudio(data.dailyRoom, data.dailyToken);
+      if (!stillCurrent()) return;
+await mountDailyCustomAudio(data.dailyRoom, data.dailyToken);
+if (!stillCurrent()) return;
 
       startCountdown(MAX_SESSION_SECONDS);
       setStatus(`Connected (${getCaseLabel()}). Talk, then press Stop.`);
@@ -964,11 +975,21 @@ emitUi("connecting", 0.15);
 
   }
 
-  async function stopConsultation(auto = false) {
-    if (DEBUG_UI) ensureUiRoot();
+async function stopConsultation(auto = false) {
+  if (DEBUG_UI) ensureUiRoot();
 
+  // Ignore repeated stop clicks while a stop is already running
+  if (stoppingNow) return;
+  stoppingNow = true;
+
+  // Cancel any in-flight startConsultation() immediately
+  startRunId++;
+
+  try {
     stopCountdown(auto ? "auto stop" : "manual stop");
-    await unmountDailyCustomAudio({ suppressIdleEmit: true });
+
+    // On stop we want UI to return to idle, so do NOT suppress idle emit
+    await unmountDailyCustomAudio();
 
     setUiConnected(false);
     setStatus(auto ? "Time limit reached. Grading in progress…" : "Stopped. Grading in progress…");
@@ -978,7 +999,11 @@ emitUi("connecting", 0.15);
       const out = document.getElementById("gradingOutput");
       if (out) out.textContent = "No sessionId available; cannot fetch grading.";
     }
+  } finally {
+    // Always release the stop lock even if Daily throws
+    stoppingNow = false;
   }
+}
 
   // ---------- Boot ----------
 window.addEventListener("DOMContentLoaded", () => {
