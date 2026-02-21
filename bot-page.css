@@ -155,45 +155,45 @@ body.sca-botpage #scaBotPageRoot .sca-botUpdateList li{
   margin: 6px 0;
 }
 
-/* ---------------- Start/Stop segmented control (square) ---------------- */
+/* ---------------- Start/Stop control ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-controls{
   margin-top: 6px;
 }
 
 body.sca-botpage #scaBotPageRoot .sca-seg{
-  display: flex;
+  display: block;
   width: 100%;
-  border-radius: 0;              /* square */
-  overflow: hidden;
-  border: 1px solid var(--sca-border);
-  background: rgba(31,41,55,.05);
+  border-radius: 18px;
 }
 
-body.sca-botpage #scaBotPageRoot #startBtn,
-body.sca-botpage #scaBotPageRoot #stopBtn{
-  flex: 1;
+body.sca-botpage #scaBotPageRoot #startBtn{
+  width: 100%;
   height: 74px;
-  border: none !important;
+  border: 1px solid var(--sca-border) !important;
   outline: none !important;
-  background: transparent;
+  background: #253551;
   font-size: 32px;
   font-weight: 850;
   cursor: pointer;
-  color: var(--sca-ink);
-  border-radius: 0;              /* square */
+  color: #fff;
+  border-radius: 18px;
 }
 
 @media (max-width: 720px){
-  body.sca-botpage #scaBotPageRoot #startBtn,
-  body.sca-botpage #scaBotPageRoot #stopBtn{
+  body.sca-botpage #scaBotPageRoot #startBtn{
     height: 58px;
     font-size: clamp(24px, 8vw, 30px);
   }
 }
 
-body.sca-botpage #scaBotPageRoot #startBtn:not(:disabled){
+body.sca-botpage #scaBotPageRoot #startBtn[data-mode="start"]:not(:disabled){
   background: #253551;
   color: #fff;
+}
+
+body.sca-botpage #scaBotPageRoot #startBtn[data-mode="stop"]:not(:disabled){
+  background: rgba(255,255,255,.68);
+  color: var(--sca-ink);
 }
 
 body.sca-botpage #scaBotPageRoot #startBtn:disabled{
@@ -202,16 +202,8 @@ body.sca-botpage #scaBotPageRoot #startBtn:disabled{
   cursor: not-allowed;
 }
 
-body.sca-botpage #scaBotPageRoot #stopBtn:not(:disabled){
-  background: rgba(255,255,255,.68);
-  color: var(--sca-ink);
-  border-left: 1px solid var(--sca-border);
-}
-
-body.sca-botpage #scaBotPageRoot #stopBtn:disabled{
-  background: rgba(255,255,255,.35);
-  color: rgba(31,41,55,.45);
-  cursor: not-allowed;
+body.sca-botpage #stopBtn{
+  display: none !important;
 }
 
 /* ---------------- Right column: info card + accordion ---------------- */

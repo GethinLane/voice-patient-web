@@ -113,14 +113,18 @@
       }
     }
 
-    // Start/Stop buttons moved into segmented control (listeners remain intact)
+    // Use a single primary case button (startBtn) in the control slot.
+    // Keep stopBtn in DOM for backwards compatibility, but hide it.
     const segSlot = root.querySelector("#scaSegSlot");
     const startBtn = $("startBtn");
-    const stopBtn = $("stopBtn");
-    if (segSlot) {
-      if (startBtn) segSlot.appendChild(startBtn);
-      if (stopBtn) segSlot.appendChild(stopBtn);
-    }
+    if (segSlot && startBtn) segSlot.appendChild(startBtn);
+
+    // Some pages render duplicate #stopBtn nodes; hide every instance.
+    document.querySelectorAll("#stopBtn").forEach((el) => {
+      el.style.display = "none";
+      el.setAttribute("aria-hidden", "true");
+      el.disabled = true;
+    });
 
     // Accordion: move your existing content blocks into sections
     const acc = root.querySelector("#scaAccordion");
