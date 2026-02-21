@@ -321,8 +321,15 @@ function setCountdownText(text) {
   function setUiConnected(connected) {
     const startBtn = $("startBtn");
     const stopBtn = $("stopBtn");
-    if (startBtn) startBtn.disabled = connected;
-    if (stopBtn) stopBtn.disabled = !connected;
+
+    if (startBtn) {
+      startBtn.disabled = vpIsStarting || stoppingNow;
+      startBtn.textContent = connected ? "Stop Case" : "Start Case";
+      startBtn.setAttribute("data-mode", connected ? "stop" : "start");
+      startBtn.setAttribute("aria-pressed", connected ? "true" : "false");
+    }
+
+    if (stopBtn) stopBtn.disabled = true;
   }
 
 async function fetchJson(url, options) {
@@ -1063,7 +1070,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const xBtn = pickVisible("stopBtn");
     const stEl = pickVisible("status");
 
-    const ok = !!(sBtn && xBtn && stEl);
+    const ok = !!(sBtn && stEl);
     if (!ok) return false;
 
     // Prevent double-binding if code runs twice
@@ -1077,8 +1084,13 @@ window.addEventListener("DOMContentLoaded", () => {
       startBtn: !!sBtn, stopBtn: !!xBtn, status: !!stEl
     });
 
-    sBtn.addEventListener("click", startConsultation);
-    xBtn.addEventListener("click", () => { stopConsultation(false).catch(() => {}); });
+    sBtn.addEventListener("click", () => {
+      if (dailyConnected) {
+        stopConsultation(false).catch(() => {});
+        return;
+      }
+      startConsultation();
+    });
 
     window.addEventListener("beforeunload", () => {
       try { unmountDailyCustomAudio(); } catch {}
