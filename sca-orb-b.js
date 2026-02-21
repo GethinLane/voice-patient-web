@@ -38,7 +38,7 @@
 
   // --- Style knobs ---
   const CFG = {
-    count: 260,
+    count: 560,
 
     // particles (larger + brighter)
     sizeMin: 2.0,
@@ -52,17 +52,17 @@
 
     // bloom
     bloomOn: true,
-    bloomBlurPx: 7,
-    bloomAlpha: 0.62,
-    bloomRadiusMul: 2.9,
+    bloomBlurPx: 2,
+    bloomAlpha: 0.25,
+    bloomRadiusMul: 1.5,
 
     // electric ring
     ringSteps: 120,
     ringBaseMul: 1.0,
     ringIrregularPx: 6.0,
-    ringStrokeMin: 1.1,
-    ringStrokeMax: 2.4,
-    ringAlpha: 0.55,
+    ringStrokeMin: 2,
+    ringStrokeMax: 4,
+    ringAlpha: 0.45,
 
     // edge cover donut
     edgeCoverAlpha: 0.23
