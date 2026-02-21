@@ -58,7 +58,7 @@
 
     // electric ring
     ringSteps: 120,
-    ringBaseMul: 1.045,
+    ringBaseMul: 1.0,
     ringIrregularPx: 6.0,
     ringStrokeMin: 1.1,
     ringStrokeMax: 2.4,
