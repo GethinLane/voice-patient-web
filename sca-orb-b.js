@@ -1,268 +1,393 @@
-/* orb-b.js
- * Uses existing:
- *   #sca-patient-card .sca-ring
- *   canvas.sca-orbCanvas (created if missing)
- *
- * No CSS changes required.
- *
- * API:
- *   window.setAIState("idle" | "listening" | "talking")
- */
+/* sca-orb.js
+   Electric orb renderer for #sca-orb-canvas
+   - Additive particles (lighter)
+   - Hot core + tight falloff (crisp)
+   - Subtle halo (no milky wash)
+   - Occasional tangent streaks
+   - Optional bloom pass (screen + blur)
+*/
 
 (() => {
-  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const clamp01 = (x) => Math.max(0, Math.min(1, Number(x || 0)));
 
-  // Wait until patient card exists
-  function waitForRing(timeout = 15000) {
-    return new Promise((resolve) => {
-      const start = Date.now();
-      function check() {
-        const ring = document.querySelector("#sca-patient-card .sca-ring");
-        if (ring) return resolve(ring);
-        if (Date.now() - start > timeout) return resolve(null);
-        requestAnimationFrame(check);
+  const ORB = {
+    mode: "idle",
+    glow: 0.15,
+
+    pulseValue: 1,
+    pulseTarget: 1,
+    pulseFrames: 0,
+    baseScale: 1,
+
+    tick: 0,
+    animationId: null,
+    particles: []
+  };
+
+  // --- Spread controls ---
+  const ORB_INNER_NORM  = 0.85;
+  const ORB_CENTER_NORM = 1.05;
+  const ORB_OUTER_NORM  = 1.20;
+  const ORB_CENTER_BIAS = 2.6;
+
+  function respawn(p) {
+    const angle = Math.random() * Math.PI * 2;
+
+    const u = Math.random();
+    const v = Math.random();
+    const mix = Math.pow((u + v) * 0.5, ORB_CENTER_BIAS);
+
+    let radiusNorm;
+    if (Math.random() < 0.55) {
+      radiusNorm = ORB_CENTER_NORM + mix * (ORB_OUTER_NORM - ORB_CENTER_NORM);
+    } else {
+      radiusNorm = ORB_CENTER_NORM - mix * (ORB_CENTER_NORM - ORB_INNER_NORM);
+    }
+
+    p.angle = angle;
+    p.baseRadiusNorm = radiusNorm;
+    p.radiusNorm = radiusNorm;
+
+    p.radialDir = Math.random() < 0.5 ? -1 : 1;
+
+    // personality
+    const r = Math.random();
+    p.radialAmp = 0.55 + (r * r) * 1.75;           // ~0.55–2.30
+    p.wobbleAmp = 0.004 + Math.random() * 0.018;   // 0.004–0.022
+    p.wobbleFreq = 0.05 + Math.random() * 0.10;
+    p.wobblePhase = Math.random() * Math.PI * 2;
+
+    p.speed = 0.0008 + Math.random() * 0.002;
+    p.size = 0.85 + Math.random() * 1.35;          // slightly smaller by default
+    p.alpha = 0.25 + Math.random() * 0.55;
+
+    // lifecycle
+    p.t = 0;
+    p.tSpeed = 0.004 + Math.random() * 0.0025;
+
+    const delayMax =
+      ORB.mode === "idle" ? 650 :
+      ORB.mode === "listening" ? 320 :
+      ORB.mode === "thinking" ? 240 :
+      190;
+
+    p.delay = Math.floor(Math.random() * delayMax);
+
+    // stable per particle (used for streak timing)
+    p.seed = Math.floor(Math.random() * 1000000);
+  }
+
+  function seedParticles() {
+    const count = 220;
+    const parts = [];
+    for (let i = 0; i < count; i += 1) {
+      const p = {};
+      respawn(p);
+      p.t = Math.random();
+      parts.push(p);
+    }
+    ORB.particles = parts;
+  }
+
+  function kickParticles() {
+    const parts = ORB.particles || [];
+    for (let i = 0; i < parts.length; i += 1) {
+      if (Math.random() < 0.35) {
+        parts[i].delay = Math.floor(Math.random() * 22);
+        parts[i].t = Math.random() * 0.25;
       }
-      check();
-    });
+    }
   }
 
-function ensureCanvas(ring) {
-  let canvas = ring.querySelector("canvas.sca-orbCanvas");
-  if (!canvas) {
-    canvas = document.createElement("canvas");
-    canvas.className = "sca-orbCanvas";
-    ring.appendChild(canvas);
+  function choosePulse() {
+    const mode = ORB.mode;
+    ORB.baseScale = 1;
+
+    if (mode === "talking") {
+      ORB.pulseTarget = 0.97 + Math.random() * 0.07;
+      ORB.pulseFrames = 8 + Math.floor(Math.random() * 10);
+      return;
+    }
+    if (mode === "thinking") {
+      ORB.pulseTarget = 0.98 + Math.random() * 0.05;
+      ORB.pulseFrames = 14 + Math.floor(Math.random() * 16);
+      return;
+    }
+    if (mode === "listening") {
+      ORB.pulseTarget = 0.99 + Math.random() * 0.03;
+      ORB.pulseFrames = 24 + Math.floor(Math.random() * 26);
+      return;
+    }
+
+    ORB.pulseTarget = 1;
+    ORB.pulseFrames = 60;
   }
 
-  // Force stacking order entirely from JS
-  ring.style.position = "relative";
-  ring.style.zIndex = "3";
+  function updateDynamics() {
+    if (ORB.pulseFrames <= 0) choosePulse();
+    ORB.pulseFrames -= 1;
 
-  const avatar = ring.querySelector(".sca-avatar");
-  if (avatar) {
-    avatar.style.position = "relative";
-    avatar.style.zIndex = "2";
+    const talking = ORB.mode === "talking";
+    const idle = ORB.mode === "idle";
+
+    if (idle) {
+      ORB.pulseValue = 1;
+      return;
+    }
+
+    const pulseLerp = talking ? 0.10 : 0.05;
+    ORB.pulseValue += (ORB.pulseTarget - ORB.pulseValue) * pulseLerp;
   }
 
-  canvas.style.position = "absolute";
-  canvas.style.left = "50%";
-  canvas.style.top = "50%";
-  canvas.style.transform = "translate(-50%, -50%)";
-  canvas.style.pointerEvents = "none";
-  canvas.style.zIndex = "1";
-
-  return canvas;
-}
-
-
-  function createOrb(canvas) {
+  function draw() {
+    const canvas = $("sca-orb-canvas");
+    if (!canvas) {
+      ORB.animationId = null;
+      return;
+    }
     const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      ORB.animationId = null;
+      return;
+    }
 
-    let W = 300, H = 300, CX = 150, CY = 150;
-    let ORB_RADIUS = 150;
-    let INNER_MAX = ORB_RADIUS * 0.8;
-    let MAX_RADIUS = 200;
+    ORB.tick += 1;
 
-    const PARTICLE_COUNT = 400;
-    let particles = [];
-    let anim = null;
+    // DPR scaling
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const width = canvas.clientWidth || 500;
+    const height = canvas.clientHeight || 500;
 
-    let mode = "idle";
+    const nextW = Math.round(width * dpr);
+    const nextH = Math.round(height * dpr);
+    if (canvas.width !== nextW || canvas.height !== nextH) {
+      canvas.width = nextW;
+      canvas.height = nextH;
+    }
 
-    let pulse = 1;
-    let pulseTarget = 1;
-    let pulseTime = 0;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
 
-    let scale = 0.55;
-    let scaleTarget = 0.55;
+    if (!ORB.particles.length) seedParticles();
+    updateDynamics();
 
-    let color = { r: 140, g: 196, b: 242 };
-    let colorTarget = { r: 140, g: 196, b: 242 };
+    // Anchor orb to the ring element
+    const ringEl = document.getElementById("sca-ring");
+    const ringRect = ringEl?.getBoundingClientRect();
+    const canvasRect = canvas.getBoundingClientRect();
 
-function resize() {
-  const ring = canvas.parentElement;
-  const avatar = ring.querySelector(".sca-avatar");
+    let cx = width / 2;
+    let cy = height / 2;
+    let ringRadius = Math.min(width, height) * 0.5;
 
-  if (!avatar) return;
+    if (ringRect && canvasRect) {
+      cx = (ringRect.left + ringRect.width / 2) - canvasRect.left;
+      cy = (ringRect.top + ringRect.height / 2) - canvasRect.top;
+      ringRadius = ringRect.width / 2;
+    }
 
-  const ringRect = ring.getBoundingClientRect();
-  const avatarRect = avatar.getBoundingClientRect();
+    // Measure avatar circle radius (for halo sizing)
+    const avatarEl = document.querySelector("#sca-ring .sca-avatar");
+    const avatarRect = avatarEl?.getBoundingClientRect();
+    let avatarRadius = ringRadius * 0.5;
+    if (avatarRect) avatarRadius = avatarRect.width / 2;
 
-  // Orb size relative to avatar
-  const baseSize = Math.max(avatarRect.width, avatarRect.height);
+    const talking = ORB.mode === "talking";
+    const thinking = ORB.mode === "thinking";
+    const listening = ORB.mode === "listening";
+    const idle = ORB.mode === "idle";
 
-  const orbSize = baseSize * 1.7; // increase/decrease this multiplier
+    const movementBoost = idle ? 0 : talking ? 0.60 : (thinking || listening) ? 0.45 : 0.45;
+    const alphaBoost = talking ? 0.10 : (thinking || listening) ? 0.04 : -0.02;
 
-  // Set canvas CSS size explicitly
-  canvas.style.width = orbSize + "px";
-  canvas.style.height = orbSize + "px";
+    const twinkleFactor =
+      idle ? 0.10 :
+      listening ? 0.33 :
+      thinking ? 0.50 :
+      talking ? 0.75 :
+      0.33;
 
-  // Center relative to ring
-  const centerX = avatarRect.left + avatarRect.width / 2 - ringRect.left;
-  const centerY = avatarRect.top + avatarRect.height / 2 - ringRect.top;
+    // ------------------------------------------------------------
+    // Subtle halo (no milky wash)
+    // ------------------------------------------------------------
+    const edge = avatarRadius;
+    const inner = edge * 0.86;      // start nearer the edge
+    const bluePeak = edge * 1.03;   // tiny bit outside
+    const outer = edge * 1.55;
 
-  canvas.style.left = centerX + "px";
-  canvas.style.top = centerY + "px";
-  canvas.style.transform = "translate(-50%, -50%)";
+    const mist = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    const tBlue = (bluePeak - inner) / (outer - inner);
 
-  // HiDPI scaling
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = orbSize * dpr;
-  canvas.height = orbSize * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    mist.addColorStop(0.00, "rgba(255,255,255,0)");
+    mist.addColorStop(Math.max(0, Math.min(1, tBlue)), "rgba(70,140,255,0.18)");
+    mist.addColorStop(1.00, "rgba(255,255,255,0)");
 
-  W = orbSize;
-  H = orbSize;
-  CX = W / 2;
-  CY = H / 2;
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = mist;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
 
-  ORB_RADIUS = W / 2;
-  INNER_MAX = ORB_RADIUS * 0.8;
-  MAX_RADIUS = ORB_RADIUS * (200 / 150);
+    // We’ll capture rendered particles for bloom pass
+    const frameDots = [];
 
-  createParticles();
-}
+    // ------------------------------------------------------------
+    // Crisp + electric particles (additive)
+    // ------------------------------------------------------------
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
 
+    for (const p of ORB.particles) {
+      p.angle += p.speed * movementBoost;
 
-    function createParticles() {
-      particles = [];
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const stray = Math.random() < 0.08;
-
-        const r = stray
-          ? ORB_RADIUS + Math.random() * (MAX_RADIUS - ORB_RADIUS)
-          : Math.sqrt(Math.random()) * INNER_MAX;
-
-        particles.push({
-          angle,
-          radius: r,
-          stray,
-          baseSpeed: stray
-            ? 0.0015 + Math.random() * 0.0025
-            : 0.0008 + Math.random() * 0.0015,
-          drift: (Math.random() - 0.5) * (stray ? 0.06 : 0.03),
-          size: 1 + Math.random() * 1.3,
-          alpha: 0.3 + Math.random() * 0.6
-        });
+      if (p.delay > 0) {
+        p.delay -= 1;
+        continue;
       }
-    }
 
-    function nextPulse() {
-      if (mode === "talking") {
-        pulseTarget = 0.75 + Math.random() * 0.35;
-        pulseTime = 6 + Math.random() * 10;
-      } else {
-        pulseTarget = 1;
-        pulseTime = 60;
+      p.t += p.tSpeed * twinkleFactor;
+      if (p.t >= 1) {
+        respawn(p);
+        continue;
       }
-    }
 
-    function update() {
-      if (pulseTime <= 0) nextPulse();
-      pulseTime--;
+      const lifeAlpha = Math.sin(Math.PI * p.t); // 0→1→0
 
-      const lerp = mode === "talking" ? 0.12 : 0.04;
-      pulse += (pulseTarget - pulse) * lerp;
-      scale += (scaleTarget - scale) * 0.08;
+      const pulseDelta = ORB.pulseValue - 1;
+      const pulseAmp = talking ? 2.2 : thinking ? 1.5 : listening ? 1.2 : 0.9;
 
-      const cLerp = mode === "talking" ? 0.08 : 0.02;
-      color.r += (colorTarget.r - color.r) * cLerp;
-      color.g += (colorTarget.g - color.g) * cLerp;
-      color.b += (colorTarget.b - color.b) * cLerp;
-    }
+      const wobbleAmpMul  = idle ? 0.7 : 1.0;
+      const wobbleFreqMul = idle ? 0.25 : 1.0;
 
-    function draw() {
-      ctx.clearRect(0, 0, W, H);
-      update();
+      const wobble =
+        Math.sin(ORB.tick * (p.wobbleFreq * wobbleFreqMul) + p.wobblePhase + p.angle * 3.7) *
+        (p.wobbleAmp * wobbleAmpMul);
 
-      for (const p of particles) {
-        p.angle += p.baseSpeed;
-        p.radius += p.drift * 0.6;
+      const effectiveNorm =
+        p.baseRadiusNorm +
+        (p.radialDir * pulseDelta * pulseAmp * p.radialAmp) +
+        wobble;
 
-        if (!p.stray && (p.radius > INNER_MAX || p.radius < 0))
-          p.radius = Math.sqrt(Math.random()) * INNER_MAX;
+      p.radiusNorm = Math.max(ORB_INNER_NORM, Math.min(ORB_OUTER_NORM, effectiveNorm));
 
-        if (p.stray && (p.radius < ORB_RADIUS || p.radius > MAX_RADIUS))
-          p.radius = ORB_RADIUS + Math.random() * (MAX_RADIUS - ORB_RADIUS);
+      const radius = ringRadius * p.radiusNorm * ORB.baseScale;
+      const x = cx + Math.cos(p.angle) * radius;
+      const y = cy + Math.sin(p.angle) * radius;
 
-        const rEff = p.radius * pulse * scale;
-        const x = CX + Math.cos(p.angle) * rEff;
-        const y = CY + Math.sin(p.angle) * rEff;
+      let alpha = (p.alpha * lifeAlpha) + alphaBoost;
+      alpha = Math.max(0.0, Math.min(0.95, alpha));
+      if (alpha <= 0.001) continue;
 
-        const grad = ctx.createRadialGradient(x, y, 0, x, y, p.size * 3);
-        grad.addColorStop(0, `rgba(${color.r},${color.g},${color.b},0.95)`);
-        grad.addColorStop(0.6, `rgba(${color.r+40},${color.g+40},${color.b+40},0.6)`);
-        grad.addColorStop(1, `rgba(${color.r+140},${color.g+140},${color.b+140},0)`);
+      // Size behavior: keep smaller + sharper overall
+      const pulseSize = 1 + Math.min(0.45, Math.abs(pulseDelta) * (talking ? 12 : 7));
+      const lifeSize = 0.82 + 0.18 * lifeAlpha;
 
-        ctx.fillStyle = grad;
-        ctx.globalAlpha = p.alpha;
+      const distFromCenter = Math.abs(p.radiusNorm - ORB_CENTER_NORM);
+      const spreadHalf = Math.max(0.0001, (ORB_OUTER_NORM - ORB_INNER_NORM) * 0.5);
+      const t = Math.min(1, distFromCenter / spreadHalf);
+      const sizeFalloff = 1 - (0.65 * t);
+
+      const dotRadius = p.size * pulseSize * lifeSize * sizeFalloff;
+
+      // Hot core + tight glow falloff (crisp)
+      const core = Math.max(0.55, dotRadius * 0.60);
+      const glow = dotRadius * 2.1;
+
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, glow);
+      grad.addColorStop(0.00, `rgba(255,255,255,${alpha})`);
+      grad.addColorStop(0.18, `rgba(110,180,255,${alpha * 0.95})`);
+      grad.addColorStop(0.45, `rgba(30,120,255,${alpha * 0.55})`);
+      grad.addColorStop(1.00, "rgba(0,0,0,0)");
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, core, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Tangent streak arcs (stable flicker)
+      // ~every ~15 frames per particle (varies with seed)
+      if (!idle && ((ORB.tick + (p.seed % 29)) % 17 === 0)) {
+        const tangent = p.angle + Math.PI / 2;
+        const len = 7 + (p.seed % 9); // 7–15 px
+
+        ctx.save();
+        ctx.strokeStyle = `rgba(200,230,255,${alpha * 0.75})`;
+        ctx.lineWidth = 1.15;
         ctx.beginPath();
-        ctx.arc(x, y, p.size * 2.3, 0, Math.PI * 2);
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + Math.cos(tangent) * len, y + Math.sin(tangent) * len);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Save for bloom pass
+      frameDots.push({ x, y, alpha, r: dotRadius });
+    }
+
+    ctx.restore();
+
+    // ------------------------------------------------------------
+    // Optional bloom pass (screen + blur) — glow without mush
+    // ------------------------------------------------------------
+    // Tune these if you want more/less “electric haze”
+    const BLOOM_ON = true;
+    if (BLOOM_ON && frameDots.length) {
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.filter = "blur(6px)";
+      ctx.globalAlpha = 0.55;
+
+      for (const d of frameDots) {
+        const r = Math.max(2.0, d.r * 2.8);
+        const g = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, r);
+        g.addColorStop(0.00, `rgba(90,160,255,${d.alpha * 0.60})`);
+        g.addColorStop(1.00, "rgba(0,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      anim = requestAnimationFrame(draw);
+      ctx.filter = "none";
+      ctx.restore();
     }
 
-    function start() {
-      resize();
-      if (!anim) {
-        nextPulse();
-        draw();
-      }
+    ORB.animationId = requestAnimationFrame(draw);
+  }
+
+  function start() {
+    if (ORB.animationId) return;
+    choosePulse();
+    ORB.animationId = requestAnimationFrame(draw);
+  }
+
+  window.addEventListener("vp:ui", (e) => {
+    const d = e.detail || {};
+
+    if (d.state) {
+      const next = d.state;
+      const changed = next !== ORB.mode;
+      ORB.mode = next;
+      choosePulse();
+      if (changed) kickParticles();
     }
 
-function setState(m) {
-  const state = String(m || "").toLowerCase();
+    if (!d.state && typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) {
+      ORB.mode = "idle";
+      choosePulse();
+    }
 
-  if (state === "talking") {
-    mode = "talking";
-    scaleTarget = 1.0;
-    colorTarget = { r: 21, g: 101, b: 192 };
-  } 
-  else if (state === "thinking") {
-    mode = "thinking";
-    scaleTarget = 0.85;   // slightly expanded but not full talking
-    colorTarget = { r: 80, g: 140, b: 255 };  // brighter thinking blue
-  } 
-  else if (state === "listening") {
-    mode = "listening";
-    scaleTarget = 0.70;
-    colorTarget = { r: 111, g: 174, b: 230 };
-  } 
-  else {
-    mode = "idle";
-    scaleTarget = 0.52;
-    colorTarget = { r: 140, g: 196, b: 242 };
-  }
-}
+    if (typeof d.glow === "number") ORB.glow = clamp01(d.glow);
+  });
 
-
-    return { start, setState };
+  function startWhenReady() {
+    if (!document.getElementById("sca-orb-canvas")) {
+      requestAnimationFrame(startWhenReady);
+      return;
+    }
+    start();
   }
 
-  async function boot() {
-    const ring = await waitForRing();
-    if (!ring) return;
-
-    const canvas = ensureCanvas(ring);
-    const orb = createOrb(canvas);
-
-    window.setAIState = (s) => orb.setState(s);
-
-    orb.start();
-    orb.setState("idle");
-  }
-window.addEventListener("vp:ui", (e) => {
-  if (e?.detail?.state) {
-    window.setAIState(e.detail.state);
-  }
-});
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
-  }
+  window.addEventListener("DOMContentLoaded", startWhenReady);
 })();
