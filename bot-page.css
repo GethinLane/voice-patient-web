@@ -648,35 +648,26 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header{
   justify-content: space-between !important; /* badge left, timer right */
   gap: 10px;
 }
-
-/* Timer base pill */
+/* --- Timer: text-only (no pill) --- */
 body.sca-botpage #scaBotPageRoot #vpTimer{
-  margin-left: auto; /* extra safety even with space-between */
-  font-size: 20px;   /* ~same visual height as badge row */
-  font-weight: 600;  /* not overly bold */
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+
+  font-size: 20px;     /* adjust if you want a touch bigger */
+  font-weight: 600;    /* not overly bold */
   line-height: 1;
-  padding: 8px 12px; /* same padding style as badge */
-  border-radius: 999px;
-  border: 1px solid rgba(0,0,0,.12);
   letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums; /* steadier width while counting */
-  color: #fff;
+  font-variant-numeric: tabular-nums;
 }
 
-/* 12:00 → 7:00 (inclusive): dark green */
-body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--safe{
-  background: #0c6a3b; /* dark green but clearly green */
-  border-color: rgba(12,106,59,.25);
-}
+/* 12:00 → 7:00 */
+body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--safe{ color: #0c6a3b; }
 
-/* 6:59 → 1:00: #253551 */
-body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--warn{
-  background: #253551;
-  border-color: rgba(37,53,81,.25);
-}
+/* 6:59 → 1:00 (your #253551) */
+body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--warn{ color: #253551; }
 
-/* 0:59 → 0:00: red */
-body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--danger{
-  background: #b0123a;
-  border-color: rgba(176,18,58,.25);
-}
+/* 0:59 → 0:00 */
+body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--danger{ color: #b0123a; }
