@@ -114,9 +114,9 @@
     badge.classList.add("sca-badge-error");
 
   } else {
-    badge.textContent = "Not Connected";
-    badge.classList.add("sca-badge-idle");
-  }
+  // Unknown state: don't change the badge
+  return;
+}
 }
 
   function setGlow(glow01) {
@@ -148,11 +148,6 @@
     if (typeof d.glow === "number") setGlow(d.glow);
 
     if ("avatarUrl" in d) setAvatar(d.avatarUrl || null);
-
-    // force idle badge on disconnect messages
-    if (!d.state && typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) {
-      setBadge("idle");
-    }
   });
 
   // ---------------- Airtable fetch (proxy) ----------------
