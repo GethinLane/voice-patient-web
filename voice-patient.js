@@ -290,7 +290,7 @@ function log(message, obj) {
     const el = $("status");
     if (el) el.textContent = text;
     updateMeta({ note: text });
-    uiEmit({ status: text, sessionId: currentSessionId });
+    uiEmit({ status: text, sessionId: currentSessionId, state: uiState, glow: lastGlow });
   }
 
   function setUiConnected(connected) {
