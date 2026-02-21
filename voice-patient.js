@@ -374,6 +374,9 @@ async function fetchJson(url, options) {
 
       setCountdownText(`Time left: ${formatMMSS(remainingSec)}`);
 
+        // ✅ emit remaining seconds (NO colour logic here)
+  uiEmit({ timerRemainingSec: remainingSec });
+
       if (remainingSec <= 0) {
         stopCountdown("time limit reached");
         stopConsultation(true).catch(() => {});
