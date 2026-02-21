@@ -60,6 +60,69 @@ function parseCreditCost(rawValue, fallback) {
   return Math.max(0, parsed);
 }
 
+function parseCompletedCases(raw) {
+  try {
+    if (Array.isArray(raw)) return new Set(raw.map(String));
+    const s = String(raw || "").trim();
+    if (!s) return new Set();
+    const arr = JSON.parse(s);
+    return new Set((arr || []).map(String));
+  } catch {
+    return new Set();
+  }
+}
+
+async function addCompletedCaseForUser({
+  usersKey,
+  usersBase,
+  usersTable,
+  userRecordId,
+  caseId,
+}) {
+  const userRecs = await airtableListAll({
+    apiKey: usersKey,
+    baseId: usersBase,
+    table: usersTable,
+    params: {
+      filterByFormula: `RECORD_ID()="${escapeFormulaString(userRecordId)}"`,
+      maxRecords: 1,
+    },
+  });
+
+  if (!userRecs?.length) {
+    throw new Error(`Linked user record not found in '${usersTable}' for id=${userRecordId}`);
+  }
+
+  const userFields = userRecs[0].fields || {};
+  const set = (() => {
+    try {
+      const raw = userFields.CompletedCases;
+      if (Array.isArray(raw)) return new Set(raw.map(String));
+      const s = String(raw || "").trim();
+      if (!s) return new Set();
+      return new Set((JSON.parse(s) || []).map(String));
+    } catch {
+      return new Set();
+    }
+  })();
+
+  const beforeSize = set.size;
+  set.add(String(caseId));
+  if (set.size === beforeSize) {
+    return { ok: true, changed: false, completedCount: set.size };
+  }
+
+  await airtableUpdate({
+    apiKey: usersKey,
+    baseId: usersBase,
+    table: usersTable,
+    recordId: userRecordId,
+    fields: { CompletedCases: JSON.stringify(Array.from(set)) },
+  });
+
+  return { ok: true, changed: true, completedCount: set.size };
+}
+
 export default async function handler(req, res) {
   cors(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -263,6 +326,40 @@ const model = modeForGrading === "premium" ? premiumModel : standardModel;
       },
     });
 
+    // ✅ NEW: Auto-mark completion (NON-FATAL)
+// Only mark completion when grading is meaningful (not lock text, not tiny).
+stage = "autocomplete";
+let completionInfo = null;
+
+try {
+  const savedText = result.gradingText || "";
+  const hasMeaningful = isMeaningfulGradeText(savedText);
+
+  if (!hasMeaningful) {
+    completionInfo = { ok: true, skipped: true, reason: "gradingText not meaningful" };
+  } else {
+    const linkedUsers = Array.isArray(f.User) ? f.User : [];
+    const userRecordId = linkedUsers?.[0] ? String(linkedUsers[0]) : "";
+
+    if (!userRecordId || !userRecordId.startsWith("rec")) {
+      throw new Error(
+        `Attempt missing linked User record id in {User}. Expected 'rec...'. Got: ${userRecordId || "(none)"}`
+      );
+    }
+
+    completionInfo = await addCompletedCaseForUser({
+      usersKey,
+      usersBase,
+      usersTable,
+      userRecordId,
+      caseId,
+    });
+  }
+} catch (completionErr) {
+  // Non-fatal: grading should still return
+  completionInfo = { ok: false, error: completionErr?.message || String(completionErr) };
+}
+
     // ✅ NEW: Deduct credits by mode (NON-FATAL; never breaks grading)
     // This runs AFTER grade is saved so users never get “empty grading” due to billing issues.
     stage = "deductcredit";
@@ -345,6 +442,7 @@ const model = modeForGrading === "premium" ? premiumModel : standardModel;
       gradingText: result.gradingText,
       bands: result.bands,
       credits: creditInfo, // ✅ NEW (optional for frontend display/logging)
+      completion: completionInfo,
     });
   } catch (e) {
     const msg = e?.message || String(e);
