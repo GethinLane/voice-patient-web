@@ -584,7 +584,7 @@ async function fetchJson(url, options) {
 
   async function mountDailyCustomAudio(dailyRoom, dailyToken) {
     await loadDailyJsOnce();
-    await unmountDailyCustomAudio();
+    await unmountDailyCustomAudio({ suppressIdleEmit: true });
 
     // Create call object
     callObject = window.Daily.createCallObject({
