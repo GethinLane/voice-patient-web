@@ -621,3 +621,16 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card #sca-badge{
     height: 395px !important;
   }
 }
+/* === Prevent orb bleed from hitting the container edges (desktop) === */
+@media (min-width: 981px){
+  body.sca-botpage #scaBotPageRoot{
+    padding-top: 40px !important;
+    padding-bottom: 40px !important;
+  }
+
+  /* optional: add space around the patient card area too */
+  body.sca-botpage #scaBotPageRoot #sca-patient-card{
+    margin-top: 8px !important;
+    margin-bottom: 8px !important;
+  }
+}
