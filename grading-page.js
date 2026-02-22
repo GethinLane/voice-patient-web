@@ -12,12 +12,40 @@
     if (statusEl) statusEl.textContent = t || "";
   }
 
-  function setOut(t) {
-    if (out) out.textContent = t || "";
-  }
-
   function isMeaningfulText(s) {
     return String(s || "").trim().length >= 20;
+  }
+
+  // Plain text output (safe fallback for loading/errors)
+  function setOutPlain(t) {
+    if (!out) return;
+    out.textContent = t || "";
+  }
+
+  // Markdown -> HTML output (safe if DOMPurify is present; falls back to plain text)
+  function setOutMarkdown(md) {
+    if (!out) return;
+
+    const raw = String(md || "");
+
+    // If libs aren't loaded, render as plain text
+    if (!window.marked || !window.DOMPurify) {
+      setOutPlain(raw);
+      return;
+    }
+
+    // Parse markdown to HTML
+    const html = window.marked.parse(raw, {
+      gfm: true,
+      breaks: true, // single newlines become <br>
+    });
+
+    // Sanitize HTML to prevent XSS
+    const clean = window.DOMPurify.sanitize(html, {
+      USE_PROFILES: { html: true },
+    });
+
+    out.innerHTML = clean;
   }
 
   async function fetchJson(url, options) {
@@ -25,7 +53,9 @@
     const text = await resp.text();
 
     let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch {}
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {}
 
     if (!resp.ok) {
       const msg = (data && (data.error || data.message)) || `HTTP ${resp.status}`;
@@ -43,12 +73,12 @@
 
     if (!sessionId) {
       setStatus("Missing sessionId");
-      setOut("This page needs a URL like: /grading?sessionId=YOUR_SESSION_ID");
+      setOutPlain("This page needs a URL like: /grading?sessionId=YOUR_SESSION_ID");
       return;
     }
 
     setStatus("Loading grading…");
-    setOut("Grading in progress…");
+    setOutPlain("Grading in progress…");
 
     let readyEmptyCount = 0;
 
@@ -59,49 +89,50 @@
 
         if (!data?.found) {
           setStatus("Waiting for attempt…");
-          setOut("No attempt found yet… (waiting for transcript submission)");
+          setOutPlain("No attempt found yet… (waiting for transcript submission)");
         } else {
           const gradingText = String(data.gradingText || "");
           const ready = !!data.ready;
 
-          // Mirrors your guard: ready=true but empty gradingText sometimes happens briefly
+          // Guard: ready=true but empty gradingText sometimes happens briefly
           if (ready && !isMeaningfulText(gradingText)) {
             readyEmptyCount += 1;
             setStatus("Finishing grading…");
-            setOut("Grading finishing…");
+            setOutPlain("Grading finishing…");
 
+            // After 2 consecutive "ready but empty" results, force refresh once
             if (readyEmptyCount >= 2) {
               const urlForce =
                 `${API_BASE}/api/get-grading?sessionId=${encodeURIComponent(sessionId)}&force=1`;
               const forced = await fetchJson(urlForce, { method: "GET", cache: "no-store", mode: "cors" });
 
-              const forcedText = String(forced.gradingText || "");
+              const forcedText = String(forced?.gradingText || "");
               if (forced?.ready && isMeaningfulText(forcedText)) {
                 setStatus("Grading ready");
-                setOut(forcedText);
+                setOutMarkdown(forcedText);
                 return;
               }
             }
-          } else if (ready && gradingText) {
+          } else if (ready && isMeaningfulText(gradingText)) {
             setStatus("Grading ready");
-            setOut(gradingText);
+            setOutMarkdown(gradingText);
             return;
           } else {
             setStatus(`Grading in progress… (${i}/${maxTries})`);
-            setOut("Grading in progress…");
+            setOutPlain("Grading in progress…");
           }
         }
       } catch (e) {
         setStatus("Error fetching grading");
-        setOut(`Error: ${e?.message || String(e)}`);
-        // keep trying a few times; if it keeps failing, it will time out
+        setOutPlain(`Error: ${e?.message || String(e)}`);
+        // keep trying; if it keeps failing, it will time out
       }
 
       await new Promise((r) => setTimeout(r, intervalMs));
     }
 
     setStatus("Timed out");
-    setOut("Still grading… Please refresh this page in a moment.");
+    setOutPlain("Still grading… Please refresh this page in a moment.");
   }
 
   // Boot
