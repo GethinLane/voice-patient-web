@@ -1,0 +1,214 @@
+/* Container + theme vars */
+#vp-history.vp-history{
+  --vp-ink:#253551;
+  --vp-border:#e5e5e5;
+  --vp-muted:#6b7280;
+  --vp-bg:#fff;
+  --vp-soft:#f7f8fb;
+  --vp-accent:#eaf0ff;
+
+  max-width: 1280px;
+  margin: 24px auto;
+  padding: 16px;
+  border: 1px solid var(--vp-border);
+  border-radius: 12px;
+  background: var(--vp-bg);
+}
+
+/* Headings */
+#vp-history .vp-title { margin: 0 0 8px; }
+#vp-history .vp-subtitle { margin: 0 0 16px; color: #555; }
+
+/* Row */
+#vp-history .vp-row {
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+/* Pills */
+#vp-history .vp-pill {
+  color: var(--vp-muted);
+  font-size: 13px;
+}
+
+/* Attempts wrapper */
+#vp-history .vp-attempts{
+  margin-top: 12px;
+  border: 1px solid var(--vp-border);
+  border-radius: 12px;
+  background: var(--vp-bg);
+  overflow: hidden;
+}
+
+#vp-history .vp-attempts-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding: 10px 12px;
+  background: var(--vp-soft);
+  border-bottom: 1px solid var(--vp-border);
+  color: var(--vp-ink);
+  font-weight: 600;
+  gap: 12px;
+}
+
+#vp-history .vp-attempts-title{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+}
+
+/* Filter button */
+#vp-history .vp-filter-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--vp-border);
+  background: #fff;
+  color: var(--vp-ink);
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+#vp-history .vp-filter-btn i{ font-size: 14px; }
+#vp-history .vp-filter-btn[aria-expanded="true"]{
+  background: var(--vp-accent);
+  border-color: var(--vp-ink);
+}
+
+/* Filters panel */
+#vp-history .vp-filters{
+  border-bottom: 1px solid var(--vp-border);
+  background: #fff;
+  padding: 12px;
+}
+
+#vp-history .vp-filters-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 10px;
+  align-items:end;
+}
+
+#vp-history .vp-filter-field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-size: 13px;
+  color: var(--vp-ink);
+}
+
+#vp-history .vp-filter-field span{
+  color: var(--vp-muted);
+  font-weight: 600;
+}
+
+#vp-history .vp-filter-field input{
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--vp-border);
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--vp-ink);
+  background: #fff;
+}
+
+#vp-history .vp-filter-actions{
+  display:flex;
+  justify-content:flex-end;
+}
+
+#vp-history .vp-filter-clear{
+  height: 38px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--vp-border);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--vp-ink);
+}
+
+/* Responsive filters */
+@media (max-width: 720px){
+  #vp-history .vp-filters-grid{
+    grid-template-columns: 1fr 1fr;
+  }
+  #vp-history .vp-filter-actions{
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+  #vp-history .vp-filter-clear{
+    width: 100%;
+  }
+}
+
+/* Attempts list height */
+#vp-history .vp-attempts-body{
+  max-height: 840px;
+  overflow: auto;
+}
+
+/* Rows */
+#vp-history .vp-attempt{
+  display:grid;
+  grid-template-columns: 1.4fr .8fr auto;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--vp-border);
+  align-items:center;
+  color: var(--vp-ink);
+  font-size: 14px;
+}
+
+#vp-history .vp-attempt:last-child{ border-bottom:none; }
+#vp-history .vp-attempt.is-selected{ background: var(--vp-accent); }
+
+/* Sticky header row inside scroll */
+#vp-history .vp-attempt-head{
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--vp-soft);
+  font-weight: 700;
+  border-bottom: 1px solid var(--vp-border);
+}
+
+#vp-history .vp-attempt-head .vp-view{ display:none; }
+
+/* Buttons used in rows */
+#vp-history .vp-view{
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--vp-ink);
+  background: #fff;
+  color: var(--vp-ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Messages */
+#vpError, #vpEmpty { display:none; }
+
+#vp-history .vp-message{
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+#vp-history .vp-message--empty{
+  background:#fafafa;
+  border:1px solid var(--vp-border);
+  color: var(--vp-muted);
+}
+
+#vp-history .vp-message--error{
+  background:#fff5f5;
+  border:1px solid #ffd0d0;
+  color:#8a1f1f;
+}
