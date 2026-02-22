@@ -1,7 +1,7 @@
 // public/past-grades-page.js
 (() => {
   const API_BASE = "https://voice-patient-web.vercel.app";
-  const PAGE_SIZE = 6;
+  const PAGE_SIZE = 12;
   const GRADING_PAGE_BASE = "https://www.scarevision.ai/grading";
 
   const els = {
@@ -228,10 +228,11 @@
     renderAttemptRows(allAttempts);
   }
 
-  els.loadBtn.addEventListener("click", () => loadAttempts());
+// Hide button (we auto-load)
+els.loadBtn.style.display = "none";
 
-  // Auto-load if identity is already available quickly
-  waitForIdentity(2500).then((ident) => {
-    if (ident.userId || ident.email) loadAttempts().catch(() => {});
-  });
+// Auto-load as soon as we have identity (give it a bit longer)
+waitForIdentity(6000).then((ident) => {
+  if (ident.userId || ident.email) loadAttempts().catch(() => {});
+});
 })();
