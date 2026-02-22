@@ -668,3 +668,27 @@ body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--danger{ color: #b0123a; }
   filter: none !important;
   opacity: 1;
 }
+/* --- Grading button (below Start/Stop) --- */
+body.sca-botpage #scaBotPageRoot #gradingBtn{
+  width: 100%;
+  height: 54px;
+  margin-top: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(37,53,81,.18);
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* In progress (disabled) */
+body.sca-botpage #scaBotPageRoot #gradingBtn:disabled{
+  background: rgba(31,41,55,.06);
+  color: rgba(31,41,55,.45);
+  cursor: not-allowed;
+}
+
+/* Ready (enabled) */
+body.sca-botpage #scaBotPageRoot #gradingBtn.is-ready{
+  background: #d6dde9;
+  color: #253551;
+}
