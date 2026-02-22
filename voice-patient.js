@@ -125,6 +125,40 @@ function $(id) {
   return els.find((el) => el && el.offsetParent !== null) || els[0] || null;
 }
 
+  // ---------------- Grading button state ----------------
+let vpLastGradingText = "";
+let vpLastGradingSessionId = null;
+
+function setGradingBtnState(state) {
+  // state: "hidden" | "in_progress" | "ready"
+  const btn = document.getElementById("gradingBtn");
+  if (!btn) return;
+
+  btn.classList.remove("is-ready");
+
+  if (state === "hidden") {
+    btn.hidden = true;
+    btn.disabled = true;
+    btn.textContent = "Grading…";
+    return;
+  }
+
+  btn.hidden = false;
+
+  if (state === "in_progress") {
+    btn.disabled = true;
+    btn.textContent = "Grading in progress… please wait";
+    return;
+  }
+
+  if (state === "ready") {
+    btn.disabled = false;
+    btn.classList.add("is-ready");
+    btn.textContent = "Grading ready — click to view";
+    return;
+  }
+}
+
   // Voice agent picker (stored by Squarespace dropdown or set manually)
 function getForcedAgent() {
   try {
@@ -851,6 +885,7 @@ waitingSinceMs = 0;
 
         if (out) out.textContent = "Grading finishing…";
         setStatus("Stopped. Grading finishing…");
+        setGradingBtnState("in_progress");
 
         if (willForceNext) {
           await pollGradingOnce(false, { force: true });
@@ -858,18 +893,25 @@ waitingSinceMs = 0;
         return;
       }
 
-      if (ready && gradingText) {
-        if (out) out.textContent = gradingText;
-        setStatus("Grading ready.");
-        stopGradingPoll("ready");
-        return;
-      }
+if (ready && gradingText) {
+  if (out) out.textContent = gradingText;
+
+  vpLastGradingText = gradingText;
+  vpLastGradingSessionId = currentSessionId;
+
+  setGradingBtnState("ready");
+  setStatus("Grading ready.");
+  stopGradingPoll("ready");
+  return;
+}
 
       if (out) out.textContent = "Grading in progress…";
       setStatus("Stopped. Grading in progress…");
+      setGradingBtnState("in_progress");
     } catch (e) {
       if (out) out.textContent = "Error fetching grading: " + (e?.message || String(e));
       stopGradingPoll("error");
+      setGradingBtnState("hidden");
       log("[GRADING] fetch error", { error: e?.message || String(e) });
     }
   }
@@ -890,6 +932,7 @@ waitingSinceMs = 0;
         if (out) out.textContent =
           "Still grading… (timed out waiting). Click “Fetch grading now” (with ?vpdebug=1) or refresh.";
         stopGradingPoll("timeout");
+        setGradingBtnState("in_progress");
       }
     }, GRADING_POLL_INTERVAL_MS);
 
@@ -907,6 +950,9 @@ waitingSinceMs = 0;
 
     stopGradingPoll("new session");
     stopCountdown("new session");
+    vpLastGradingText = "";
+vpLastGradingSessionId = null;
+setGradingBtnState("hidden");
 
     const out = document.getElementById("gradingOutput");
     if (out) out.textContent = "Grading will appear here after you stop the consultation.";
@@ -1009,6 +1055,7 @@ if (!stillCurrent()) return;
   setStatus("Error starting. Add ?vpdebug=1 for details.");
   setUiConnected(false);
   await unmountDailyCustomAudio();
+  setGradingBtnState("in_progress");
   stopCountdown("start failed");
   log("[START] error", { error: e?.message || String(e), status: e?.status, data: e?.data });
 }
@@ -1096,6 +1143,18 @@ window.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("beforeunload", () => {
       try { unmountDailyCustomAudio(); } catch {}
     });
+
+    // ---- grading button click -> open /grading in new tab ----
+const gBtn = document.getElementById("gradingBtn");
+if (gBtn && !gBtn.__vpBound) {
+  gBtn.__vpBound = true;
+  gBtn.addEventListener("click", () => {
+    if (!currentSessionId) return;
+    const url = `${window.location.origin}/grading?sessionId=${encodeURIComponent(currentSessionId)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
+}
+setGradingBtnState("hidden");
 
 // Only show idle if we're truly not connected to Daily AND not mid-start
 if (!dailyConnected && !callObject && !vpIsStarting) {
