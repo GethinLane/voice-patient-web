@@ -8,6 +8,10 @@
   const out = document.getElementById("gradingOutput");
   const statusEl = document.getElementById("gradingStatus");
 
+  // Expose state for the PDF button script (browser-side)
+  window.__gradingReady = false;
+  window.__gradingText = "";
+
   function setStatus(t) {
     if (statusEl) statusEl.textContent = t || "";
   }
@@ -16,36 +20,30 @@
     return String(s || "").trim().length >= 20;
   }
 
-  // Plain text output (safe fallback for loading/errors)
   function setOutPlain(t) {
     if (!out) return;
     out.textContent = t || "";
   }
 
-  // Markdown -> HTML output (safe if DOMPurify is present; falls back to plain text)
   function setOutMarkdown(md) {
     if (!out) return;
 
     const raw = String(md || "");
 
-    // If libs aren't loaded, render as plain text
     if (!window.marked || !window.DOMPurify) {
       setOutPlain(raw);
       return;
     }
 
-    // Parse markdown to HTML
-    const html = window.marked.parse(raw, {
-      gfm: true,
-      breaks: true, // single newlines become <br>
-    });
-
-    // Sanitize HTML to prevent XSS
-    const clean = window.DOMPurify.sanitize(html, {
-      USE_PROFILES: { html: true },
-    });
-
+    const html = window.marked.parse(raw, { gfm: true, breaks: true });
+    const clean = window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
     out.innerHTML = clean;
+  }
+
+  function publishGrading(text) {
+    // This is the key: makes the PDF button instant (no extra fetch)
+    window.__gradingText = String(text || "");
+    window.__gradingReady = isMeaningfulText(window.__gradingText);
   }
 
   async function fetchJson(url, options) {
@@ -53,9 +51,7 @@
     const text = await resp.text();
 
     let data = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {}
+    try { data = text ? JSON.parse(text) : null; } catch {}
 
     if (!resp.ok) {
       const msg = (data && (data.error || data.message)) || `HTTP ${resp.status}`;
@@ -68,7 +64,7 @@
     return data;
   }
 
-  async function poll({ intervalMs = 3000, maxTries = 80 } = {}) {
+  async function poll({ intervalMs = 1500, maxTries = 120 } = {}) {
     if (!out) return;
 
     if (!sessionId) {
@@ -80,10 +76,9 @@
     setStatus("Loading grading…");
     setOutPlain("Grading in progress…");
 
-    let readyEmptyCount = 0;
-
     for (let i = 1; i <= maxTries; i++) {
       try {
+        // IMPORTANT: do NOT use force=1 here; in your backend that can trigger a regrade.
         const url = `${API_BASE}/api/get-grading?sessionId=${encodeURIComponent(sessionId)}`;
         const data = await fetchJson(url, { method: "GET", cache: "no-store", mode: "cors" });
 
@@ -94,33 +89,17 @@
           const gradingText = String(data.gradingText || "");
           const ready = !!data.ready;
 
-          // Guard: ready=true but empty gradingText sometimes happens briefly
-          if (ready && !isMeaningfulText(gradingText)) {
-            readyEmptyCount += 1;
-            setStatus("Finishing grading…");
-            setOutPlain("Grading finishing…");
-
-            // After 2 consecutive "ready but empty" results, force refresh once
-            if (readyEmptyCount >= 2) {
-              const urlForce =
-                `${API_BASE}/api/get-grading?sessionId=${encodeURIComponent(sessionId)}&force=1`;
-              const forced = await fetchJson(urlForce, { method: "GET", cache: "no-store", mode: "cors" });
-
-              const forcedText = String(forced?.gradingText || "");
-              if (forced?.ready && isMeaningfulText(forcedText)) {
-                setStatus("Grading ready");
-                setOutMarkdown(forcedText);
-                return;
-              }
-            }
-          } else if (ready && isMeaningfulText(gradingText)) {
+          if (ready && isMeaningfulText(gradingText)) {
             setStatus("Grading ready");
             setOutMarkdown(gradingText);
+            publishGrading(gradingText);
             return;
-          } else {
-            setStatus(`Grading in progress… (${i}/${maxTries})`);
-            setOutPlain("Grading in progress…");
           }
+
+          // Not ready yet
+          setStatus(`Grading in progress… (${i}/${maxTries})`);
+          setOutPlain("Grading in progress…");
+          publishGrading(""); // keeps __gradingReady false
         }
       } catch (e) {
         setStatus("Error fetching grading");
@@ -135,8 +114,7 @@
     setOutPlain("Still grading… Please refresh this page in a moment.");
   }
 
-  // Boot
   window.addEventListener("DOMContentLoaded", () => {
-    poll({ intervalMs: 3000, maxTries: 80 });
+    poll({ intervalMs: 1500, maxTries: 120 });
   });
 })();
