@@ -174,6 +174,126 @@
   let allAttempts = [];
   let selectedSessionId = null;
 
+  // -----------------------------
+// Filters (UI + logic)
+// -----------------------------
+const filterEls = {
+  btn: document.getElementById("vpFilterBtn"),
+  panel: document.getElementById("vpFiltersPanel"),
+  case: document.getElementById("vpFilterCase"),
+  from: document.getElementById("vpFilterFrom"),
+  to: document.getElementById("vpFilterTo"),
+  clear: document.getElementById("vpFilterClear"),
+};
+
+function toStartOfDay(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function toEndOfDay(d) {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+function applyFilters() {
+  const caseValRaw = (filterEls.case?.value || "").trim();
+  const caseNum = caseValRaw ? Number(caseValRaw) : null;
+
+  const fromVal = filterEls.from?.value || ""; // "YYYY-MM-DD"
+  const toVal = filterEls.to?.value || "";
+
+  const fromDate = fromVal ? toStartOfDay(new Date(fromVal)) : null;
+  const toDate = toVal ? toEndOfDay(new Date(toVal)) : null;
+
+  const filtered = allAttempts.filter((a) => {
+    // Case filter
+    if (caseNum != null && !Number.isNaN(caseNum)) {
+      // a.caseId might be string/number/null
+      const aCase = a.caseId != null ? Number(a.caseId) : null;
+      if (aCase !== caseNum) return false;
+    }
+
+    // Date filter (a.createdTime assumed ISO)
+    if (fromDate || toDate) {
+      const t = new Date(a.createdTime);
+      if (fromDate && t < fromDate) return false;
+      if (toDate && t > toDate) return false;
+    }
+
+    return true;
+  });
+
+  if (els.count) {
+    els.count.textContent = `${filtered.length} shown (of ${allAttempts.length})`;
+  }
+
+  if (!filtered.length) {
+    els.wrap.style.display = "none";
+    els.empty.style.display = "block";
+    // Optional: change empty message when filters are active
+    els.empty.textContent = "No attempts match your filters.";
+    return;
+  }
+
+  els.empty.style.display = "none";
+  els.wrap.style.display = "block";
+  renderAttemptRows(filtered);
+}
+
+function setFiltersOpen(isOpen) {
+  if (!filterEls.btn || !filterEls.panel) return;
+  filterEls.btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  // Use the HTML `hidden` attribute you already have
+  filterEls.panel.hidden = !isOpen;
+}
+
+function toggleFilters() {
+  const isOpen = filterEls.btn?.getAttribute("aria-expanded") === "true";
+  setFiltersOpen(!isOpen);
+}
+
+// Wire up UI events (guard if elements are missing)
+if (filterEls.btn && filterEls.panel) {
+  // Start closed
+  setFiltersOpen(false);
+
+  filterEls.btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    toggleFilters();
+  });
+
+  // Apply filters as user types/changes
+  filterEls.case?.addEventListener("input", applyFilters);
+  filterEls.from?.addEventListener("change", applyFilters);
+  filterEls.to?.addEventListener("change", applyFilters);
+
+  // Clear button
+  filterEls.clear?.addEventListener("click", () => {
+    if (filterEls.case) filterEls.case.value = "";
+    if (filterEls.from) filterEls.from.value = "";
+    if (filterEls.to) filterEls.to.value = "";
+    // Restore default empty message
+    if (els.empty) els.empty.textContent = "No attempts found for your account yet.";
+    applyFilters();
+    setFiltersOpen(false);
+  });
+
+  // Optional: click outside to close
+  document.addEventListener("click", (e) => {
+    const open = filterEls.btn.getAttribute("aria-expanded") === "true";
+    if (!open) return;
+    const within = e.target.closest("#vpFiltersPanel") || e.target.closest("#vpFilterBtn");
+    if (!within) setFiltersOpen(false);
+  });
+
+  // Optional: Esc closes
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setFiltersOpen(false);
+  });
+}
+
   function openGradingPage(sessionId) {
     const url = `${GRADING_PAGE_BASE}?sessionId=${encodeURIComponent(sessionId)}`;
     window.open(url, "_blank", "noopener");
@@ -297,7 +417,7 @@
       allAttempts = cached;
       if (els.count) els.count.textContent = `${allAttempts.length} attempt(s) found`;
       els.wrap.style.display = "block";
-      renderAttemptRows(allAttempts);
+      applyFilters();
       // continue to refresh below (don’t return)
     }
 
