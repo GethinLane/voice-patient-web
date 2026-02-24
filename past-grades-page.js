@@ -244,11 +244,11 @@
         }
 
         // Case
-        if (f.hasCase) {
-          const aCaseDigits = a.caseId != null ? String(a.caseId).replace(/[^\d]/g, "") : "";
-          const aCase = aCaseDigits ? parseInt(aCaseDigits, 10) : NaN;
-          if (!Number.isFinite(aCase) || aCase !== f.caseNum) return false;
-        }
+// Case (prefix match: typing "2" matches 200, 210, 245, etc.)
+if (f.digits) {
+  const aCaseDigits = a.caseId != null ? String(a.caseId).replace(/[^\d]/g, "") : "";
+  if (!aCaseDigits.startsWith(f.digits)) return false;
+}
 
         // Date
         if (f.fromDate || f.toDate) {
@@ -265,12 +265,25 @@
         els.count.textContent = `${filtered.length} shown (of ${allAttempts.length})`;
       }
 
-      if (!filtered.length) {
-        els.wrap.style.display = "none";
-        els.empty.style.display = "block";
-        els.empty.textContent = "No attempts match your filters.";
-        return;
-      }
+if (!filtered.length) {
+  // Keep wrap visible so the filter panel doesn't disappear
+  els.wrap.style.display = "block";
+
+  // Show message
+  els.empty.style.display = "block";
+  els.empty.textContent = "No attempts match your filters.";
+
+  // Optional: keep the header row visible instead of leaving old rows
+  els.body.innerHTML = `
+    <div class="vp-attempt vp-attempt-head">
+      <div>Date</div>
+      <div>Case</div>
+      <div></div>
+    </div>
+  `;
+
+  return;
+}
 
       els.empty.style.display = "none";
       els.wrap.style.display = "block";
