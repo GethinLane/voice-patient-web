@@ -198,48 +198,61 @@ function toEndOfDay(d) {
 }
 
 function applyFilters() {
-  const caseValRaw = (filterEls.case?.value || "").trim();
-  const caseNum = caseValRaw ? Number(caseValRaw) : null;
+  try {
+    if (!Array.isArray(allAttempts)) return;
 
-  const fromVal = filterEls.from?.value || ""; // "YYYY-MM-DD"
-  const toVal = filterEls.to?.value || "";
+    // Accept "220" or "Case 220" or "case-220" etc.
+    const raw = (filterEls.case?.value || "").trim();
+    const digits = raw.replace(/\D+/g, ""); // keep only numbers
+    const caseNum = digits ? parseInt(digits, 10) : null;
+    const hasCaseFilter = Number.isFinite(caseNum);
 
-  const fromDate = fromVal ? toStartOfDay(new Date(fromVal)) : null;
-  const toDate = toVal ? toEndOfDay(new Date(toVal)) : null;
+    const fromVal = filterEls.from?.value || "";
+    const toVal = filterEls.to?.value || "";
 
-  const filtered = allAttempts.filter((a) => {
-    // Case filter
-    if (caseNum != null && !Number.isNaN(caseNum)) {
-      // a.caseId might be string/number/null
-      const aCase = a.caseId != null ? Number(a.caseId) : null;
-      if (aCase !== caseNum) return false;
+    // Safer date parsing for <input type="date">
+    const fromDate = fromVal ? toStartOfDay(new Date(fromVal + "T00:00:00")) : null;
+    const toDate   = toVal   ? toEndOfDay(new Date(toVal   + "T00:00:00")) : null;
+
+    const filtered = allAttempts.filter((a) => {
+      if (!a) return false;
+
+      // Case filter
+      if (hasCaseFilter) {
+        const aCase = a.caseId != null ? parseInt(String(a.caseId).replace(/\D+/g, ""), 10) : NaN;
+        if (!Number.isFinite(aCase) || aCase !== caseNum) return false;
+      }
+
+      // Date filter
+      if (fromDate || toDate) {
+        const t = new Date(a.createdTime);
+        if (Number.isNaN(t.getTime())) return false;
+        if (fromDate && t < fromDate) return false;
+        if (toDate && t > toDate) return false;
+      }
+
+      return true;
+    });
+
+    if (els.count) els.count.textContent = `${filtered.length} shown (of ${allAttempts.length})`;
+
+    if (!filtered.length) {
+      if (els.wrap) els.wrap.style.display = "none";
+      if (els.empty) {
+        els.empty.style.display = "block";
+        els.empty.textContent = "No attempts match your filters.";
+      }
+      return;
     }
 
-    // Date filter (a.createdTime assumed ISO)
-    if (fromDate || toDate) {
-      const t = new Date(a.createdTime);
-      if (fromDate && t < fromDate) return false;
-      if (toDate && t > toDate) return false;
-    }
+    if (els.empty) els.empty.style.display = "none";
+    if (els.wrap) els.wrap.style.display = "block";
+    renderAttemptRows(filtered);
 
-    return true;
-  });
-
-  if (els.count) {
-    els.count.textContent = `${filtered.length} shown (of ${allAttempts.length})`;
+  } catch (err) {
+    console.error("Filter crashed:", err);
+    showError("Filtering hit an error — check console for details.");
   }
-
-  if (!filtered.length) {
-    els.wrap.style.display = "none";
-    els.empty.style.display = "block";
-    // Optional: change empty message when filters are active
-    els.empty.textContent = "No attempts match your filters.";
-    return;
-  }
-
-  els.empty.style.display = "none";
-  els.wrap.style.display = "block";
-  renderAttemptRows(filtered);
 }
 
 function setFiltersOpen(isOpen) {
