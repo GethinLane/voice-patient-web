@@ -9,6 +9,12 @@
   const CACHE_KEY = "vp_attempts_cache_v1";
   const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
 
+  // Debug (set to false when done)
+  const VP_DEBUG = true;
+  const log = (...a) => { if (VP_DEBUG) console.log("[vp-history]", ...a); };
+  const warn = (...a) => console.warn("[vp-history]", ...a);
+  const errlog = (...a) => console.error("[vp-history]", ...a);
+
   const els = {
     loadBtn: document.getElementById("vpLoadAttempts"),
     identity: document.getElementById("vpIdentity"),
@@ -20,6 +26,14 @@
   };
 
   if (!els.wrap || !els.body || !els.identity) return; // page guard
+
+  // Catch global errors so it never "silently crashes"
+  window.addEventListener("error", (e) => {
+    errlog("window error:", e.message, e.error);
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    errlog("unhandledrejection:", e.reason);
+  });
 
   function showError(msg) {
     if (!els.err) return;
@@ -41,6 +55,7 @@
   function formatDate(iso) {
     try {
       const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso || "";
       return d.toLocaleString(undefined, {
         year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit"
       });
@@ -169,143 +184,158 @@
   }
 
   // -----------------------------
-  // Attempts rendering
+  // Attempts rendering + filtering
   // -----------------------------
   let allAttempts = [];
   let selectedSessionId = null;
 
-  // -----------------------------
-// Filters (UI + logic)
-// -----------------------------
-const filterEls = {
-  btn: document.getElementById("vpFilterBtn"),
-  panel: document.getElementById("vpFiltersPanel"),
-  case: document.getElementById("vpFilterCase"),
-  from: document.getElementById("vpFilterFrom"),
-  to: document.getElementById("vpFilterTo"),
-  clear: document.getElementById("vpFilterClear"),
-};
+  const filterEls = {
+    btn: document.getElementById("vpFilterBtn"),
+    panel: document.getElementById("vpFiltersPanel"),
+    case: document.getElementById("vpFilterCase"),
+    from: document.getElementById("vpFilterFrom"),
+    to: document.getElementById("vpFilterTo"),
+    clear: document.getElementById("vpFilterClear"),
+  };
 
-function toStartOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-function toEndOfDay(d) {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
+  function toStartOfDay(d) {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  }
+  function toEndOfDay(d) {
+    const x = new Date(d);
+    x.setHours(23, 59, 59, 999);
+    return x;
+  }
 
-function applyFilters() {
-  try {
-    if (!Array.isArray(allAttempts)) return;
-
-    // Accept "220" or "Case 220" or "case-220" etc.
+  function getActiveFilters() {
+    // Accept "220" or "Case 220" etc: strip to digits
     const raw = (filterEls.case?.value || "").trim();
-    const digits = raw.replace(/\D+/g, ""); // keep only numbers
+    const digits = raw.replace(/[^\d]/g, "");
     const caseNum = digits ? parseInt(digits, 10) : null;
-    const hasCaseFilter = Number.isFinite(caseNum);
+    const hasCase = Number.isFinite(caseNum);
 
     const fromVal = filterEls.from?.value || "";
     const toVal = filterEls.to?.value || "";
 
-    // Safer date parsing for <input type="date">
+    // Use explicit time so Safari date parsing is stable
     const fromDate = fromVal ? toStartOfDay(new Date(fromVal + "T00:00:00")) : null;
-    const toDate   = toVal   ? toEndOfDay(new Date(toVal   + "T00:00:00")) : null;
+    const toDate = toVal ? toEndOfDay(new Date(toVal + "T00:00:00")) : null;
 
-    const filtered = allAttempts.filter((a) => {
-      if (!a) return false;
+    return { raw, digits, caseNum, hasCase, fromVal, toVal, fromDate, toDate };
+  }
 
-      // Case filter
-      if (hasCaseFilter) {
-        const aCase = a.caseId != null ? parseInt(String(a.caseId).replace(/\D+/g, ""), 10) : NaN;
-        if (!Number.isFinite(aCase) || aCase !== caseNum) return false;
+  function safeRenderFiltered() {
+    try {
+      const f = getActiveFilters();
+      log("filters:", f);
+
+      if (!Array.isArray(allAttempts)) {
+        warn("allAttempts is not an array", allAttempts);
+        return;
       }
 
-      // Date filter
-      if (fromDate || toDate) {
-        const t = new Date(a.createdTime);
-        if (Number.isNaN(t.getTime())) return false;
-        if (fromDate && t < fromDate) return false;
-        if (toDate && t > toDate) return false;
+      const filtered = allAttempts.filter((a, idx) => {
+        // Defensive: a can be undefined or odd
+        if (!a || typeof a !== "object") {
+          warn("bad attempt item at", idx, a);
+          return false;
+        }
+
+        // Case
+        if (f.hasCase) {
+          const aCaseDigits = a.caseId != null ? String(a.caseId).replace(/[^\d]/g, "") : "";
+          const aCase = aCaseDigits ? parseInt(aCaseDigits, 10) : NaN;
+          if (!Number.isFinite(aCase) || aCase !== f.caseNum) return false;
+        }
+
+        // Date
+        if (f.fromDate || f.toDate) {
+          const t = new Date(a.createdTime);
+          if (Number.isNaN(t.getTime())) return false;
+          if (f.fromDate && t < f.fromDate) return false;
+          if (f.toDate && t > f.toDate) return false;
+        }
+
+        return true;
+      });
+
+      if (els.count) {
+        els.count.textContent = `${filtered.length} shown (of ${allAttempts.length})`;
       }
 
-      return true;
-    });
-
-    if (els.count) els.count.textContent = `${filtered.length} shown (of ${allAttempts.length})`;
-
-    if (!filtered.length) {
-      if (els.wrap) els.wrap.style.display = "none";
-      if (els.empty) {
+      if (!filtered.length) {
+        els.wrap.style.display = "none";
         els.empty.style.display = "block";
         els.empty.textContent = "No attempts match your filters.";
+        return;
       }
-      return;
+
+      els.empty.style.display = "none";
+      els.wrap.style.display = "block";
+      renderAttemptRows(filtered);
+
+    } catch (e) {
+      errlog("filter/render crashed:", e);
+      showError(`Filter crashed: ${e?.message || e}`);
     }
-
-    if (els.empty) els.empty.style.display = "none";
-    if (els.wrap) els.wrap.style.display = "block";
-    renderAttemptRows(filtered);
-
-  } catch (err) {
-    console.error("Filter crashed:", err);
-    showError("Filtering hit an error — check console for details.");
   }
-}
 
-function setFiltersOpen(isOpen) {
-  if (!filterEls.btn || !filterEls.panel) return;
-  filterEls.btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
-  // Use the HTML `hidden` attribute you already have
-  filterEls.panel.hidden = !isOpen;
-}
+  // Debounce so typing numbers can't hammer the DOM and “feel like a crash”
+  let filterTimer = null;
+  function scheduleFilter() {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(safeRenderFiltered, 120);
+  }
 
-function toggleFilters() {
-  const isOpen = filterEls.btn?.getAttribute("aria-expanded") === "true";
-  setFiltersOpen(!isOpen);
-}
+  function setFiltersOpen(isOpen) {
+    if (!filterEls.btn || !filterEls.panel) return;
+    filterEls.btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    filterEls.panel.hidden = !isOpen;
+  }
 
-// Wire up UI events (guard if elements are missing)
-if (filterEls.btn && filterEls.panel) {
-  // Start closed
-  setFiltersOpen(false);
+  function toggleFilters() {
+    const isOpen = filterEls.btn?.getAttribute("aria-expanded") === "true";
+    setFiltersOpen(!isOpen);
+  }
 
-  filterEls.btn.addEventListener("click", (e) => {
-    e.preventDefault();
-    toggleFilters();
-  });
-
-  // Apply filters as user types/changes
-  filterEls.case?.addEventListener("input", applyFilters);
-  filterEls.from?.addEventListener("change", applyFilters);
-  filterEls.to?.addEventListener("change", applyFilters);
-
-  // Clear button
-  filterEls.clear?.addEventListener("click", () => {
-    if (filterEls.case) filterEls.case.value = "";
-    if (filterEls.from) filterEls.from.value = "";
-    if (filterEls.to) filterEls.to.value = "";
-    // Restore default empty message
-    if (els.empty) els.empty.textContent = "No attempts found for your account yet.";
-    applyFilters();
+  // Wire up filter UI
+  if (filterEls.btn && filterEls.panel) {
     setFiltersOpen(false);
-  });
 
-  // Optional: click outside to close
-  document.addEventListener("click", (e) => {
-    const open = filterEls.btn.getAttribute("aria-expanded") === "true";
-    if (!open) return;
-    const within = e.target.closest("#vpFiltersPanel") || e.target.closest("#vpFilterBtn");
-    if (!within) setFiltersOpen(false);
-  });
+    filterEls.btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      toggleFilters();
+    });
 
-  // Optional: Esc closes
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") setFiltersOpen(false);
-  });
-}
+    // IMPORTANT: inputmode numeric can still type letters on desktop, so normalize in getActiveFilters()
+    filterEls.case?.addEventListener("input", scheduleFilter);
+    filterEls.from?.addEventListener("change", scheduleFilter);
+    filterEls.to?.addEventListener("change", scheduleFilter);
+
+    filterEls.clear?.addEventListener("click", () => {
+      if (filterEls.case) filterEls.case.value = "";
+      if (filterEls.from) filterEls.from.value = "";
+      if (filterEls.to) filterEls.to.value = "";
+      if (els.empty) els.empty.textContent = "No attempts found for your account yet.";
+      safeRenderFiltered();
+      setFiltersOpen(false);
+    });
+
+    // Close on outside click
+    document.addEventListener("click", (e) => {
+      const open = filterEls.btn.getAttribute("aria-expanded") === "true";
+      if (!open) return;
+      const within = e.target.closest("#vpFiltersPanel") || e.target.closest("#vpFilterBtn");
+      if (!within) setFiltersOpen(false);
+    });
+
+    // Close on Esc
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") setFiltersOpen(false);
+    });
+  }
 
   function openGradingPage(sessionId) {
     const url = `${GRADING_PAGE_BASE}?sessionId=${encodeURIComponent(sessionId)}`;
@@ -351,31 +381,34 @@ if (filterEls.btn && filterEls.panel) {
       `;
       els.body.appendChild(more);
 
-      document.getElementById("vpLoadMore").onclick = () => {
-        const already = els.body.querySelectorAll(".vp-attempt:not(.vp-attempt-head)").length;
-        const next = attempts.slice(already, already + PAGE_SIZE);
+      const loadMoreBtn = more.querySelector("#vpLoadMore");
+      if (loadMoreBtn) {
+        loadMoreBtn.onclick = () => {
+          const already = els.body.querySelectorAll(".vp-attempt:not(.vp-attempt-head)").length;
+          const next = attempts.slice(already, already + PAGE_SIZE);
 
-        for (const a of next) {
-          const row = document.createElement("div");
-          row.className = "vp-attempt" + (a.sessionId === selectedSessionId ? " is-selected" : "");
-          row.innerHTML = `
-            <div>
-              <div style="font-weight:700;">${escapeHtml(formatDate(a.createdTime))}</div>
-            </div>
-            <div>
-              <div style="font-weight:700;">${escapeHtml(a.caseId != null ? ("Case " + a.caseId) : "—")}</div>
-            </div>
-            <div>
-              <button class="vp-view" data-session="${escapeHtml(a.sessionId)}">View grading</button>
-            </div>
-          `;
-          els.body.insertBefore(row, more);
-        }
+          for (const a of next) {
+            const row = document.createElement("div");
+            row.className = "vp-attempt" + (a.sessionId === selectedSessionId ? " is-selected" : "");
+            row.innerHTML = `
+              <div>
+                <div style="font-weight:700;">${escapeHtml(formatDate(a.createdTime))}</div>
+              </div>
+              <div>
+                <div style="font-weight:700;">${escapeHtml(a.caseId != null ? ("Case " + a.caseId) : "—")}</div>
+              </div>
+              <div>
+                <button class="vp-view" data-session="${escapeHtml(a.sessionId)}">View grading</button>
+              </div>
+            `;
+            els.body.insertBefore(row, more);
+          }
 
-        if (els.body.querySelectorAll(".vp-attempt:not(.vp-attempt-head)").length >= attempts.length) {
-          more.remove();
-        }
-      };
+          if (els.body.querySelectorAll(".vp-attempt:not(.vp-attempt-head)").length >= attempts.length) {
+            more.remove();
+          }
+        };
+      }
     }
   }
 
@@ -413,10 +446,8 @@ if (filterEls.btn && filterEls.panel) {
     els.body.innerHTML = "";
     if (els.count) els.count.textContent = "";
 
-    // Show skeleton immediately (better perceived performance)
     renderLoadingSkeleton();
 
-    // Identity (quick)
     const ident = await waitForIdentity(2500);
     if (!ident.userId && !ident.email) {
       els.wrap.style.display = "none";
@@ -424,17 +455,15 @@ if (filterEls.btn && filterEls.panel) {
       return;
     }
 
-    // If we have cache, render instantly, then refresh in background
     const cached = readCache(ident);
     if (cached && cached.length) {
       allAttempts = cached;
       if (els.count) els.count.textContent = `${allAttempts.length} attempt(s) found`;
       els.wrap.style.display = "block";
-      applyFilters();
-      // continue to refresh below (don’t return)
+      safeRenderFiltered(); // respects any filters already typed
+      // continue to refresh below
     }
 
-    // Fetch fresh
     try {
       const data = await postJSON(`${API_BASE}/api/my-attempts`, {
         userId: ident.userId,
@@ -451,14 +480,14 @@ if (filterEls.btn && filterEls.panel) {
         return;
       }
 
-      if (els.count) els.count.textContent = `${allAttempts.length} attempt(s) found`;
       els.wrap.style.display = "block";
-      renderAttemptRows(allAttempts);
-    } catch (err) {
-      // If cache rendered, keep it; otherwise show error
+      safeRenderFiltered(); // IMPORTANT: always go through filter render
+
+    } catch (e) {
+      errlog("loadAttempts fetch failed:", e);
       if (!cached || !cached.length) {
         els.wrap.style.display = "none";
-        showError(err?.message || "Failed to load attempts.");
+        showError(e?.message || "Failed to load attempts.");
       }
     }
   }
@@ -469,6 +498,5 @@ if (filterEls.btn && filterEls.panel) {
     els.loadBtn.addEventListener("click", () => loadAttempts().catch(() => {}));
   }
 
-  // Kick off immediately (in case MemberSpace is already available)
   loadAttempts().catch(() => {});
 })();
