@@ -1,779 +1,1184 @@
-// api/instructions.ts
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-import Airtable from "airtable";
-import OpenAI from "openai";
-import { put, head } from "@vercel/blob";
+// voice-patient.js (CUSTOM UI - no iframe)
+// - MemberSpace identity passthrough
+// - 12-min countdown + auto-stop
+// - finite grading poll
+// - Daily custom call object (audio-only)
+// - Track-based audio meters for Listening/Thinking/Talking
+// - Emits vp:ui events for your standalone patient card overlay
 
-const {
-  AIRTABLE_TOKEN,
-  AIRTABLE_BASE_ID,
-  OPENAI_API_KEY,
-  BLOB_READ_WRITE_TOKEN,
-  RUN_SECRET,
-  MAX_CASE_ID,
-  INSTRUCTIONS_TEXT_MODEL,
-} = process.env;
+(() => {
+  const VERSION = "v12.5-2026-02-10";
+  const API_BASE = "https://voice-patient-web.vercel.app";
+  const DAILY_JS_SRC = "https://unpkg.com/@daily-co/daily-js";
 
-if (!AIRTABLE_TOKEN || !AIRTABLE_BASE_ID || !OPENAI_API_KEY || !BLOB_READ_WRITE_TOKEN || !RUN_SECRET) {
-  throw new Error(
-    "Missing env vars: AIRTABLE_TOKEN, AIRTABLE_BASE_ID, OPENAI_API_KEY, BLOB_READ_WRITE_TOKEN, RUN_SECRET"
-  );
+  // Enable debug panel + console logs only when ?vpdebug=1
+  const DEBUG_UI = new URLSearchParams(window.location.search).has("vpdebug");
+  const DEBUG_LOG = DEBUG_UI;
+
+  // ---------------- Session + grading poll ----------------
+  let currentSessionId = null;
+  let gradingPollTimer = null;
+  let gradingPollTries = 0;
+  let startRunId = 0;        // increments on each start/stop to cancel in-flight starts
+let stoppingNow = false;   // true while stopConsultation is running
+  let dailyConnected = false; // true when local client is joining/joined to a Daily meeting
+
+  const GRADING_POLL_INTERVAL_MS = 6000; // every 6s
+  const GRADING_POLL_MAX_TRIES = 20;     // 120s max
+
+  // ---------------- Countdown (12 min) ----------------
+  const MAX_SESSION_SECONDS = 12 * 60;
+  let countdownTimer = null;
+  let countdownEndsAt = null;
+  let countdownHasStarted = false;
+
+  // Grading guard
+  let readyEmptyCount = 0;
+
+  // ---------------- Daily custom call state ----------------
+  let callObject = null;
+
+  // Remote audio playback
+  let remoteAudioEl = null;
+  let currentRemoteTrack = null;
+
+  // WebAudio metering
+  let audioCtx = null;
+  let localMeter = null;   // { analyser, data, source }
+  let remoteMeter = null;  // { analyser, data, source }
+  let levelTimer = null;
+
+  // Levels
+  let localLevel = 0;
+  let remoteLevel = 0;
+  let smoothLocal = 0;
+  let smoothRemote = 0;
+
+  // Adaptive noise baseline
+  let noiseLocal = 0.0025;
+  let noiseRemote = 0.0025;
+
+  const LEVEL_SAMPLE_MS = 80;
+  const SMOOTHING = 0.18; // 0..1 (higher = more responsive)
+  const BASE_ALPHA = 0.04;
+
+  // Hold state briefly to avoid flicker/missed frames
+  const HOLD_MS = 450;
+  let holdUntilMs = 0;
+
+  // UI state
+let uiState = "idle"; // idle | connecting | waiting | thinking | listening | talking | error
+  let lastGlow = 0.15;
+  let vpIsStarting = false;
+
+  // ---------------- Remote presence (agent join gating) ----------------
+let remotePresent = false;  // any non-local participant
+let agentPresent  = false;  // treat as "agent is here" (can refine by name/id)
+let waitingSinceMs = 0;
+
+function computeRemotePresence() {
+  if (!callObject) return { remotePresent: false, agentPresent: false };
+
+  const parts = callObject.participants?.() || {};
+  const remotes = Object.values(parts).filter((p) => p && !p.local);
+
+  const anyRemote = remotes.length > 0;
+
+  // Optional: if you can identify the agent more strictly, adjust this
+  const anyAgent = remotes.some((p) => {
+    const name = String(p.user_name || "").toLowerCase();
+    const uid  = String(p.user_id || "").toLowerCase();
+    return name.includes("pipecat") || name.includes("agent") || uid.includes("pipecat");
+  });
+
+  return { remotePresent: anyRemote, agentPresent: anyAgent || anyRemote };
 }
 
-const maxCaseDefault = 355;
+function refreshPresenceAndUi() {
+  const p = computeRemotePresence();
+  remotePresent = p.remotePresent;
+  agentPresent = p.agentPresent;
 
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-const airtable = new Airtable({ apiKey: AIRTABLE_TOKEN }).base(AIRTABLE_BASE_ID);
+  // If we're connected locally but agent isn't here yet, show waiting
+  if (callObject && !agentPresent) {
+    if (!waitingSinceMs) waitingSinceMs = Date.now();
+    if (uiState !== "waiting") setUiState("waiting");
+    emitUi("waiting", 0.16);
+} else if (callObject && agentPresent) {
+  if (!countdownHasStarted) {
+    countdownHasStarted = true;
+    startCountdown(MAX_SESSION_SECONDS);
+  }
 
-// Default to GPT-5.2 unless overridden
-const TEXT_MODEL_USED = INSTRUCTIONS_TEXT_MODEL || "gpt-5.2";
-
-// Lower temperature for consistency + fewer “weird” cues
-const TEMPERATURE = 0.2;
-
-/* -----------------------------
-   Auth + retry helpers
------------------------------ */
-
-function getHeader(req: VercelRequest, name: string): string | undefined {
-  const v = req.headers[name.toLowerCase()];
-  if (Array.isArray(v)) return v[0];
-  if (typeof v === "string") return v;
-  return undefined;
+  if (uiState === "waiting") {
+    waitingSinceMs = 0;
+    setUiState("thinking");
+    emitUi("thinking", 0.18);
+  }
+}
 }
 
-function requireSecret(req: VercelRequest) {
-  const provided = getHeader(req, "x-run-secret");
-  if (!provided || provided !== RUN_SECRET) {
-    const err: any = new Error("AUTH_FAILED_RUN_SECRET");
-    err.status = 401;
-    throw err;
+// ---------------- Helpers ----------------
+function $(id) {
+  const els = Array.from(document.querySelectorAll(`#${CSS.escape(id)}`));
+  // Prefer a visible element (offsetParent !== null is a solid “is displayed” check)
+  return els.find((el) => el && el.offsetParent !== null) || els[0] || null;
+}
+
+  // ---------------- Grading button state ----------------
+let vpLastGradingText = "";
+let vpLastGradingSessionId = null;
+
+function setGradingBtnState(state) {
+  // state: "hidden" | "in_progress" | "ready"
+  const btn = document.getElementById("gradingBtn");
+  if (!btn) return;
+
+  btn.classList.remove("is-ready");
+
+  if (state === "hidden") {
+    btn.hidden = true;
+    btn.disabled = true;
+    btn.textContent = "Grading…";
+    return;
+  }
+
+  btn.hidden = false;
+
+  if (state === "in_progress") {
+    btn.disabled = true;
+    btn.textContent = "Grading in progress… please wait";
+    return;
+  }
+
+  if (state === "ready") {
+    btn.disabled = false;
+    btn.classList.add("is-ready");
+    btn.textContent = "Grading ready — click to view";
+    return;
   }
 }
 
-async function sleep(ms: number) {
-  await new Promise((r) => setTimeout(r, ms));
-}
-
-function isRetryableStatus(status?: number) {
-  return status === 429 || (status != null && status >= 500);
-}
-
-async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
-  let lastErr: any;
-  for (let i = 0; i < tries; i++) {
-    try {
-      return await fn();
-    } catch (e: any) {
-      lastErr = e;
-      const status = e?.status || e?.statusCode;
-      if (!isRetryableStatus(status) || i === tries - 1) break;
-      await sleep(800 * (i + 1));
-    }
-  }
-  throw lastErr;
-}
-
-function extractErr(e: any) {
-  return {
-    status: e?.status || e?.statusCode || 500,
-    message: e?.message || String(e),
-  };
-}
-
-function pad4(n: number) {
-  return String(n).padStart(4, "0");
-}
-
-/* -----------------------------
-   Airtable: full case text (for “don’t leak facts” safety)
------------------------------ */
-
-const CASE_FIELDS = [
-  "Name",
-  "Age",
-  "PMHx Record",
-  "DHx",
-  "Medical Notes",
-  "Medical Notes Content",
-  "Notes Photo",
-  "Results",
-  "Results Content",
-  "Instructions",
-  "Opening Sentence",
-  "Divulge Freely",
-  "Divulge Asked",
-  "PMHx RP",
-  "Social History",
-  "Family History",
-  "ICE",
-  "Reaction",
-] as const;
-
-function normalizeFieldValue(v: any): string {
-  if (v == null) return "";
-  if (typeof v === "string") return v;
+  // Voice agent picker (stored by Squarespace dropdown or set manually)
+function getForcedAgent() {
   try {
-    return JSON.stringify(v);
-  } catch {
-    return String(v);
-  }
+    // Preferred: set by your Squarespace dropdown script
+    const fromLs = String(localStorage.getItem("vp_forced_agent") || "").trim();
+    if (fromLs) return fromLs;
+
+    // Optional fallback: if you put a <select id="vpAgentSelect"> on the page
+    const sel = document.getElementById("vpAgentSelect");
+    const fromSelect = sel ? String(sel.value || "").trim() : "";
+    if (fromSelect) return fromSelect;
+  } catch {}
+  return "";
 }
 
-function buildRecordText(fields: Record<string, any>): string {
-  const parts: string[] = [];
 
-  for (const k of CASE_FIELDS) {
-    const v = (fields as any)[k];
-    if (v == null || v === "") continue;
-    parts.push(`${k}: ${normalizeFieldValue(v)}`);
-  }
-
-  // include any extra fields too
-  for (const [k, v] of Object.entries(fields)) {
-    if ((CASE_FIELDS as readonly string[]).includes(k)) continue;
-    if (v == null || v === "") continue;
-    parts.push(`${k}: ${normalizeFieldValue(v)}`);
-  }
-
-  return parts.join("\n");
+function getSelectedMode() {
+  const el = document.querySelector('input[name="vpMode"]:checked');
+  return el ? String(el.value || "").trim().toLowerCase() : "standard";
 }
 
-/**
- * Pull all records from "Case N" and concatenate into a single full-case text.
- * This gives the model the complete map so it can avoid leaking key clinical facts in cues.
- */
-async function getCaseText(caseId: number): Promise<{ tableName: string; caseText: string; recordCount: number }> {
-  const tableName = `Case ${caseId}`;
-  const table = airtable(tableName);
+function clamp01(x) {
+  return Math.max(0, Math.min(1, Number(x || 0)));
+}
 
+  function isInDailyCall() {
   try {
-    const records = await table.select({ maxRecords: 100 }).firstPage();
-    if (!records.length) return { tableName, caseText: "", recordCount: 0 };
+    if (!callObject) return false;
 
-    const combined = records
-      .map((r) => buildRecordText(r.fields as any))
-      .filter(Boolean)
-      .join("\n\n---\n\n");
+    // Daily meeting state (varies by daily-js version, but joined/joining are common)
+    const ms = callObject.meetingState?.();
+    if (ms === "joined" || ms === "joining") return true;
 
-    return { tableName, caseText: combined, recordCount: records.length };
-  } catch (err: any) {
-    const e: any = new Error(`AIRTABLE_READ_FAILED table="${tableName}" msg="${err?.message || String(err)}"`);
-    e.status = err?.statusCode || err?.status || 500;
-    e.details = err;
-    throw e;
-  }
-}
-
-/* -----------------------------
-   Airtable: multi-record aggregation for specific fields
------------------------------ */
-
-const FIELDS = [
-  "Name",
-  "Age",
-  "Opening Sentence",
-  "Divulge Freely",
-  "Divulge Asked",
-  "PMHx RP",
-  "Social History",
-  "Family History",
-  "ICE",
-  "Reaction",
-  "Instructions",
-] as const;
-
-type FieldName = (typeof FIELDS)[number];
-type InstructionInput = Record<FieldName, string>;
-
-function clean(v: any): string {
-  if (v == null) return "";
-  if (typeof v === "string") return v.trim();
-  try {
-    return JSON.stringify(v).trim();
-  } catch {
-    return String(v).trim();
-  }
-}
-
-/**
- * De-dupe exact duplicates while preserving order.
- */
-function uniqPreserve(values: string[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const s of values.map((x) => String(x || "").trim()).filter(Boolean)) {
-    if (seen.has(s)) continue;
-    seen.add(s);
-    out.push(s);
-  }
-  return out;
-}
-
-/**
- * Index snippets explicitly to reduce confusion from multi-record tables.
- */
-function joinManyIndexed(values: string[]): string {
-  const arr = uniqPreserve(values);
-  if (!arr.length) return "";
-  return arr.map((v, i) => `[${i + 1}] ${v}`).join("\n\n---\n\n");
-}
-
-async function getInstructionFields(caseId: number): Promise<InstructionInput> {
-  const tableName = `Case ${caseId}`;
-  const table = airtable(tableName);
-
-  const records = await table.select({ maxRecords: 100 }).firstPage();
-
-  const buckets: Record<string, string[]> = {};
-  for (const k of FIELDS) buckets[k] = [];
-
-  for (const r of records) {
-    const f: any = (r.fields || {}) as any;
-    const instr = f["Instructions"] ?? f["Instruction"]; // tolerate naming variance
-
-    buckets["Name"].push(clean(f["Name"]));
-    buckets["Age"].push(clean(f["Age"]));
-    buckets["Opening Sentence"].push(clean(f["Opening Sentence"]));
-    buckets["Divulge Freely"].push(clean(f["Divulge Freely"]));
-    buckets["Divulge Asked"].push(clean(f["Divulge Asked"]));
-    buckets["PMHx RP"].push(clean(f["PMHx RP"]));
-    buckets["Social History"].push(clean(f["Social History"]));
-    buckets["Family History"].push(clean(f["Family History"]));
-    buckets["ICE"].push(clean(f["ICE"]));
-    buckets["Reaction"].push(clean(f["Reaction"]));
-    buckets["Instructions"].push(clean(instr));
-  }
-
-  return {
-    Name: joinManyIndexed(buckets["Name"]),
-    Age: joinManyIndexed(buckets["Age"]),
-    "Opening Sentence": joinManyIndexed(buckets["Opening Sentence"]),
-    "Divulge Freely": joinManyIndexed(buckets["Divulge Freely"]),
-    "Divulge Asked": joinManyIndexed(buckets["Divulge Asked"]),
-    "PMHx RP": joinManyIndexed(buckets["PMHx RP"]),
-    "Social History": joinManyIndexed(buckets["Social History"]),
-    "Family History": joinManyIndexed(buckets["Family History"]),
-    ICE: joinManyIndexed(buckets["ICE"]),
-    Reaction: joinManyIndexed(buckets["Reaction"]),
-    Instructions: joinManyIndexed(buckets["Instructions"]),
-  };
-}
-
-/* -----------------------------
-   Blob bundling (groups of N)
------------------------------ */
-
-async function blobExists(pathname: string): Promise<boolean> {
-  try {
-    await head(pathname);
-    return true;
+    // Fallback: local participant exists implies callObject is alive
+    const parts = callObject.participants?.() || {};
+    return !!parts?.local;
   } catch {
     return false;
   }
 }
 
-async function uploadBundleJson(
-  startCaseId: number,
-  endCaseId: number,
-  bundleObj: any,
-  overwrite: boolean
-): Promise<string> {
-  const pathname = `case-instructions/batch-${pad4(startCaseId)}-${pad4(endCaseId)}.json`;
+// ✅ Add this
+function getCaseIdFromUrl() {
+  try {
+    const url = new URL(window.location.href);
 
-  if (!overwrite) {
-    const exists = await blobExists(pathname);
-    if (exists) return (await head(pathname)).url;
-  }
+    const caseParam = url.searchParams.get("case");
+    if (caseParam && /^\d+$/.test(caseParam)) return Number(caseParam);
 
-  const bytes = Buffer.from(JSON.stringify(bundleObj, null, 2), "utf-8");
-  const res = await put(pathname, bytes, {
-    access: "public",
-    contentType: "application/json",
-    addRandomSuffix: false,
-  });
-
-  return res.url;
-}
-
-/* -----------------------------
-   Prompt text (kept undiluted)
------------------------------ */
-
-const FINAL_POLISHED_INSTRUCTION_BLOCK = `
-Final Polished Instruction (Optimised for Your Use Case)  
-
-Please read the case details below and produce two outputs: 
-
-Instructions: Write in UK English, in second person, present tense, starting exactly with “You are…”. Make it clear this is a video or telephone consultation, and include the name and specific age of the person speaking; if the speaker is calling about or attending with someone else, also include the name and specific age of the other person. If the case specifies multiple speaking roles (e.g., patient plus partner/parent/paramedic), explicitly state that there are multiple voices in the consultation, name each speaker, and specify who leads the history and when the other person speaks (e.g., answers only when prompted, interrupts to disagree, corrects details, etc.). 
-Assume the bot will have access to the full case details, so do not restate any facts already provided anywhere in the case (including symptoms, timeline, examination findings, medications, past history, social history, and ideas/concerns/expectations); instead, write only what is needed to guide roleplay: each speaker’s tone, emotional state, communication style, level of health anxiety, how cooperative or challenging they are, what triggers escalation, what reassures them, and how they interact with each other. 
-
-Exception: Some cases include an “instruction field” that will be replaced/overwritten in the final bot, meaning the bot will not be able to see that field afterwards. If important roleplay information appears in that instruction field, you must carry it over into the new 2-sentence character brief. 
-
-Opening line (1 sentence): 
-Write the patient’s first spoken sentence in first person, phrased in a natural, conversational way that fits how this individual would actually speak (matching their age, confidence, education, and personality). Avoid overly formal or clinical wording unless the case clearly suggests the patient speaks that way. It’s important that the opening sentence doesn’t reveal any plans or worries. 
-
-3. Patient Cues 
-
-This section is critical. 
-
-Include no more than 2 cues. 
-
-Each cue must be a neutral observation, not a disclosure. 
-
-Cues must not reveal key clinical facts, red flags, diagnoses, exact timelines, risks, or underlying causes. 
-
-Do not include interpretation, conclusions, or emotional reasoning (avoid “because…”, “so I think…”, “it must be…”). 
-
-A cue should never give the answer — it should only prompt the clinician to ask the next question. 
-
-Cues are only used if the clinician has not already explored that area. 
-
-Keep both cues within one short paragraph, with each cue written as a single sentence. 
-
-A good cue: 
-
-Hints at a missing domain. 
-
-Sounds natural and spontaneous. 
-
-Could safely be said even if the clinician does not follow up. 
-
-Opens a door without stepping through it. 
-
-A bad cue: 
-
-States a red-flag symptom directly. 
-
-Provides a diagnosis or label. 
-
-Gives an exact timeframe. 
-
-Reveals a safeguarding, risk, or safety-critical detail outright. 
-
-Answers a question the clinician has not yet asked. 
-
-Think: 
-A cue should create curiosity, not provide clarity. 
-
-Important: Treat every case as independent and do not carry over information from previous cases. 
-`.trim();
-
-/* -----------------------------
-   Generation (split: main + cues) + validation/repair
------------------------------ */
-
-type MainOutput = {
-  instructions: string; // MUST start You are...
-  opening_line: string; // 1 sentence, first person
-};
-
-type CuesOutput = {
-  patient_cues: string[]; // 0-2 items, each 1 sentence
-};
-
-function mustStartWithYouAre(s: string) {
-  return /^you are\b/i.test(String(s || "").trim());
-}
-
-function sentenceCount(s: string): number {
-  const t = String(s || "").trim();
-  if (!t) return 0;
-  // crude but effective: count ., !, ?
-  const m = t.match(/[.!?]+/g);
-  return m ? m.length : 1;
-}
-
-function hasDisallowedCuesContent(s: string): string | null {
-  const t = String(s || "").toLowerCase();
-
-  // avoid explicit reasoning
-  if (/\bbecause\b/.test(t)) return "contains 'because'";
-  if (/\bso i think\b/.test(t)) return "contains 'so I think'";
-  if (/\bit must\b/.test(t)) return "contains 'it must'";
-  if (/\bi think\b/.test(t)) return "contains 'I think'";
-
-  // avoid exact timeframes / numbers (common leak)
-  // allow ages like "my 3-year-old" would be a leak risk too; keep strict:
-  if (/\b\d+\b/.test(t)) return "contains a number (timeline/age risk)";
-
-  // avoid “red flag” words (not exhaustive, but helps a lot)
-  if (/\bdiagnos/.test(t)) return "mentions diagnosis";
-  if (/\bred flag\b/.test(t)) return "mentions red flag";
-  if (/\bsepsis\b|\bstroke\b|\bheart attack\b|\bmi\b|\bpe\b/.test(t)) return "mentions high-risk diagnosis";
-  if (/\bbleed(ing)?\b|\bsuicid|\boverdose\b/.test(t)) return "mentions high-risk disclosure";
-
+    // support bare ?341
+    if (!caseParam && url.search) {
+      const bare = url.search.replace(/^\?/, "");
+      if (bare && /^\d+$/.test(bare)) return Number(bare);
+    }
+  } catch {}
   return null;
 }
 
-function validateCues(cues: string[]): { ok: boolean; reason?: string } {
-  const arr = cues.map((x) => String(x || "").trim()).filter(Boolean);
+  function getCaseLabel() {
+  const n = getCaseIdFromUrl();
+  return n ? `Case ${n}` : "No case selected";
+}
 
-  if (arr.length > 2) return { ok: false, reason: "more than 2 cues" };
-  for (const c of arr) {
-    if (sentenceCount(c) !== 1) return { ok: false, reason: "a cue is not exactly 1 sentence" };
-    const bad = hasDisallowedCuesContent(c);
-    if (bad) return { ok: false, reason: `cue invalid: ${bad}` };
-    // avoid overly long cues
-    if (c.length > 220) return { ok: false, reason: "cue too long" };
+function uiEmit(detail) {
+  try { window.dispatchEvent(new CustomEvent("vp:ui", { detail })); } catch {}
+}
+
+function log(message, obj) {
+  if (!DEBUG_LOG) return;
+  const line =
+    `[VP ${VERSION}] ${new Date().toISOString()}  ${message}` +
+    (obj ? `\n${JSON.stringify(obj, null, 2)}` : "");
+  console.log(line);
+  const pre = document.getElementById("vp-debug");
+  if (pre) {
+    pre.textContent += line + "\n";
+    pre.scrollTop = pre.scrollHeight;
   }
-  return { ok: true };
 }
 
-function joinCuesToParagraph(cues: string[]): string {
-  const arr = cues.map((x) => String(x || "").trim()).filter(Boolean);
-  if (!arr.length) return "";
-  // One short paragraph, max 2 sentences total
-  return arr.join(" ");
-}
 
-function extractJsonObject(raw: string) {
-  const firstBrace = raw.indexOf("{");
-  const lastBrace = raw.lastIndexOf("}");
-  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return null;
-  return raw.slice(firstBrace, lastBrace + 1);
-}
-
-async function llmJson(prompt: string): Promise<any> {
-  const resp = await withRetry(() =>
-    openai.responses.create({
-      model: TEXT_MODEL_USED,
-      input: prompt,
-      temperature: TEMPERATURE,
-    } as any)
-  );
-
-  const raw = (resp as any).output_text?.trim?.() || "";
-  const jsonStr = extractJsonObject(raw);
-  if (!jsonStr) throw new Error(`LLM_JSON_PARSE_FAILED: ${raw.slice(0, 240)}`);
-  return JSON.parse(jsonStr);
-}
-
-async function generateMain(caseText: string, input: InstructionInput, caseId: number): Promise<MainOutput> {
-  const prompt = `
-${FINAL_POLISHED_INSTRUCTION_BLOCK}
-
-IMPORTANT OUTPUT FORMAT:
-Return ONLY valid JSON with EXACTLY these keys:
-{
-  "instructions": "...",
-  "opening_line": "..."
-}
-
-CRITICAL CLARIFICATION (DO NOT IGNORE):
-In THIS system, the existing Airtable "Instructions" field WILL be overwritten by your new "instructions" output, and the final bot will NOT have access to the old Airtable Instructions text. Therefore, you MUST carry over ANY roleplay-relevant details from the existing Airtable Instructions field into your new "instructions" output (integrated naturally). Do NOT rely on the old Instructions field being visible later.
-
-Additional constraints (do not ignore):
-- "instructions" MUST start exactly with "You are".
-- Do NOT include patient cues in "instructions" (those will be generated separately).
-- Treat every case as independent.
-
-Deterministic key (do not output): CASE_ID=${caseId}
-
-FULL CASE TEXT (bot can see this; do not restate facts in instructions):
-${caseText}
-
-SELECTED FIELDS (may contain multiple snippets separated by --- and indexed):
-Name:
-${input["Name"]}
-
-Age:
-${input["Age"]}
-
-Opening Sentence:
-${input["Opening Sentence"]}
-
-Divulge Freely:
-${input["Divulge Freely"]}
-
-Divulge Asked:
-${input["Divulge Asked"]}
-
-PMHx RP:
-${input["PMHx RP"]}
-
-Social History:
-${input["Social History"]}
-
-Family History:
-${input["Family History"]}
-
-ICE:
-${input["ICE"]}
-
-Reaction:
-${input["Reaction"]}
-
-Instructions field (THIS WILL BE OVERWRITTEN; MUST CARRY OVER ROLEPLAY-RELEVANT CONTENT INTO NEW OUTPUT):
-${input["Instructions"]}
-`.trim();
-
-  const parsed = await llmJson(prompt);
-
-  const instructions = String(parsed.instructions ?? "").trim();
-  const opening_line = String(parsed.opening_line ?? "").trim();
-
-  if (!mustStartWithYouAre(instructions)) throw new Error(`INSTRUCTION_BAD_START: must start with "You are..."`);
-  if (sentenceCount(opening_line) !== 1) {
-    // not fatal, but usually helpful to enforce
-    throw new Error(`OPENING_LINE_BAD_SENTENCE_COUNT: must be exactly 1 sentence`);
-  }
-
-  return { instructions, opening_line };
-}
-
-async function generateCues(caseText: string, input: InstructionInput, caseId: number): Promise<CuesOutput> {
-  // Cues generated in isolation, with strict array output
-  const prompt = `
-${FINAL_POLISHED_INSTRUCTION_BLOCK}
-
-You are producing ONLY the Patient Cues output for this case.
-
-IMPORTANT OUTPUT FORMAT:
-Return ONLY valid JSON with EXACTLY these keys:
-{
-  "patient_cues": ["...", "..."]
-}
-
-Rules (repeat, do not ignore):
-- Include no more than 2 cues total.
-- Each cue must be a neutral observation, not a disclosure.
-- Cues must not reveal key clinical facts, red flags, diagnoses, exact timelines, risks, or underlying causes.
-- Do not include interpretation, conclusions, or emotional reasoning (avoid “because…”, “so I think…”, “it must be…”).
-- Each cue must be exactly ONE sentence.
-- Avoid numbers and exact time references (do not include any digits).
-- Cues should create curiosity, not provide clarity.
-- Treat every case as independent.
-
-Deterministic key (do not output): CASE_ID=${caseId}
-
-FULL CASE TEXT (you can see it to avoid accidentally leaking key details in cues):
-${caseText}
-
-Helpful context about tone/personality (do not restate facts):
-Name:
-${input["Name"]}
-
-Age:
-${input["Age"]}
-
-Reaction:
-${input["Reaction"]}
-
-ICE:
-${input["ICE"]}
-`.trim();
-
-  const parsed = await llmJson(prompt);
-
-  const cues = Array.isArray(parsed.patient_cues) ? parsed.patient_cues : [];
-  const cleaned = cues.map((x: any) => String(x || "").trim()).filter(Boolean);
-
-  return { patient_cues: cleaned.slice(0, 2) };
-}
-
-async function repairCues(caseText: string, badCues: string[], caseId: number): Promise<CuesOutput> {
-  const prompt = `
-You are correcting Patient Cues that failed strict rules.
-
-Return ONLY valid JSON with EXACTLY these keys:
-{
-  "patient_cues": ["...", "..."]
-}
-
-Rules (must pass):
-- Max 2 cues.
-- Each cue exactly ONE sentence.
-- Each cue is a neutral observation (not a disclosure) of something important or key to the case.
-- Must NOT reveal key clinical facts, red flags, diagnoses, exact timelines, risks, or underlying causes.
-- Must NOT contain any digits/numbers.
-- Must NOT include interpretations, conclusion or emotional reasoning (avoid "because","so i think","it must be..").
-- A Cue should never give the answer - it should only prompt the clinican to ask the next question.
-- Cues are only used if the clinician has not already explored that area.
-- each cue must be written as a conditional prompt in the form of: "If (something important) has not been asked about, you mention....".
-- One cue can be omitted if safer (return [] or [single cue]).
-
-Deterministic key (do not output): CASE_ID=${caseId}
-
-FULL CASE TEXT (for safety; do not leak facts in cues):
-${caseText}
-
-BAD CUES TO FIX:
-${badCues.map((c, i) => `- [${i + 1}] ${c}`).join("\n")}
-`.trim();
-
-  const parsed = await llmJson(prompt);
-  const cues = Array.isArray(parsed.patient_cues) ? parsed.patient_cues : [];
-  const cleaned = cues.map((x: any) => String(x || "").trim()).filter(Boolean);
-  return { patient_cues: cleaned.slice(0, 2) };
-}
-
-async function generateCuesVerified(caseText: string, input: InstructionInput, caseId: number): Promise<string[]> {
-  // Try: generate -> validate -> if fail, repair -> validate -> else retry generate (up to 3 total attempts)
-  let last: string[] = [];
-
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const out = await generateCues(caseText, input, caseId);
-    last = out.patient_cues;
-
-    const v = validateCues(last);
-    if (v.ok) return last;
-
-    // one repair attempt
-    const repaired = await repairCues(caseText, last, caseId);
-    last = repaired.patient_cues;
-
-    const v2 = validateCues(last);
-    if (v2.ok) return last;
-
-    await sleep(120);
-  }
-
-  // If still failing, return best-effort (could be empty)
-  return last.slice(0, 2);
-}
-
-/* -----------------------------
-   Handler
------------------------------ */
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  try {
-    requireSecret(req);
-
-    const startFrom = Number(req.query.startFrom ?? 1);
-    const maxCase = Number(MAX_CASE_ID ?? maxCaseDefault);
-    const endAt = Number(req.query.endAt ?? maxCase);
-
-    // bundleSize = cases per uploaded file (default 10)
-    const bundleSize = Math.max(1, Math.min(50, Number(req.query.bundleSize ?? 10)));
-
-    // limit = max cases processed per invocation (default = bundleSize)
-    const limit = Math.max(1, Number(req.query.limit ?? bundleSize));
-
-    const dryRun = String(req.query.dryRun ?? "0") === "1";
-    const overwrite = String(req.query.overwrite ?? "0") === "1";
-    const debug = String(req.query.debug ?? "0") === "1";
-
-    const processed: any[] = [];
-    const bundles: any[] = [];
-
-    let currentBundleStart: number | null = null;
-    let currentItems: any[] = [];
-
-    const flushBundle = async () => {
-      if (currentBundleStart == null) return;
-      if (!currentItems.length) return;
-
-      const startId = currentBundleStart;
-      const endId = currentItems[currentItems.length - 1]?.caseId ?? startId;
-
-      const bundleObj = {
-        createdAt: new Date().toISOString(),
-        model: TEXT_MODEL_USED,
-        temperature: TEMPERATURE,
-        range: { start: startId, end: endId },
-        count: currentItems.length,
-        items: currentItems,
-      };
-
-      if (dryRun) {
-        bundles.push({ range: `${pad4(startId)}-${pad4(endId)}`, status: "dryrun-skip-upload" });
-      } else {
-        const url = await uploadBundleJson(startId, endId, bundleObj, overwrite);
-        bundles.push({ range: `${pad4(startId)}-${pad4(endId)}`, status: "uploaded", url });
-      }
-
-      currentBundleStart = null;
-      currentItems = [];
+  // ---------- Debug panel (optional) ----------
+  function ensureUiRoot() {
+    if (!DEBUG_UI) return null;
+
+    let root = document.getElementById("vp-root");
+    if (root) return root;
+
+    root = document.createElement("div");
+    root.id = "vp-root";
+    root.style.border = "2px solid #333";
+    root.style.borderRadius = "12px";
+    root.style.padding = "12px";
+    root.style.margin = "12px 0";
+    root.style.background = "#fff";
+    root.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    root.style.fontSize = "14px";
+
+    document.body.insertBefore(root, document.body.firstChild);
+
+    const title = document.createElement("div");
+    title.style.fontWeight = "700";
+    title.textContent = `Voice Patient Debug Panel (${VERSION})`;
+    root.appendChild(title);
+
+    const meta = document.createElement("div");
+    meta.id = "vp-meta";
+    meta.style.marginTop = "6px";
+    meta.style.opacity = "0.9";
+    root.appendChild(meta);
+
+    const timer = document.createElement("div");
+    timer.id = "vp-timer";
+    timer.style.marginTop = "6px";
+    timer.style.fontWeight = "700";
+    timer.style.color = "#1565C0";
+    root.appendChild(timer);
+
+    const btnRow = document.createElement("div");
+    btnRow.style.display = "flex";
+    btnRow.style.gap = "8px";
+    btnRow.style.marginTop = "10px";
+
+    const btnFetch = document.createElement("button");
+    btnFetch.textContent = "Fetch grading now";
+    btnFetch.onclick = () => pollGradingOnce(true);
+    btnRow.appendChild(btnFetch);
+
+    const btnClear = document.createElement("button");
+    btnClear.textContent = "Clear debug";
+    btnClear.onclick = () => {
+      const pre = document.getElementById("vp-debug");
+      if (pre) pre.textContent = "";
     };
+    btnRow.appendChild(btnClear);
 
-    for (let caseId = startFrom; caseId <= endAt; caseId++) {
-      if (processed.length >= limit) break;
+    root.appendChild(btnRow);
 
-      try {
-        const { tableName, caseText, recordCount } = await getCaseText(caseId);
+    const debug = document.createElement("pre");
+    debug.id = "vp-debug";
+    debug.style.whiteSpace = "pre-wrap";
+    debug.style.marginTop = "10px";
+    debug.style.padding = "10px";
+    debug.style.border = "1px solid #ddd";
+    debug.style.borderRadius = "10px";
+    debug.style.maxHeight = "220px";
+    debug.style.overflow = "auto";
+    debug.style.background = "#fafafa";
+    root.appendChild(debug);
 
-        if (!caseText.trim()) {
-          const item = { caseId, tableName, recordCount, status: "no-text" };
-          processed.push(item);
-          if (currentBundleStart == null) currentBundleStart = caseId;
-          currentItems.push(item);
-          if (currentItems.length >= bundleSize) await flushBundle();
-          continue;
-        }
+    const grading = document.createElement("pre");
+    grading.id = "gradingOutput";
+    grading.style.whiteSpace = "pre-wrap";
+    grading.style.marginTop = "10px";
+    grading.style.padding = "10px";
+    grading.style.border = "1px solid #0a0";
+    grading.style.borderRadius = "10px";
+    grading.style.background = "#f6fff6";
+    grading.textContent = "Grading will appear here after you stop the consultation.";
+    root.appendChild(grading);
 
-        if (dryRun) {
-          const item = { caseId, tableName, recordCount, status: "dryrun-ok" };
-          processed.push(item);
-          if (currentBundleStart == null) currentBundleStart = caseId;
-          currentItems.push(item);
-          if (currentItems.length >= bundleSize) await flushBundle();
-          continue;
-        }
+    updateMeta();
+    return root;
+  }
 
-        const input = await getInstructionFields(caseId);
+  function updateMeta(extra = {}) {
+    if (!DEBUG_UI) return;
 
-        const main = await generateMain(caseText, input, caseId);
-        const cuesArr = await generateCuesVerified(caseText, input, caseId);
+    const meta = document.getElementById("vp-meta");
+    if (!meta) return;
 
-        const output = {
-          instructions: main.instructions,
-          opening_line: main.opening_line,
-          patient_cues: joinCuesToParagraph(cuesArr),
-          patient_cues_array: cuesArr, // keep for debugging/traceability (optional)
-        };
+    const { userId, email } = getIdentity();
 
-        const item = {
-          caseId,
-          tableName,
-          recordCount,
-          // Keep both full case text and inputs for traceability.
-          // If you want smaller blob files, you can remove these two lines.
-          input,
-          // caseText,
-          output,
-        };
+    meta.textContent =
+      `origin=${window.location.origin} | api=${API_BASE} | sessionId=${currentSessionId || "(none)"}` +
+      ` | tries=${gradingPollTries}/${GRADING_POLL_MAX_TRIES}` +
+      ` | userId=${userId || "(none)"} | email=${email || "(none)"}` +
+      ` | state=${uiState}` +
+      (extra.note ? ` | ${extra.note}` : "");
+  }
 
-        processed.push({ caseId, status: "done", tableName, recordCount });
+function setCountdownText(text) {
+  const el = document.getElementById("vpTimer");
+  if (el) el.textContent = text || "";
+}
 
-        if (debug) {
-          return res.status(200).json({ ok: true, debug: true, item, model: TEXT_MODEL_USED });
-        }
+  function setStatus(text) {
+    const el = $("status");
+    if (el) el.textContent = text;
+    updateMeta({ note: text });
+    uiEmit({ status: text, sessionId: currentSessionId, state: uiState, glow: lastGlow });
+  }
 
-        if (currentBundleStart == null) currentBundleStart = caseId;
-        currentItems.push(item);
-        if (currentItems.length >= bundleSize) await flushBundle();
+  function setUiConnected(connected) {
+    const startBtn = $("startBtn");
+    const stopBtn = $("stopBtn");
 
-        await sleep(150);
-      } catch (e: any) {
-        const item = { caseId, status: "error", error: extractErr(e) };
-        processed.push(item);
-
-        if (currentBundleStart == null) currentBundleStart = caseId;
-        currentItems.push(item);
-        if (currentItems.length >= bundleSize) await flushBundle();
-      }
+    if (startBtn) {
+      startBtn.disabled = vpIsStarting || stoppingNow;
+      startBtn.textContent = connected ? "Stop Case" : "Start Case";
+      startBtn.setAttribute("data-mode", connected ? "stop" : "start");
+      startBtn.setAttribute("aria-pressed", connected ? "true" : "false");
     }
 
-    await flushBundle();
+    if (stopBtn) stopBtn.disabled = true;
+  }
 
-    return res.status(200).json({
-      ok: true,
-      startFrom,
-      endAt,
-      limit,
-      bundleSize,
-      dryRun,
-      overwrite,
-      model: TEXT_MODEL_USED,
-      temperature: TEMPERATURE,
-      processedCount: processed.length,
-      processed,
-      bundles,
+async function fetchJson(url, options) {
+  const resp = await fetch(url, options);
+  const text = await resp.text();
+
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch {}
+
+  if (!resp.ok) {
+    const msg = (data && (data.error || data.message)) || `HTTP ${resp.status}`;
+    const err = new Error(msg);
+    err.status = resp.status;
+    err.data = data;
+    err.url = url;
+    throw err;
+  }
+
+  return data;
+}
+
+
+  // ---------------- Countdown helpers ----------------
+  function formatMMSS(totalSeconds) {
+    const s = Math.max(0, Math.floor(totalSeconds));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+  }
+
+  function stopCountdown(reason = "") {
+    if (countdownTimer) clearInterval(countdownTimer);
+    countdownTimer = null;
+    countdownEndsAt = null;
+    countdownHasStarted = false;
+    if (DEBUG_UI) {
+      if (reason) setCountdownText(`Timer stopped (${reason})`);
+      else setCountdownText("");
+    }
+  }
+
+  function startCountdown(seconds = MAX_SESSION_SECONDS) {
+    stopCountdown("restart");
+    countdownEndsAt = Date.now() + seconds * 1000;
+
+    const tick = () => {
+      const remainingMs = countdownEndsAt - Date.now();
+      const remainingSec = Math.ceil(remainingMs / 1000);
+
+      setCountdownText(`Time left: ${formatMMSS(remainingSec)}`);
+
+        // ✅ emit remaining seconds (NO colour logic here)
+  uiEmit({ timerRemainingSec: remainingSec });
+
+      if (remainingSec <= 0) {
+        stopCountdown("time limit reached");
+        stopConsultation(true).catch(() => {});
+      }
+    };
+
+    tick();
+    countdownTimer = setInterval(tick, 250);
+  }
+
+  // ---------- MemberSpace identity (robust) ----------
+  let msMember = null;
+
+  function setMsMember(mi, source = "unknown") {
+    if (!mi) return;
+    const id = mi?.id != null ? String(mi.id).trim() : "";
+    const email = mi?.email ? String(mi.email).trim().toLowerCase() : "";
+    if (!id && !email) return;
+    msMember = { ...mi, id, email };
+    window.__msMemberInfo = msMember;
+    log("[MEMBERSPACE] identity set", { source, id, email });
+    updateMeta();
+  }
+
+  function tryHydrateFromMemberSpaceGetter() {
+    try {
+      const MS = window.MemberSpace;
+      if (!MS || typeof MS.getMemberInfo !== "function") return false;
+      const data = MS.getMemberInfo();
+      if (data?.isLoggedIn && data?.memberInfo) {
+        setMsMember(data.memberInfo, "MemberSpace.getMemberInfo");
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  document.addEventListener("MemberSpace.member.info", (e) => {
+    const detail = e.detail || null;
+    const mi = detail?.memberInfo || detail;
+    setMsMember(mi, "MemberSpace.member.info");
+  });
+
+  document.addEventListener("MemberSpace.ready", () => {
+    tryHydrateFromMemberSpaceGetter();
+  });
+
+  if (window.__msMemberInfo) setMsMember(window.__msMemberInfo, "window.__msMemberInfo");
+  tryHydrateFromMemberSpaceGetter();
+
+  function getIdentity() {
+    const mi = msMember || window.__msMemberInfo || null;
+    const userId = mi?.id != null ? String(mi.id).trim() : "";
+    const email = mi?.email ? String(mi.email).trim().toLowerCase() : "";
+    return { userId, email };
+  }
+
+  async function ensureIdentity({ timeoutMs = 2500, intervalMs = 150 } = {}) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const { userId, email } = getIdentity();
+      if (userId || email) return { userId, email };
+      tryHydrateFromMemberSpaceGetter();
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return getIdentity();
+  }
+
+  // ---------------- Daily + Track meters ----------------
+  async function loadDailyJsOnce() {
+    if (window.Daily && typeof window.Daily.createCallObject === "function") return;
+
+    await new Promise((resolve, reject) => {
+      const existing = [...document.scripts].find((s) => (s.src || "").includes("@daily-co/daily-js"));
+      if (existing) return resolve();
+
+      const s = document.createElement("script");
+      s.crossOrigin = "anonymous";
+      s.src = DAILY_JS_SRC;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("Failed to load daily-js"));
+      document.head.appendChild(s);
     });
-  } catch (e: any) {
-    const status = e?.status || 500;
-    return res.status(status).json({ ok: false, error: e?.message || "Unknown error", status });
+  }
+
+  function ensureAudioContext() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
+    return audioCtx;
+  }
+
+  function ensureRemoteAudioElement() {
+    if (remoteAudioEl) return remoteAudioEl;
+    remoteAudioEl = document.createElement("audio");
+    remoteAudioEl.autoplay = true;
+    remoteAudioEl.playsInline = true;
+    remoteAudioEl.style.display = "none";
+    document.body.appendChild(remoteAudioEl);
+    return remoteAudioEl;
+  }
+
+  function destroyMeter(m) {
+    if (!m) return;
+    try { m.source.disconnect(); } catch {}
+    try { m.analyser.disconnect(); } catch {}
+  }
+
+  function makeMeterForTrack(track) {
+    if (!track) return null;
+    const ctx = ensureAudioContext();
+    const stream = new MediaStream([track]);
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.fftSize);
+    return { source, analyser, data };
+  }
+
+  function rmsFromMeter(m) {
+    if (!m) return 0;
+    m.analyser.getByteTimeDomainData(m.data);
+    let sum = 0;
+    for (let i = 0; i < m.data.length; i++) {
+      const v = (m.data[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / m.data.length);
+    return rms; // ~0..1 (usually small)
+  }
+
+  function setUiState(next) {
+    if (uiState === next) return;
+    uiState = next;
+    updateMeta();
+    log("[UI] state", { uiState });
+  }
+
+  function emitUi(state, glow) {
+    lastGlow = clamp01(glow);
+    uiEmit({
+      state,
+      glow: lastGlow,
+      localLevel: clamp01(smoothLocal * 8),  // scaled for debugging display only
+      remoteLevel: clamp01(smoothRemote * 8),
+      sessionId: currentSessionId,
+    });
+  }
+
+  function computeThresholds() {
+    // Adaptive thresholds above baseline noise
+    const localTh = Math.max(0.006, noiseLocal + 0.006);
+    const remoteTh = Math.max(0.005, noiseRemote + 0.005);
+    return { localTh, remoteTh };
+  }
+
+  function startLevelLoop() {
+    stopLevelLoop();
+    levelTimer = setInterval(() => {
+      const lr = rmsFromMeter(localMeter);
+      const rr = rmsFromMeter(remoteMeter);
+
+      localLevel = lr;
+      remoteLevel = rr;
+
+      // Update baselines only when near baseline (avoid learning speech as "noise")
+      if (lr < noiseLocal + 0.010) noiseLocal = noiseLocal * (1 - BASE_ALPHA) + lr * BASE_ALPHA;
+      if (rr < noiseRemote + 0.010) noiseRemote = noiseRemote * (1 - BASE_ALPHA) + rr * BASE_ALPHA;
+
+      smoothLocal += (lr - smoothLocal) * SMOOTHING;
+      smoothRemote += (rr - smoothRemote) * SMOOTHING;
+
+      const { localTh, remoteTh } = computeThresholds();
+
+      const now = Date.now();
+      let state = uiState;
+      let glow = 0.18;
+            // If agent hasn't joined yet, keep UI in waiting and don't run talk/listen/thinking logic
+      if (!agentPresent) {
+        if (uiState !== "waiting") setUiState("waiting");
+        emitUi("waiting", 0.16);
+        return;
+      }
+
+      // Prioritize bot talking over listening to avoid echo picking up
+      if (smoothRemote > remoteTh) {
+        state = "talking";
+        glow = 0.16 + Math.min(0.8, smoothRemote * 10);
+        holdUntilMs = now + HOLD_MS;
+      } else if (smoothLocal > localTh) {
+        state = "listening";
+        glow = 0.14 + Math.min(0.7, smoothLocal * 10);
+        holdUntilMs = now + HOLD_MS;
+      } else if (now < holdUntilMs) {
+        // keep last state briefly
+        state = uiState;
+        glow = lastGlow;
+      } else {
+        state = "thinking";
+        glow = 0.18;
+      }
+
+      if (state !== uiState) setUiState(state);
+      emitUi(state, glow);
+    }, LEVEL_SAMPLE_MS);
+  }
+
+  function stopLevelLoop() {
+    if (levelTimer) clearInterval(levelTimer);
+    levelTimer = null;
+  }
+
+  function tryAttachLocalMeter() {
+    if (!callObject) return false;
+    const parts = callObject.participants?.() || {};
+    const t =
+      parts?.local?.tracks?.audio?.persistentTrack ||
+      parts?.local?.tracks?.audio?.track ||
+      null;
+
+    if (!t) return false;
+
+    destroyMeter(localMeter);
+    localMeter = makeMeterForTrack(t);
+    return !!localMeter;
+  }
+
+  async function mountDailyCustomAudio(dailyRoom, dailyToken) {
+    await loadDailyJsOnce();
+    await unmountDailyCustomAudio({ suppressIdleEmit: true });
+
+    // Create call object
+    callObject = window.Daily.createCallObject({
+      startVideoOff: true,
+      startAudioOff: false,
+    });
+
+    // Daily meeting lifecycle -> stable "connected" truth
+callObject.on("joining-meeting", () => { dailyConnected = true; });
+callObject.on("joined-meeting",  () => { dailyConnected = true; });
+callObject.on("left-meeting",    () => { dailyConnected = false; });
+
+    // Presence gating: track when the remote agent joins/leaves
+callObject.on("participant-joined", () => refreshPresenceAndUi());
+callObject.on("participant-left",  () => refreshPresenceAndUi());
+callObject.on("participant-updated", () => refreshPresenceAndUi());
+
+    // ✅ DEBUG: expose callObject so we can inspect tracks from browser console
+window.__vpCallObject = callObject;
+console.log("[VP] callObject exposed as window.__vpCallObject");
+
+
+    callObject.on("error", (e) => {
+      log("[DAILY] error", e);
+      setUiState("error");
+      setStatus("Daily error (add ?vpdebug=1 to see details).");
+      emitUi("error", 0.20);
+    });
+
+    // Track handling: remote audio playback + meter
+    callObject.on("track-started", (ev) => {
+      try {
+        const { track, participant } = ev || {};
+        if (!track || track.kind !== "audio") return;
+        if (!participant || participant.local) return;
+
+        currentRemoteTrack = track;
+
+        const audio = ensureRemoteAudioElement();
+        audio.srcObject = new MediaStream([track]);
+        audio.play?.().catch(() => {}); // should be allowed (triggered by user Start click)
+
+        destroyMeter(remoteMeter);
+        remoteMeter = makeMeterForTrack(track);
+
+        // If loop was running but remote meter was missing, it will now react
+      } catch (e) {
+        log("[DAILY] track-started handler error", { error: e?.message || String(e) });
+      }
+    });
+
+    callObject.on("track-stopped", (ev) => {
+      try {
+        const { track, participant } = ev || {};
+        if (!track || track.kind !== "audio") return;
+        if (!participant || participant.local) return;
+
+        // Only clear if it is the SAME track we attached (prevents accidental mid-sentence clears)
+        if (currentRemoteTrack && track === currentRemoteTrack) {
+          currentRemoteTrack = null;
+          if (remoteAudioEl) remoteAudioEl.srcObject = null;
+          destroyMeter(remoteMeter);
+          remoteMeter = null;
+        }
+      } catch {}
+    });
+
+    // Join
+    await callObject.join({ url: dailyRoom, token: dailyToken });
+    // Update presence immediately after join (agent may or may not be in yet)
+    refreshPresenceAndUi();
+    vpIsStarting = false;
+
+    // Make sure audio context is running (must be after user gesture)
+    ensureAudioContext();
+
+    // Ensure local audio is on
+    try { callObject.setLocalAudio?.(true); } catch {}
+
+    // Attach local meter (or wait until audio track appears)
+    if (!tryAttachLocalMeter()) {
+      const onPU = () => {
+        if (tryAttachLocalMeter()) {
+          callObject.off?.("participant-updated", onPU);
+        }
+      };
+      callObject.on("participant-updated", onPU);
+    }
+
+    // Reset levels and start UI loop
+    localLevel = remoteLevel = 0;
+    smoothLocal = smoothRemote = 0;
+    noiseLocal = noiseRemote = 0.0025;
+    holdUntilMs = 0;
+
+setUiState("waiting");
+emitUi("waiting", 0.16);
+startLevelLoop();
+  }
+
+  async function unmountDailyCustomAudio({ suppressIdleEmit = false } = {}) {
+    stopLevelLoop();
+
+    destroyMeter(localMeter);
+    destroyMeter(remoteMeter);
+    localMeter = null;
+    remoteMeter = null;
+
+    currentRemoteTrack = null;
+
+    if (remoteAudioEl) {
+      try { remoteAudioEl.srcObject = null; remoteAudioEl.remove(); } catch {}
+      remoteAudioEl = null;
+    }
+
+    if (callObject) {
+      try { await callObject.leave(); } catch {}
+      try { callObject.destroy?.(); } catch {}
+      callObject = null;
+    }
+    dailyConnected = false;
+
+    remotePresent = false;
+agentPresent = false;
+waitingSinceMs = 0;
+    
+    if (!suppressIdleEmit) {
+    uiState = "idle";
+    emitUi("idle", 0.15);
+}
+  }
+
+  // On-demand debug — no spam
+  window.vpDebugLevels = () => {
+    const th = computeThresholds();
+    return {
+      state: uiState,
+      localLevel,
+      remoteLevel,
+      smoothLocal,
+      smoothRemote,
+      noiseLocal,
+      noiseRemote,
+      localTh: th.localTh,
+      remoteTh: th.remoteTh,
+      hasCall: !!callObject,
+      hasLocalMeter: !!localMeter,
+      hasRemoteMeter: !!remoteMeter,
+    };
+  };
+
+  // ---------- Cases ----------
+  async function populateCaseDropdown() {
+    const sel = $("caseSelect");
+    if (!sel) return;
+
+    sel.innerHTML = `<option>Loading cases…</option>`;
+
+    try {
+      const data = await fetchJson(`${API_BASE}/api/cases`, {
+        method: "GET",
+        cache: "no-store",
+        mode: "cors",
+      });
+
+      if (!data?.ok || !Array.isArray(data.cases)) throw new Error("Invalid /api/cases response");
+
+      sel.innerHTML = "";
+      for (const n of data.cases) {
+        const opt = document.createElement("option");
+        opt.value = String(n);
+        opt.textContent = `Case ${n}`;
+        sel.appendChild(opt);
+      }
+
+      if (data.cases.length) sel.value = String(data.cases[data.cases.length - 1]);
+    } catch (e) {
+      sel.innerHTML = `<option>Error loading cases</option>`;
+      log("[CASES] error", { error: e?.message || String(e) });
+    }
+  }
+
+  // ---------- Grading ----------
+  function stopGradingPoll(reason = "") {
+    if (gradingPollTimer) clearInterval(gradingPollTimer);
+    gradingPollTimer = null;
+    gradingPollTries = 0;
+    updateMeta();
+    log("[GRADING] polling stopped", { reason });
+  }
+
+  function isMeaningfulText(s) {
+    const t = String(s || "");
+    return t.trim().length >= 20;
+  }
+
+  async function pollGradingOnce(manual = false, { force = false } = {}) {
+    if (DEBUG_UI) ensureUiRoot();
+
+    const out = document.getElementById("gradingOutput");
+    if (out && !DEBUG_UI) {
+      // If you want grading visible without debug panel, add <pre id="gradingOutput"></pre> to your page.
+    }
+
+    if (!currentSessionId) {
+      if (out) out.textContent = "No sessionId yet — start a consultation first.";
+      return;
+    }
+
+    const url =
+      `${API_BASE}/api/get-grading?sessionId=${encodeURIComponent(currentSessionId)}` +
+      (force ? `&force=1` : "");
+
+    try {
+      const data = await fetchJson(url, { method: "GET", cache: "no-store", mode: "cors" });
+
+      if (!data.found) {
+        if (out) out.textContent = "No attempt found yet… (waiting for transcript submit)";
+        return;
+      }
+
+      const gradingText = String(data.gradingText || "");
+      const ready = !!data.ready;
+
+      if (ready && !isMeaningfulText(gradingText)) {
+        readyEmptyCount += 1;
+        const willForceNext = readyEmptyCount >= 2;
+
+        if (out) out.textContent = "Grading finishing…";
+        setStatus("Stopped. Grading finishing…");
+        setGradingBtnState("in_progress");
+
+        if (willForceNext) {
+          await pollGradingOnce(false, { force: true });
+        }
+        return;
+      }
+
+if (ready && gradingText) {
+  if (out) out.textContent = gradingText;
+
+  vpLastGradingText = gradingText;
+  vpLastGradingSessionId = currentSessionId;
+
+  setGradingBtnState("ready");
+  setStatus("Grading ready.");
+  stopGradingPoll("ready");
+  return;
+}
+
+      if (out) out.textContent = "Grading in progress…";
+      setStatus("Stopped. Grading in progress…");
+      setGradingBtnState("in_progress");
+    } catch (e) {
+      if (out) out.textContent = "Error fetching grading: " + (e?.message || String(e));
+      stopGradingPoll("error");
+      setGradingBtnState("hidden");
+      log("[GRADING] fetch error", { error: e?.message || String(e) });
+    }
+  }
+
+  function startFiniteGradingPoll() {
+    stopGradingPoll("restart");
+    gradingPollTries = 0;
+    readyEmptyCount = 0;
+
+    const out = document.getElementById("gradingOutput");
+    if (out) out.textContent = "Grading in progress…";
+
+    gradingPollTimer = setInterval(async () => {
+      gradingPollTries++;
+      updateMeta();
+      await pollGradingOnce(false);
+      if (gradingPollTries >= GRADING_POLL_MAX_TRIES) {
+        if (out) out.textContent =
+          "Still grading… (timed out waiting). Click “Fetch grading now” (with ?vpdebug=1) or refresh.";
+        stopGradingPoll("timeout");
+        setGradingBtnState("in_progress");
+      }
+    }, GRADING_POLL_INTERVAL_MS);
+
+    pollGradingOnce(false);
+  }
+
+
+  // ---------- Start/Stop ----------
+  async function startConsultation() {
+    if (DEBUG_UI) ensureUiRoot();
+
+      const myRun = ++startRunId;   // claim this start attempt
+  stoppingNow = false;          // allow starting even if a previous stop happened
+  const stillCurrent = () => myRun === startRunId && !stoppingNow;
+
+    stopGradingPoll("new session");
+    stopCountdown("new session");
+    vpLastGradingText = "";
+vpLastGradingSessionId = null;
+setGradingBtnState("hidden");
+
+    const out = document.getElementById("gradingOutput");
+    if (out) out.textContent = "Grading will appear here after you stop the consultation.";
+
+    currentSessionId = null;
+    updateMeta();
+
+    try {
+      setUiConnected(true);
+      
+      vpIsStarting = true;
+      setUiState("connecting");
+      emitUi("connecting", 0.15);
+      setStatus(`Starting session (${getCaseLabel()})…`);
+
+const urlCase = getCaseIdFromUrl();
+const caseId = urlCase || 1;
+
+
+      const { userId, email } = await ensureIdentity({ timeoutMs: 2500, intervalMs: 150 });
+      if (!stillCurrent()) return;
+      if (!userId && !email) {
+  vpIsStarting = false;
+  setStatus("Couldn't detect MemberSpace login. Refresh the page, then try again.");
+  setUiConnected(false);
+  return;
+}
+
+      const mode = getSelectedMode();
+
+      // IMPORTANT: this click path is what unlocks autoplay + AudioContext
+      ensureAudioContext();
+
+      const credits = await fetchJson(
+  `${API_BASE}/api/credits?userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(email)}&mode=${encodeURIComponent(mode)}`,
+  { method: "GET", cache: "no-store", mode: "cors" }
+);
+      if (!stillCurrent()) return;
+
+if (!credits?.canStart) {
+  vpIsStarting = false;
+  setStatus(`Not enough credits for ${mode}. You have ${credits.creditsRemaining}, need ${credits.required}.`);
+  setUiConnected(false);
+  return;
+}
+
+
+// Build payload (includes mode + optional agent)
+const payload = { caseId, userId, email, mode };
+
+const agent = getForcedAgent();
+if (agent) payload.agent = agent;
+
+const data = await fetchJson(`${API_BASE}/api/start-session`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(payload),
+  mode: "cors",
+});
+      if (!stillCurrent()) return;
+
+
+      // Avatar is loaded on page load by bot-page.bundle.js — no avatar updates needed here.
+
+
+      if (!data?.ok) throw new Error(data?.error || "Start failed");
+      if (!data.dailyRoom || !data.dailyToken) throw new Error("Missing dailyRoom/dailyToken");
+
+      currentSessionId = data.sessionId || null;
+      updateMeta();
+
+      setStatus(`Connecting audio (${getCaseLabel()})…`);
+      setUiState("connecting");
+emitUi("connecting", 0.15);
+      if (!stillCurrent()) return;
+await mountDailyCustomAudio(data.dailyRoom, data.dailyToken);
+if (!stillCurrent()) return;
+
+      
+      setStatus(`Connected (${getCaseLabel()}). Talk, then press Stop.`);
+} catch (e) {
+      vpIsStarting = false;
+  // ✅ Credits gate from /api/start-session
+  if (e?.status === 402) {
+    const available = e?.data?.credits?.available;
+    const required  = e?.data?.credits?.required;
+    const mode      = e?.data?.credits?.mode || getSelectedMode();
+
+    const msg =
+      `Unable to start: insufficient credits. Please top up before beginning.` +
+      (Number.isFinite(available) && Number.isFinite(required)
+        ? ` (You have ${available}, need ${required} for ${mode}.)`
+        : "");
+
+    setStatus(msg);          // <- this automatically updates your #sca-status via vp:ui
+    setUiConnected(false);
+    return;
+  }
+
+  setStatus("Error starting. Add ?vpdebug=1 for details.");
+  setUiConnected(false);
+  await unmountDailyCustomAudio();
+  setGradingBtnState("in_progress");
+  stopCountdown("start failed");
+  log("[START] error", { error: e?.message || String(e), status: e?.status, data: e?.data });
+}
+
+  }
+
+async function stopConsultation(auto = false) {
+  if (DEBUG_UI) ensureUiRoot();
+
+  // Ignore repeated stop clicks while a stop is already running
+  if (stoppingNow) return;
+  stoppingNow = true;
+
+  // Cancel any in-flight startConsultation() immediately
+  startRunId++;
+
+  try {
+    stopCountdown(auto ? "auto stop" : "manual stop");
+
+    // On stop we want UI to return to idle, so do NOT suppress idle emit
+    await unmountDailyCustomAudio();
+
+    setUiConnected(false);
+    setStatus(auto ? "Time limit reached. Grading in progress…" : "Stopped. Grading in progress…");
+
+    if (currentSessionId) startFiniteGradingPoll();
+    else {
+      const out = document.getElementById("gradingOutput");
+      if (out) out.textContent = "No sessionId available; cannot fetch grading.";
+    }
+  } finally {
+    // Always release the stop lock even if Daily throws
+    stoppingNow = false;
+    setUiConnected(false);
   }
 }
+
+  // ---------- Boot ----------
+window.addEventListener("DOMContentLoaded", () => {
+  if (DEBUG_UI) ensureUiRoot();
+
+  // Wait for required elements to exist (bundle might mount after DOMContentLoaded)
+  function findUiEls() {
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn  = document.getElementById("stopBtn");
+    const status   = document.getElementById("status");
+    return { startBtn, stopBtn, status };
+  }
+
+  function bindOnce() {
+    const { startBtn, stopBtn, status } = findUiEls();
+
+    // If multiple exist (duplicate IDs), pick the visible one
+    const pickVisible = (id) => {
+      const els = Array.from(document.querySelectorAll(`#${CSS.escape(id)}`));
+      return els.find((el) => el.offsetParent !== null) || els[0] || null;
+    };
+
+    const sBtn = pickVisible("startBtn");
+    const xBtn = pickVisible("stopBtn");
+    const stEl = pickVisible("status");
+
+    const ok = !!(sBtn && stEl);
+    if (!ok) return false;
+
+    // Prevent double-binding if code runs twice
+    if (window.__vpBound) return true;
+    window.__vpBound = true;
+
+    // Swap to the visible ones
+    // (so the rest of the script's helpers still work)
+    // NOTE: your helpers use $(id) each time, so this is just sanity.
+    log("[BOOT] binding UI elements", {
+      startBtn: !!sBtn, stopBtn: !!xBtn, status: !!stEl
+    });
+
+    sBtn.addEventListener("click", () => {
+      if (dailyConnected) {
+        stopConsultation(false).catch(() => {});
+        return;
+      }
+      startConsultation();
+    });
+
+    window.addEventListener("beforeunload", () => {
+      try { unmountDailyCustomAudio(); } catch {}
+    });
+
+    // ---- grading button click -> open /grading in new tab ----
+const gBtn = document.getElementById("gradingBtn");
+if (gBtn && !gBtn.__vpBound) {
+  gBtn.__vpBound = true;
+  gBtn.addEventListener("click", () => {
+    if (!currentSessionId) return;
+    const url = `${window.location.origin}/grading?sessionId=${encodeURIComponent(currentSessionId)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
+}
+setGradingBtnState("hidden");
+
+// Only show idle if we're truly not connected to Daily AND not mid-start
+if (!dailyConnected && !callObject && !vpIsStarting) {
+  setUiConnected(false);
+  setStatus("Not connected");
+  uiEmit({ state: "idle", glow: 0.15, status: "Waiting…", sessionId: null });
+}
+
+    populateCaseDropdown();
+    setCountdownText("");
+    return true;
+  }
+
+  // Try immediately
+  if (bindOnce()) return;
+
+  // Otherwise observe until UI appears
+  const obs = new MutationObserver(() => {
+    if (bindOnce()) obs.disconnect();
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true });
+
+  // Also try a small timed retry (Squarespace can be weird)
+  setTimeout(() => { bindOnce(); }, 250);
+  setTimeout(() => { bindOnce(); }, 1000);
+});
+})();
