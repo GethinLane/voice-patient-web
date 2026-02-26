@@ -540,7 +540,7 @@
   border-left: 4px solid rgba(64, 99, 180, .55);
 }
 
-/* ---------------- Plan tabs (kept from your original) ---------------- */
+/* ---------------- Plan tabs ---------------- */
 #scaBotPageRoot.sca-botpage .sca-planBar{
   margin: 0 6px 12px;
 }
@@ -549,7 +549,7 @@
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  border-radius: 0; /* square outer */
+  border-radius: 0;
   overflow: visible;
   border: 1px solid rgba(37,53,81,.18);
   background: rgba(255,255,255,.70);
@@ -576,6 +576,66 @@
   align-items: center;
   justify-content: center;
   border-radius: 0;
+}
+
+/* Divider between tabs (label + input + label order) */
+#scaBotPageRoot.sca-botpage .sca-planTab + input + label{
+  border-left: 1px solid rgba(37,53,81,.14);
+}
+
+/* Selected tab */
+#scaBotPageRoot.sca-botpage #vpModeStandard:checked + label,
+#scaBotPageRoot.sca-botpage #vpModePremium:checked + label{
+  background: #d6dde9;
+  color: #253551;
+}
+
+#scaBotPageRoot.sca-botpage #vpModeStandard:checked + label .sca-planTabText,
+#scaBotPageRoot.sca-botpage #vpModePremium:checked + label .sca-planTabText{
+  color: #253551;
+}
+
+/* Credits sub-tab (THIS is the bit you mean) */
+#scaBotPageRoot.sca-botpage .sca-planCostTag{
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+
+  padding: 7px 12px;
+  border-radius: 0 0 12px 12px;
+  font-size: 14px;
+  font-weight: 500;
+
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: rgba(37,53,81,.70);
+
+  display: none; /* hidden until selected */
+}
+
+#scaBotPageRoot.sca-botpage #vpModeStandard:checked + label .sca-planCostTag,
+#scaBotPageRoot.sca-botpage #vpModePremium:checked + label .sca-planCostTag{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #d6dde9;
+  color: #253551;
+}
+
+#scaBotPageRoot.sca-botpage .sca-planCredits{
+  font-weight: inherit;
+  color: inherit;
+}
+
+#scaBotPageRoot.sca-botpage .sca-planUnderline{
+  height: 2px;
+  width: 100%;
+  margin-top: 18px;
+  border-radius: 0;
+  background: rgba(37,53,81,.14);
 }
 
 /* Divider between tabs (label + input + label order) */
