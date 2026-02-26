@@ -1,0 +1,629 @@
+/* =========================================================
+   SCA Bot Page (Split Cards) — NEW CSS
+   Targets TWO independent blocks:
+   - #scaBotCardRoot  (left/bot card)
+   - #scaInfoCardRoot (right/patient info card)
+   No shared wrapper required.
+   ========================================================= */
+
+/* ---------- Page background ---------- */
+body.sca-botpage{
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background:
+    radial-gradient(1100px 700px at 18% 22%, rgba(171, 129, 255, 0.20), rgba(255,255,255,0) 55%),
+    radial-gradient(900px 600px at 60% 18%, rgba(108, 220, 255, 0.16), rgba(255,255,255,0) 60%),
+    radial-gradient(900px 600px at 30% 60%, rgba(255, 160, 210, 0.14), rgba(255,255,255,0) 60%),
+    #f3f5f8;
+}
+
+/* ---------- Shared theme + card shell ---------- */
+body.sca-botpage #scaBotCardRoot,
+body.sca-botpage #scaInfoCardRoot{
+  --sca-ink: #253551;
+  --sca-muted: rgba(37,53,81,.72);
+  --sca-border: rgba(37,53,81,.12);
+  --sca-surface: rgba(255,255,255,.68);
+  --sca-shadow: 0 18px 55px rgba(17, 24, 39, .10);
+
+  box-sizing: border-box;
+  color: var(--sca-ink);
+}
+
+body.sca-botpage #scaBotCardRoot *,
+body.sca-botpage #scaInfoCardRoot *{
+  box-sizing: border-box;
+}
+
+body.sca-botpage .sca-cardShell{
+  padding: 26px;
+  border-radius: 28px;
+  background: var(--sca-surface);
+  border: 1px solid rgba(255,255,255,.55);
+  box-shadow: var(--sca-shadow);
+  backdrop-filter: blur(14px);
+}
+
+@media (max-width: 720px){
+  body.sca-botpage .sca-cardShell{
+    padding: 14px;
+    border-radius: 18px;
+  }
+}
+
+/* =========================================================
+   BOT CARD (LEFT)
+   ========================================================= */
+
+#scaBotCardRoot .sca-left{
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  position: relative;
+}
+
+/* ---------- Patient card header ---------- */
+#sca-patient-card{
+  background: transparent;
+}
+
+#sca-patient-card .sca-header{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* Badge */
+#sca-patient-card .sca-badge{
+  font-size: 14px;
+  font-weight: 800;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,.12);
+  white-space: nowrap;
+}
+
+#sca-patient-card .sca-badge-idle{
+  background: #d6dde9;
+  color: #253551;
+  border-color: rgba(37,53,81,.18);
+  opacity: .90;
+}
+
+#sca-patient-card .sca-badge-thinking{
+  background:#eef4ff;
+  color:#1c4fb8;
+  border-color: rgba(28,79,184,.25);
+}
+#sca-patient-card .sca-badge-listening{
+  background:#eaf8f0;
+  color:#0c6a3b;
+  border-color: rgba(12,106,59,.25);
+}
+#sca-patient-card .sca-badge-talking{
+  background:#fff1f3;
+  color:#b0123a;
+  border-color: rgba(176,18,58,.25);
+}
+
+/* ---------- Wake toggle (header right) ---------- */
+#sca-patient-card .wake-toggle--header{
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#sca-patient-card .wake-miniLabel{
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(37,53,81,.72);
+  white-space: nowrap;
+}
+
+#sca-patient-card .wake-miniWrap{
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+
+/* Hide on desktop, show on <=1024px */
+@media (min-width: 1025px){
+  #sca-patient-card .wake-toggle--header{ display: none !important; }
+}
+@media (max-width: 1024px){
+  #sca-patient-card .wake-toggle--header{ display: inline-flex !important; }
+}
+
+/* checkbox (invisible but clickable) */
+#sca-patient-card #wakeSwitch{
+  position: absolute;
+  opacity: 0;
+  width: 52px;
+  height: 34px;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* track */
+#sca-patient-card .wake-switch{
+  width: 52px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(37,53,81,.18);
+  background: rgba(255,255,255,.70);
+  box-shadow: 0 10px 26px rgba(17,24,39,.08);
+  position: relative;
+  display: inline-block;
+}
+
+/* knob */
+#sca-patient-card .wake-switch::after{
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #253551;
+  transition: transform .15s ease;
+}
+
+#sca-patient-card #wakeSwitch:checked + .wake-switch{
+  background: #d6dde9;
+  border-color: rgba(37,53,81,.24);
+}
+#sca-patient-card #wakeSwitch:checked + .wake-switch::after{
+  transform: translate(18px, -50%);
+}
+
+/* hide the long label text (keep for JS updates) */
+#sca-patient-card #wakeLabel{
+  display: none !important;
+}
+
+/* wake note */
+#sca-patient-card .wake-note--header{
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(37,53,81,.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+
+/* ---------- Orb / avatar ---------- */
+#sca-patient-card .sca-avatarWrap{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 0 6px;
+  margin-bottom: 22px; /* breathing room before name */
+}
+
+#sca-patient-card .sca-ring{
+  --orb-bleed: 24px;
+  width: 304px;
+  height: 304px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow: visible;
+  background: transparent;
+}
+
+#sca-patient-card .sca-orbCanvas{
+  position: absolute;
+  inset: calc(var(--orb-bleed) * -1);
+  width: calc(100% + (var(--orb-bleed) * 2));
+  height: calc(100% + (var(--orb-bleed) * 2));
+  z-index: 5;
+  opacity: 1;
+  filter: none;
+}
+
+#sca-patient-card .sca-avatar{
+  width: 304px;
+  height: 304px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #fff;
+  position: relative;
+  z-index: 1;
+  border: 0;
+}
+
+#sca-patient-card .sca-avatar img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Desktop: ~30% bigger */
+@media (min-width: 981px){
+  #sca-patient-card .sca-ring{
+    width: 395px;
+    height: 395px;
+    --orb-bleed: 30px; /* extra canvas bleed */
+  }
+  #sca-patient-card .sca-avatar{
+    width: 395px;
+    height: 395px;
+  }
+}
+
+/* Mobile sizing */
+@media (max-width: 720px){
+  #sca-patient-card .sca-ring{
+    --orb-bleed: 16px;
+    width: min(90vw, 256px);
+    height: min(90vw, 256px);
+  }
+  #sca-patient-card .sca-avatar{
+    width: min(90vw, 256px);
+    height: min(90vw, 256px);
+  }
+}
+@media (max-width: 420px){
+  #sca-patient-card .sca-ring{
+    width: min(92vw, 224px);
+    height: min(92vw, 224px);
+  }
+  #sca-patient-card .sca-avatar{
+    width: min(92vw, 224px);
+    height: min(92vw, 224px);
+  }
+}
+
+/* Image load state */
+#sca-avatar-img{ display: none; }
+#sca-avatar-img.is-loaded{ display: block; }
+#sca-avatar-img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 0;
+  outline: 0;
+}
+
+/* Prevent orb/canvas layers stealing clicks */
+#sca-patient-card .sca-avatarWrap,
+#sca-patient-card .sca-ring,
+#sca-patient-card .sca-avatar,
+#sca-patient-card .sca-ring::before,
+#sca-patient-card .sca-ring::after,
+#sca-patient-card .sca-orbCanvas{
+  pointer-events: none !important;
+}
+
+/* But allow controls to be clickable */
+#scaBotCardRoot .sca-controls,
+#scaBotCardRoot .sca-controls *{
+  pointer-events: auto;
+}
+
+/* ---------- Main meta (name/age + timer) ---------- */
+#scaBotCardRoot .sca-mainMeta{
+  margin-top: 6px;
+  padding: 0 6px 0;
+}
+
+#scaBotCardRoot .sca-mainIdentity{
+  display: grid;
+  grid-template-columns: 1fr max-content;
+  grid-template-rows: auto auto;
+  column-gap: 18px;
+  row-gap: 8px;
+  align-items: start;
+  min-width: 0;
+}
+
+#scaBotCardRoot #sca-mainName{
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: var(--sca-ink);
+  font-size: clamp(30px, 3.6vw, 46px);
+  margin-top: 2px;
+}
+
+#scaBotCardRoot .sca-mainAge{
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+
+  color: var(--sca-muted);
+  font-weight: 650;
+  font-size: 18px;
+  margin-top: 0;
+}
+
+/* Timer positioning */
+#scaBotCardRoot #vpTimer{
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: end;
+  width: max-content;
+  white-space: nowrap;
+
+  /* appearance */
+  font-size: clamp(52px, 4.2vw, 64px);
+  font-weight: 400;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+
+  background: transparent;
+  border: 0;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  display: inline-block;
+}
+
+/* fixed box so left edge never jitters */
+#scaBotCardRoot .sca-mainIdentity #vpTimer{
+  width: 4ch;           /* fits "12:00" */
+  text-align: left;
+  display: block;
+}
+
+/* timer colors (you toggle classes in JS) */
+#scaBotCardRoot #vpTimer.vpTimer--safe{ color: #0c6a3b; }
+#scaBotCardRoot #vpTimer.vpTimer--warn{ color: #253551; }
+#scaBotCardRoot #vpTimer.vpTimer--danger{ color: #b0123a; }
+
+@media (max-width: 720px){
+  #scaBotCardRoot #sca-mainName{ font-size: clamp(26px, 9vw, 36px); }
+  #scaBotCardRoot .sca-mainAge{ font-size: 16px; }
+  #scaBotCardRoot #vpTimer{ font-size: 32px; }
+}
+
+/* ---------- Controls (Start / Grading) ---------- */
+#scaBotCardRoot .sca-controls{ margin-top: 6px; }
+
+#scaBotCardRoot .sca-seg{
+  display: block;
+  width: 100%;
+  border-radius: 18px;
+}
+
+#scaBotCardRoot #startBtn{
+  width: 100%;
+  height: 74px;
+  border: 1px solid var(--sca-border);
+  outline: none;
+  background: #253551;
+  font-size: 32px;
+  font-weight: 850;
+  cursor: pointer;
+  color: #fff;
+  border-radius: 18px;
+}
+
+@media (max-width: 720px){
+  #scaBotCardRoot #startBtn{
+    height: 58px;
+    font-size: clamp(24px, 8vw, 30px);
+  }
+}
+
+#scaBotCardRoot #startBtn[data-mode="stop"]:not(:disabled){
+  background: rgba(255,255,255,.68);
+  color: var(--sca-ink);
+}
+
+#scaBotCardRoot #startBtn:disabled{
+  background: rgba(31,41,55,.06);
+  color: rgba(31,41,55,.45);
+  cursor: not-allowed;
+}
+
+/* Hide legacy stop button (you’re using Start as a toggle) */
+#scaBotCardRoot #stopBtn{ display: none !important; }
+
+/* Grading button below */
+#scaBotCardRoot #gradingBtn{
+  width: 100%;
+  height: 54px;
+  margin-top: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(37,53,81,.18);
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+#scaBotCardRoot #gradingBtn:disabled{
+  background: rgba(31,41,55,.06);
+  color: rgba(31,41,55,.45);
+  cursor: not-allowed;
+}
+
+#scaBotCardRoot #gradingBtn.is-ready{
+  background: #d6dde9;
+  color: #253551;
+}
+
+/* =========================================================
+   INFO CARD (RIGHT)
+   ========================================================= */
+
+#scaInfoCardRoot .sca-right{
+  min-width: 0;
+  position: relative;
+}
+
+/* Case links row */
+#scaInfoCardRoot .sca-caseLinks{
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* Case buttons */
+#scaInfoCardRoot .sca-caseBtn{
+  height: 44px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  border: 1px solid #d6dde9;
+  border-radius: 8px;
+  background: transparent;
+
+  color: #253551;
+  text-decoration: none;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+#scaInfoCardRoot .sca-caseBtn i{
+  font-size: 1.25rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#scaInfoCardRoot .sca-caseBtn:hover{
+  background: rgba(214,221,233,0.25);
+  transform: translateY(-1px);
+}
+#scaInfoCardRoot .sca-caseBtn:active{ transform: translateY(0); }
+#scaInfoCardRoot .sca-caseBtn:focus-visible{
+  outline: 2px solid #d6dde9;
+  outline-offset: 2px;
+}
+
+/* The info card itself */
+#scaInfoCardRoot .sca-infoCard{
+  background: #d6dde9;
+  border: 1px solid var(--sca-border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+#scaInfoCardRoot .sca-infoHeader{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 16px;
+  background: rgba(31,41,55,.05);
+  border-bottom: 1px solid var(--sca-border);
+}
+
+#scaInfoCardRoot .sca-infoHeaderTitle{
+  font-weight: 900;
+  color: var(--sca-ink);
+  font-size: 20px;
+}
+
+/* Accordion */
+#scaInfoCardRoot .sca-accordion{
+  display: flex;
+  flex-direction: column;
+}
+
+#scaInfoCardRoot .sca-accItem + .sca-accItem{
+  border-top: 1px solid var(--sca-border);
+}
+
+#scaInfoCardRoot .sca-accHeader{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+#scaInfoCardRoot .sca-accTitle{
+  font-weight: 900;
+  color: var(--sca-ink);
+  font-size: 18px;
+}
+
+#scaInfoCardRoot .sca-accChevron{
+  margin-left: auto;
+  color: rgba(31,41,55,.45);
+  font-size: 22px;
+  transform: translateY(-1px);
+  transition: transform .15s ease;
+}
+
+#scaInfoCardRoot .sca-accHeader[aria-expanded="true"] .sca-accChevron{
+  transform: rotate(90deg);
+}
+
+#scaInfoCardRoot .sca-accBody{
+  padding: 0 16px 14px;
+}
+#scaInfoCardRoot .sca-accBody[hidden]{
+  display: none !important;
+}
+
+#scaInfoCardRoot .sca-accContent{
+  background: rgba(255,255,255,.55);
+  border: 1px solid var(--sca-border);
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+
+/* Lists */
+#scaInfoCardRoot .sca-cleanList{
+  margin: 0;
+  padding-left: 18px;
+  color: var(--sca-muted);
+  font-weight: 500;
+}
+
+#scaInfoCardRoot .sca-cleanList li{
+  margin: 5px 0;
+}
+
+/* Notes / Results markup if your JS injects these */
+#scaInfoCardRoot .underline{
+  font-weight: 900;
+  color: var(--sca-ink);
+  margin: 10px 0 6px;
+}
+
+#scaInfoCardRoot .quote-box{
+  background: rgba(255,255,255,.70);
+  border: 1px solid var(--sca-border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin: 0 0 10px;
+  color: var(--sca-muted);
+  line-height: 1.45;
+}
+
+#scaInfoCardRoot .quote-box-medical{
+  border-left: 4px solid rgba(71,108,103,.85);
+}
+
+#scaInfoCardRoot .quote-box-results{
+  border-left: 4px solid rgba(64, 99, 180, .55);
+}
