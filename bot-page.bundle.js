@@ -388,17 +388,121 @@ function boot() {
   // DO NOT CREATE HTML HERE. Just bind + populate.
   bindAccordion();
 
-    fetchAirtableCaseData().catch((e) => {
-      console.error("[SCA] fetchAirtableCaseData failed:", e);
+  // =======================
+  // Wake Lock: show toggle only if supported
+  // =======================
+  (function initWakeLockUi(){
+    const wakeSwitch = document.getElementById("wakeSwitch");
+    const wakeLabel  = document.getElementById("wakeLabel");
+    const wakeNote   = document.getElementById("wakeNote");
+
+    const wakeWrap =
+      document.querySelector(".wake-toggle--header") ||
+      (wakeSwitch ? wakeSwitch.closest(".wake-toggle") : null);
+
+    let wakeLock = null;
+    let wantsOn = false;
+
+    function isSupported() {
+      return ("wakeLock" in navigator) && !!navigator.wakeLock?.request;
+    }
+
+    function setLabel(on) {
+      if (!wakeLabel) return;
+      // keep compatible with your existing markup; you can hide via CSS
+      wakeLabel.textContent = on ? "On" : "Off";
+    }
+
+    function showNote(msg) {
+      if (!wakeNote) return;
+      wakeNote.textContent = msg;
+      wakeNote.style.display = "block";
+    }
+
+    function hideNote() {
+      if (!wakeNote) return;
+      wakeNote.style.display = "none";
+      wakeNote.textContent = "";
+    }
+
+    function setUiVisible(visible) {
+      if (wakeWrap) wakeWrap.style.display = visible ? "" : "none";
+      if (!visible) hideNote();
+    }
+
+    async function enableWakeLock() {
+      if (!isSupported()) {
+        setUiVisible(false);
+        wantsOn = false;
+        if (wakeSwitch) wakeSwitch.checked = false;
+        setLabel(false);
+        return;
+      }
+      try {
+        wakeLock = await navigator.wakeLock.request("screen");
+        hideNote();
+        setLabel(true);
+
+        wakeLock.addEventListener("release", () => {
+          wakeLock = null;
+          if (!wantsOn) {
+            if (wakeSwitch) wakeSwitch.checked = false;
+            setLabel(false);
+          }
+        });
+      } catch (err) {
+        console.warn(err);
+        showNote("Could not enable Screen On (try again, or check Low Power Mode).");
+        wakeLock = null;
+        wantsOn = false;
+        if (wakeSwitch) wakeSwitch.checked = false;
+        setLabel(false);
+      }
+    }
+
+    async function disableWakeLock() {
+      try {
+        if (wakeLock) await wakeLock.release();
+      } catch (err) {
+        console.warn(err);
+      } finally {
+        wakeLock = null;
+        hideNote();
+        setLabel(false);
+      }
+    }
+
+    document.addEventListener("visibilitychange", async () => {
+      if (document.visibilityState === "visible" && wantsOn && !wakeLock) {
+        await enableWakeLock();
+      }
     });
 
-    document.addEventListener("airtableDataFetched", populateAll);
-
-    // fallback if already set
-    if (window.airtableData && Array.isArray(window.airtableData) && window.airtableData.length) {
-      populateAll();
+    if (wakeSwitch && !wakeSwitch.__wakeBound) {
+      wakeSwitch.__wakeBound = true;
+      wakeSwitch.addEventListener("change", async (e) => {
+        wantsOn = !!e.target.checked;
+        if (wantsOn) await enableWakeLock();
+        else await disableWakeLock();
+      });
     }
+
+    // initial: only show if supported
+    setUiVisible(isSupported());
+    setLabel(false);
+  })();
+
+  fetchAirtableCaseData().catch((e) => {
+    console.error("[SCA] fetchAirtableCaseData failed:", e);
+  });
+
+  document.addEventListener("airtableDataFetched", populateAll);
+
+  // fallback if already set
+  if (window.airtableData && Array.isArray(window.airtableData) && window.airtableData.length) {
+    populateAll();
   }
+}
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
