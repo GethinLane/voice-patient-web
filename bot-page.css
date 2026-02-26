@@ -866,3 +866,43 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card #wakeSwitch:checked + .wake-s
 body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header #wakeLabel{
   display: none !important;
 }
+
+/* CSS for the Video and Written Case Links */
+  .sca-caseLinks{
+    display:flex;
+    justify-content:flex-end;
+    gap:12px;               /* space between icons */
+    align-items:center;
+    margin-bottom:12px;
+  }
+
+  .sca-caseIconBtn{
+    width:44px;             /* square shape */
+    height:44px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+
+    background: transparent;          /* “see through” */
+    border: 1px solid #d6dde9;        /* faint border */
+    border-radius: 8px;               /* slightly rounded */
+
+    color:#253551;                    /* icon colour */
+    text-decoration:none;
+
+    transition: transform .08s ease, background-color .12s ease, box-shadow .12s ease;
+  }
+
+  .sca-caseIconBtn:hover{
+    background: rgba(214,221,233,0.25); /* subtle hover */
+    transform: translateY(-1px);
+  }
+
+  .sca-caseIconBtn:active{
+    transform: translateY(0px);
+  }
+
+  .sca-caseIconBtn:focus-visible{
+    outline: 2px solid #d6dde9;
+    outline-offset: 2px;
+  }
