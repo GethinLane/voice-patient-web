@@ -232,13 +232,13 @@ const edge = avatarRadius;
 
 const inner = edge * 0.74;
 const bluePeak = edge * 1.0;
-const outer = edge * 1.55;
+const outer = edge * 1.15;
 
 const mist = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
 const tBlue  = (bluePeak  - inner) / (outer - inner);
 
 mist.addColorStop(0.00, "rgba(255,255,255,0)");
-mist.addColorStop(Math.max(0, Math.min(1, tBlue)), "rgba(120,180,255,0.9)");
+mist.addColorStop(Math.max(0, Math.min(1, tBlue)), "rgba(120,180,255,0.8)");
 mist.addColorStop(1.00, "rgba(255,255,255,0)");
 
 // clip so it can never look square
