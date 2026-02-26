@@ -77,6 +77,25 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::before,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::after,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
   pointer-events: none !important;
+
+  /* Put wake toggle top-right */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header{
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+/* Wake note in header: small, doesn’t wreck layout */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-note--header{
+  margin-left: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(37,53,81,.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px; /* prevents it expanding forever */
+}
 }
 
 body.sca-botpage #scaBotPageRoot .sca-controls,
