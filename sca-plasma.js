@@ -298,7 +298,7 @@
       const cyp = (cy) * dpr;
 
       // Outer band limit: slightly inside ring to avoid clipping
-      const outer = Math.max(avatarRadius + 6, ringRadius * 0.96) * dpr;
+      const outer = (ringRadius * 1.2) * dpr;
 
       // clear (transparent)
       gl.clearColor(0, 0, 0, 0);
