@@ -3,15 +3,15 @@
    - WebGL fragment shader (electric / professional)
    - Anchors to #sca-ring + masks around .sca-avatar
    - Listens to window "vp:ui" events with d.state = idle|listening|thinking|talking
+   - Keeps your sizing + energy mapping unchanged
+   - FIX: uses rAF timestamp delta-time (no 60fps assumption) + clamps dt to prevent “half-second berserk”
+   - FIX: rounds center/outer to device pixels to reduce layout jitter spikes
+   - UPDATE: darker, more vibrant blue base + slightly more vibrant “soft cyan”
 */
 
 (() => {
   const $ = (id) => document.getElementById(id);
   const clamp01 = (x) => Math.max(0, Math.min(1, Number(x || 0)));
-
-  // NEW: transition easing helpers (fixes the “hyperactive for half a second” jump)
-  const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
-  const mix = (a, b, t) => a + (b - a) * t;
 
   const STATE = {
     mode: "idle",
@@ -23,20 +23,15 @@
     energy: 0.15,
     energyTarget: 0.15,
 
-    // you decided to keep alpha constant
+    // keep alpha constant (you reverted alpha mode)
     alpha: 1,
     alphaTarget: 1,
 
     // optional external glow control from vp:ui
-    userGlow: 0.65,
-
-    // NEW: eased transition state
-    transStart: performance.now(),
-    transDur: 260,     // ms (smooth; talking gets shorter below)
-    fromEnergy: 0.15,
-    toEnergy: 0.15
+    userGlow: 0.65
   };
 
+  // --- Shader (electric plasma + ring turbulence) ---
   const VERT = `
     attribute vec2 a_pos;
     varying vec2 v_uv;
@@ -54,7 +49,7 @@
     uniform float u_time;
     uniform float u_energy;    // 0..1
     uniform float u_glow;      // 0..1
-    uniform float u_alphaMul;  // 0..1 overall transparency control (kept at 1)
+    uniform float u_alphaMul;  // kept at 1
     uniform vec2  u_center;    // in pixels
     uniform float u_radius;    // in pixels (avatar radius)
     uniform float u_outer;     // in pixels (outer render limit)
@@ -127,9 +122,11 @@
       float edgeSoft = smoothstep(0.0, 0.18, band) * smoothstep(1.0, 0.80, band);
       intensity *= edgeSoft;
 
-      // Palette (ONLY CHANGE: soften cyan to ~#d6dde9, slightly brighter)
-      vec3 blue  = vec3(0.10, 0.55, 1.00);
-      vec3 cyan  = vec3(0.86, 0.89, 0.93);  // softer cyan/ice-blue (not neon)
+      // Palette tweaks:
+      // - Blue: darker + more saturated
+      // - Cyan: still “soft ice” but a bit more vibrant than #d6dde9
+      vec3 blue  = vec3(0.05, 0.40, 1.00); // darker, vibrant blue
+      vec3 cyan  = vec3(0.74, 0.86, 0.98); // soft-but-visible icy cyan
       vec3 green = vec3(0.10, 1.00, 0.55);
       vec3 purp  = vec3(0.78, 0.25, 1.00);
 
@@ -149,10 +146,9 @@
       alpha *= smoothstep(1.0, 0.0, band);
       alpha *= smoothstep(0.0, 0.18, band);
 
-      // kept at 1 (no alpha mode)
-      alpha *= u_alphaMul;
-
+      alpha *= u_alphaMul; // kept at 1
       alpha = clamp(alpha, 0.0, 0.95);
+
       gl_FragColor = vec4(col * alpha, alpha);
     }
   `;
@@ -213,11 +209,6 @@
     return 0.08;
   }
 
-  // keep alpha constant (as requested)
-  function setAlphaForMode(mode) {
-    return 1;
-  }
-
   function start() {
     const canvas = $("sca-orb-canvas");
     if (!canvas) return;
@@ -271,7 +262,10 @@
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    function frame() {
+    // FIX: proper delta-time from requestAnimationFrame timestamp
+    let lastTS = null;
+
+    function frame(ts) {
       const canvas = $("sca-orb-canvas");
       if (!canvas) {
         STATE.raf = null;
@@ -289,25 +283,25 @@
       }
       gl.viewport(0, 0, w, h);
 
-      STATE.t += 1 / 60;
+      if (lastTS == null) lastTS = ts;
+      let dt = (ts - lastTS) / 1000;
+      lastTS = ts;
+      dt = Math.min(0.033, Math.max(0, dt)); // clamp dt to avoid “bursts” after hitches
 
-      // NEW: eased transition for ENERGY (prevents brief “hyperactive” burst)
-      const now = performance.now();
-      const tt = clamp01((now - STATE.transStart) / STATE.transDur);
-      const te = easeInOut(tt);
-      const energyGoal = mix(STATE.fromEnergy, STATE.toEnergy, te);
+      STATE.t += dt;
 
-      // gentle low-pass for stability
-      STATE.energy += (energyGoal - STATE.energy) * 0.06;
+      // KEEP your original energy smoothing (unchanged)
+      STATE.energy += (STATE.energyTarget - STATE.energy) * 0.08;
 
       const glow = clamp01(STATE.userGlow);
-
       const { cx, cy, ringRadius, avatarRadius } = getOrbGeometry(canvas);
-      const cxp = cx * dpr;
-      const cyp = cy * dpr;
 
-      // KEEP your current sizing behaviour exactly
-      const outer = (ringRadius * 1.3) * dpr;
+      // FIX: round to device pixels to reduce geometry jitter spikes
+      const cxp = Math.round(cx * dpr);
+      const cyp = Math.round(cy * dpr);
+
+      // KEEP your sizing exactly
+      const outer = Math.round((ringRadius * 1.3) * dpr);
 
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
@@ -316,7 +310,7 @@
       gl.uniform1f(uTime, STATE.t);
       gl.uniform1f(uEnergy, clamp01(STATE.energy));
       gl.uniform1f(uGlow, glow);
-      gl.uniform1f(uAlphaMul, 1.0); // keep alpha constant
+      gl.uniform1f(uAlphaMul, 1.0);
       gl.uniform2f(uCenter, cxp, cyp);
       gl.uniform1f(uRadius, avatarRadius * dpr);
       gl.uniform1f(uOuter, outer);
@@ -327,33 +321,19 @@
 
     window.addEventListener("vp:ui", (e) => {
       const d = e.detail || {};
-
-      // compute next mode using your existing rules
-      let nextMode = null;
-      if (d.state) nextMode = d.state;
-      else if (typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) nextMode = "idle";
-
-      // only start a transition when mode actually changes
-      if (nextMode && nextMode !== STATE.mode) {
-        STATE.mode = nextMode;
-
-        // start an eased transition from current energy to the new target
-        STATE.transStart = performance.now();
-        STATE.transDur = (STATE.mode === "talking") ? 180 : 260; // slightly snappier into talking
-
-        STATE.fromEnergy = STATE.energy;
-        STATE.toEnergy = setEnergyForMode(STATE.mode);
-      } else if (nextMode) {
-        // keep target in sync even if same state repeats
-        STATE.toEnergy = setEnergyForMode(STATE.mode);
+      if (d.state) {
+        STATE.mode = d.state;
+        STATE.energyTarget = setEnergyForMode(STATE.mode);
+      } else if (typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) {
+        STATE.mode = "idle";
+        STATE.energyTarget = setEnergyForMode("idle");
       }
-
       if (typeof d.glow === "number") STATE.userGlow = clamp01(d.glow);
     });
 
-    // initial targets
-    STATE.fromEnergy = STATE.energy;
-    STATE.toEnergy = setEnergyForMode(STATE.mode);
+    // initial
+    STATE.energyTarget = setEnergyForMode(STATE.mode);
+    STATE.userGlow = STATE.glow;
 
     if (!STATE.raf) STATE.raf = requestAnimationFrame(frame);
   }
