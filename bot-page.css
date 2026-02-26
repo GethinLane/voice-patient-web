@@ -77,7 +77,7 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::before,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring::after,
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
   pointer-events: none !important;
-
+}
   /* Put wake toggle top-right */
 body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header{
   margin-left: auto;
