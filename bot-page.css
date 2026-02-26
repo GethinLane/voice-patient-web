@@ -781,15 +781,29 @@ body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
   text-align: left !important; /* digits stay on the right inside the box */
   display: block !important;    /* stable box model in the grid cell */
 }
-/* ===== Compact wake toggle (badge-height) ===== */
+
+/* ===== Wake toggle: compact + header right + mobile only ===== */
+
+/* Hide on desktop, show on small screens only */
+@media (min-width: 721px){
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header{
+    display: none !important;
+  }
+}
+@media (max-width: 720px){
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header{
+    display: inline-flex !important;
+  }
+}
+
+/* Header placement */
 body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header{
   margin-left: auto !important;
-  display: inline-flex;
   align-items: center;
   gap: 10px;
 }
 
-/* "Screen On" label */
+/* "Screen On" label (short text next to switch) */
 body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniLabel{
   font-size: 14px;
   font-weight: 800;
@@ -797,24 +811,24 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniLabel{
   white-space: nowrap;
 }
 
-/* Switch wrapper */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniSwitch{
-  position: relative;
+/* Make the control badge-height-ish */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniWrap{
   display: inline-flex;
   align-items: center;
-  height: 34px;                 /* ≈ badge height */
 }
 
-/* Hide native checkbox */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniSwitch input{
+/* Keep your checkbox hidden but clickable */
+body.sca-botpage #scaBotPageRoot #sca-patient-card #wakeSwitch{
   position: absolute;
-  inset: 0;
   opacity: 0;
+  width: 52px;
+  height: 34px;
+  margin: 0;
   cursor: pointer;
 }
 
-/* Track */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniTrack{
+/* Compact switch track */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header .wake-switch{
   width: 52px;
   height: 34px;
   border-radius: 999px;
@@ -822,11 +836,11 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniTrack{
   background: rgba(255,255,255,.70);
   box-shadow: 0 10px 26px rgba(17,24,39,.08);
   position: relative;
-  transition: background .15s ease, border-color .15s ease;
+  display: inline-block;
 }
 
 /* Knob */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniTrack::after{
+body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header .wake-switch::after{
   content: "";
   position: absolute;
   top: 50%;
@@ -839,12 +853,16 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniTrack::after{
   transition: transform .15s ease;
 }
 
-/* ON state */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniSwitch input:checked + .wake-miniTrack{
+/* Checked state */
+body.sca-botpage #scaBotPageRoot #sca-patient-card #wakeSwitch:checked + .wake-switch{
   background: #d6dde9;
   border-color: rgba(37,53,81,.24);
 }
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-miniSwitch input:checked + .wake-miniTrack::after{
+body.sca-botpage #scaBotPageRoot #sca-patient-card #wakeSwitch:checked + .wake-switch::after{
   transform: translate(18px, -50%);
+}
+
+/* Hide the old inner text (but keep it for JS updates) */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header #wakeLabel{
+  display: none !important;
 }
