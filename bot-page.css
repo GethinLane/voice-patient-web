@@ -709,34 +709,33 @@ body.sca-botpage #scaBotPageRoot .sca-mainIdentity .sca-mainAge{
   min-width: 0;
 }
 /* =======================
-   TIMER (single source of truth)
+   TIMER (single final rule)
    ======================= */
+body.sca-botpage #scaBotPageRoot #vpTimer{
+  /* size */
+  font-size: clamp(30px, 3.6vw, 46px) !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
 
-/* Timer in the patient card header (your current layout) */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header #vpTimer{
-  /* strip any pill styling */
+  /* clock look */
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+
+  /* remove pill styling */
   background: transparent !important;
   border: 0 !important;
   padding: 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
 
-  /* sizing (THIS will now actually change) */
-  font-size: clamp(30px, 3.6vw, 46px) !important;
-  font-weight: 400 !important;
-  line-height: 1 !important;
-
-  /* nice digits */
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-
-  /* make sure it sits on the right if header has space-between */
-  margin-left: auto;
+  /* helps if it's in a flex row with other stuff */
+  display: inline-block !important;
 }
 
+/* smaller on mobile */
 @media (max-width: 720px){
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header #vpTimer{
-    font-size: 18px !important;
+  body.sca-botpage #scaBotPageRoot #vpTimer{
+    font-size: 22px !important;
   }
 }
