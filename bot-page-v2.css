@@ -252,7 +252,7 @@ body.sca-botpage .sca-cardShell{
   #sca-patient-card .sca-ring{
     width: 395px;
     height: 395px;
-    --orb-bleed: 30px; /* extra canvas bleed */
+    --orb-bleed: 60px; /* extra canvas bleed */
   }
   #sca-patient-card .sca-avatar{
     width: 395px;
