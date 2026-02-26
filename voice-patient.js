@@ -399,7 +399,9 @@ function stopCountdown(reason = "") {
   countdownTimer = null;
   countdownEndsAt = null;
   countdownHasStarted = false;
-  setCountdownText(""); // ✅ clear (no text labels)
+
+  // ✅ Do NOT clear the timer text here.
+  // Leave the last MM:SS visible after stopping.
 }
 
   function startCountdown(seconds = MAX_SESSION_SECONDS) {
@@ -947,6 +949,7 @@ if (ready && gradingText) {
 
     stopGradingPoll("new session");
     stopCountdown("new session");
+    setCountdownText(""); // ✅ clear timer immediately on Start click
     vpLastGradingText = "";
 vpLastGradingSessionId = null;
 setGradingBtnState("hidden");
