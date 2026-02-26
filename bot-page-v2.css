@@ -866,28 +866,69 @@ body.sca-botpage #scaPlanStandalone .sca-planUnderline{
     padding: 9px 14px;
   }
 }
-/* ==========================================
-   Remove outer shell card; let blue card fill
-   ========================================== */
-
-/* Kill the outer white card look */
-body.sca-botpage #scaInfoCardRoot.sca-cardShell{
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  padding: 0 !important;          /* important: no inner gutter */
-  border-radius: 0 !important;    /* optional */
-}
-
-/* Ensure the inner blue card takes the full space */
+/* IDEA 2: iOS Settings style */
 body.sca-botpage #scaInfoCardRoot .sca-infoCard{
-  width: 100%;
-  margin: 0 !important;
-  border-radius: 22px;            /* keep (or set to 0 if you want square) */
+  background: #d6dde9;
+  border: 1px solid rgba(37,53,81,.10);
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(17,24,39,.06);
+  overflow: hidden;
 }
 
-/* If your outer wrapper was creating extra spacing */
-body.sca-botpage #scaInfoCardRoot .sca-right{
-  margin: 0 !important;
+body.sca-botpage #scaInfoCardRoot .sca-infoHeader{
+  background: transparent;
+  border-bottom: 1px solid rgba(37,53,81,.10);
+  padding: 16px 16px 14px;
+}
+
+body.sca-botpage #scaInfoCardRoot .sca-infoHeaderTitle{
+  font-size: 24px;
+  font-weight: 900;
+  color: rgba(37,53,81,.88);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+body.sca-botpage #scaInfoCardRoot .sca-accItem + .sca-accItem{
+  border-top: 1px solid rgba(37,53,81,.08);
+}
+
+body.sca-botpage #scaInfoCardRoot .sca-accHeader{
+  padding: 16px;
+}
+
+body.sca-botpage #scaInfoCardRoot .sca-accTitle{
+  font-size: 17px;
+  font-weight: 800;
+}
+
+body.sca-botpage #scaInfoCardRoot .sca-accChevron{
+  background: transparent;
+  border: 0;
+  width: auto;
+  height: auto;
+  font-size: 20px;
+  color: rgba(37,53,81,.40);
+}
+
+body.sca-botpage #scaInfoCardRoot .sca-accBody{
+  padding: 0 16px 16px;
+}
+
+body.sca-botpage #scaInfoCardRoot .sca-accContent{
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+}
+
+body.sca-botpage #scaInfoCardRoot .sca-cleanList{
+  padding-left: 18px;
+  margin-top: 8px;
+  color: rgba(37,53,81,.70);
+  font-weight: 520;
+}
+
+body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
+  margin: 10px 0;
 }
