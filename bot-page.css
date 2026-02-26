@@ -921,3 +921,23 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header #wakeLab
     outline: 2px solid #d6dde9;
     outline-offset: 2px;
   }
+/* --- FIX: centre FA icons vertically inside the case buttons --- */
+.sca-caseBtn{
+  align-items: center;   /* keep */
+  line-height: 1;        /* keep */
+}
+
+.sca-caseBtn i{
+  display: flex;         /* ✅ kills baseline alignment issues */
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  height: 1em;           /* ✅ locks icon box */
+  margin: 0;
+  padding: 0;
+}
+
+/* remove the nudge (it can cause “top aligned” perception) */
+.sca-videoIcon{
+  transform: none;
+}
