@@ -628,22 +628,19 @@ body.sca-botpage .sca-cardShell{
   border-left: 4px solid rgba(64, 99, 180, .55);
 }
 /* =========================================================
-   PLAN TABS (Standard / Premium) — FINAL OVERRIDES
-   - Full width
-   - Desktop taller + larger text
-   - Premium selected: #253551 + white text
-   - Premium star gold when selected
+   PLAN TABS (Standard / Premium) — UPDATED (working version)
+   Works inside #scaBotCardRoot OR as #scaPlanStandalone
    ========================================================= */
 
-/* 1) Full width: remove side margins on the bar */
+/* ---------------- In BOT card ---------------- */
 body.sca-botpage #scaBotCardRoot .sca-planBar{
-  margin: 0 0 12px !important;
+  margin: 0 0 12px; /* ✅ full width (was 0 6px 12px) */
 }
 
-/* Ensure tabs are flush */
 body.sca-botpage #scaBotCardRoot .sca-planTabs{
-  width: 100% !important;
-  margin: 0 !important;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   border-radius: 0;
   overflow: visible;
   border: 1px solid rgba(37,53,81,.18);
@@ -651,14 +648,12 @@ body.sca-botpage #scaBotCardRoot .sca-planTabs{
   box-shadow: 0 10px 26px rgba(17,24,39,.08);
 }
 
-/* Hidden radios */
 body.sca-botpage #scaBotCardRoot .sca-planTabs input{
   position: absolute;
   opacity: 0;
   pointer-events: none;
 }
 
-/* Base tab style (unselected) */
 body.sca-botpage #scaBotCardRoot .sca-planTab{
   position: relative;
   padding: 14px 16px 18px;
@@ -680,7 +675,7 @@ body.sca-botpage #scaBotCardRoot .sca-planTab + input + label{
   border-left: 1px solid rgba(37,53,81,.14);
 }
 
-/* Standard selected — keep your original look */
+/* Standard selected (UNCHANGED) */
 body.sca-botpage #scaBotCardRoot #vpModeStandard:checked + label{
   background: #d6dde9;
   color: #253551;
@@ -689,24 +684,21 @@ body.sca-botpage #scaBotCardRoot #vpModeStandard:checked + label .sca-planTabTex
   color: #253551;
 }
 
-/* Premium selected — NEW look */
+/* Premium selected (NEW colours) */
 body.sca-botpage #scaBotCardRoot #vpModePremium:checked + label{
-  background: #253551; /* ✅ premium selected background */
-  color: #ffffff;      /* ✅ premium selected text */
+  background: #253551; /* ✅ */
+  color: #ffffff;      /* ✅ */
 }
 body.sca-botpage #scaBotCardRoot #vpModePremium:checked + label .sca-planTabText{
   color: #ffffff;
 }
 
-/* 4) Premium star gold when Premium selected
-   (assumes the star is in an element you can target, like:
-    <span class="sca-planStar">★</span> inside the Premium label)
-*/
-body.sca-botpage #scaBotCardRoot #vpModePremium:checked + label .sca-planStar{
+/* Premium star gold only when Premium selected */
+body.sca-botpage #scaBotCardRoot #vpModePremium:checked + label .sca-planTabText span[aria-hidden="true"]{
   color: #d4af37; /* gold */
 }
 
-/* Cost sub-tab (unchanged behavior, but matches Premium selected) */
+/* Cost sub-tab */
 body.sca-botpage #scaBotCardRoot .sca-planCostTag{
   position: absolute;
   left: 50%;
@@ -725,7 +717,7 @@ body.sca-botpage #scaBotCardRoot .sca-planCostTag{
   display: none;
 }
 
-/* Standard selected cost tag */
+/* Standard selected cost tag (UNCHANGED) */
 body.sca-botpage #scaBotCardRoot #vpModeStandard:checked + label .sca-planCostTag{
   display: inline-flex;
   align-items: center;
@@ -734,7 +726,7 @@ body.sca-botpage #scaBotCardRoot #vpModeStandard:checked + label .sca-planCostTa
   color: #253551;
 }
 
-/* Premium selected cost tag */
+/* Premium selected cost tag (match premium) */
 body.sca-botpage #scaBotCardRoot #vpModePremium:checked + label .sca-planCostTag{
   display: inline-flex;
   align-items: center;
@@ -743,7 +735,11 @@ body.sca-botpage #scaBotCardRoot #vpModePremium:checked + label .sca-planCostTag
   color: #ffffff;
 }
 
-/* underline */
+body.sca-botpage #scaBotCardRoot .sca-planCredits{
+  font-weight: inherit;
+  color: inherit;
+}
+
 body.sca-botpage #scaBotCardRoot .sca-planUnderline{
   height: 2px;
   width: 100%;
@@ -752,15 +748,120 @@ body.sca-botpage #scaBotCardRoot .sca-planUnderline{
   background: rgba(37,53,81,.14);
 }
 
-/* 2) Desktop: taller + bigger text */
+/* Desktop: ~2x height + 50% bigger text */
 @media (min-width: 981px){
   body.sca-botpage #scaBotCardRoot .sca-planTab{
-    padding: 28px 16px 34px !important; /* ~2x height */
-    font-size: 30px !important;        /* 20 -> 30 (50% bigger) */
+    padding: 28px 16px 34px; /* ✅ ~2x height */
+    font-size: 30px;        /* ✅ 50% bigger */
   }
-
   body.sca-botpage #scaBotCardRoot .sca-planCostTag{
-    font-size: 18px !important;
+    font-size: 18px;
+    bottom: -14px;
+    padding: 9px 14px;
+  }
+}
+
+/* ---------------- Standalone (#scaPlanStandalone) ---------------- */
+body.sca-botpage #scaPlanStandalone .sca-planBar{ margin: 0 0 12px; } /* ✅ full width */
+
+body.sca-botpage #scaPlanStandalone .sca-planTabs{
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 0;
+  overflow: visible;
+  border: 1px solid rgba(37,53,81,.18);
+  background: rgba(255,255,255,.70);
+  box-shadow: 0 10px 26px rgba(17,24,39,.08);
+}
+
+body.sca-botpage #scaPlanStandalone .sca-planTabs input{ position:absolute; opacity:0; pointer-events:none; }
+
+body.sca-botpage #scaPlanStandalone .sca-planTab{
+  position: relative;
+  padding: 14px 16px 18px;
+  font-weight: 900;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(255,255,255,.70);
+  color: rgba(37,53,81,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+}
+
+body.sca-botpage #scaPlanStandalone .sca-planTab + input + label{
+  border-left: 1px solid rgba(37,53,81,.14);
+}
+
+/* Standard selected (UNCHANGED) */
+body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label{ background:#d6dde9; color:#253551; }
+body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label .sca-planTabText{ color:#253551; }
+
+/* Premium selected (NEW colours) */
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label{ background:#253551; color:#ffffff; }
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planTabText{ color:#ffffff; }
+
+/* Premium star gold only when Premium selected */
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planTabText span[aria-hidden="true"]{
+  color: #d4af37;
+}
+
+/* Cost sub-tab */
+body.sca-botpage #scaPlanStandalone .sca-planCostTag{
+  position:absolute;
+  left:50%;
+  bottom:-12px;
+  transform:translateX(-50%);
+  white-space:nowrap;
+  padding:7px 12px;
+  border-radius:0 0 12px 12px;
+  font-size:14px;
+  font-weight:500;
+  border:none;
+  box-shadow:none;
+  background:transparent;
+  color:rgba(37,53,81,.70);
+  display:none;
+}
+
+/* Standard selected cost tag (UNCHANGED) */
+body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label .sca-planCostTag{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  background:#d6dde9;
+  color:#253551;
+}
+
+/* Premium selected cost tag (match premium) */
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planCostTag{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  background:#253551;
+  color:#ffffff;
+}
+
+body.sca-botpage #scaPlanStandalone .sca-planUnderline{
+  height:2px;
+  width:100%;
+  margin-top:18px;
+  border-radius:0;
+  background:rgba(37,53,81,.14);
+}
+
+/* Desktop: ~2x height + 50% bigger text */
+@media (min-width: 981px){
+  body.sca-botpage #scaPlanStandalone .sca-planTab{
+    padding: 28px 16px 34px;
+    font-size: 30px;
+  }
+  body.sca-botpage #scaPlanStandalone .sca-planCostTag{
+    font-size: 18px;
     bottom: -14px;
     padding: 9px 14px;
   }
