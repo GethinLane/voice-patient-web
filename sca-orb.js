@@ -227,29 +227,27 @@ if (avatarRect) {
       talking ? 0.75 :
       0.33;
 
-// ---- MIST DONUT tuned so BLUE peak sits on AVATAR edge ----
-// Draw BEFORE particles so blobs stay crisp on top.
+// ---- BLUE HALO ONLY (no white mist) ----
 const edge = avatarRadius;
 
-// These are tuned so the strongest blue lands right on the avatar edge.
-const inner = edge * 0.74;         // how far into the face the fade starts
-const bluePeak = edge * 1.0;      // move outward if you want it bigger (try 1.06)
-const whitePeak = edge * 1.15;     // white wash just outside the blue
-const outer = edge * 1.55;         // overall size of halo; increase to make it larger
+const inner = edge * 0.74;
+const bluePeak = edge * 1.0;
+const outer = edge * 1.55;
 
 const mist = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
-
 const tBlue  = (bluePeak  - inner) / (outer - inner);
-const tWhite = (whitePeak - inner) / (outer - inner);
 
 mist.addColorStop(0.00, "rgba(255,255,255,0)");
-// #d6dde9 = rgb(214,221,233)
-mist.addColorStop(Math.max(0, Math.min(1, tBlue)),  "rgba(214,221,233,1)");
-mist.addColorStop(Math.max(0, Math.min(1, tWhite)), "rgba(255,255,255,0.88)");
-
+mist.addColorStop(Math.max(0, Math.min(1, tBlue)), "rgba(120,180,255,0.9)");
 mist.addColorStop(1.00, "rgba(255,255,255,0)");
 
+// clip so it can never look square
 ctx.save();
+ctx.beginPath();
+ctx.arc(cx, cy, outer, 0, Math.PI * 2);
+ctx.arc(cx, cy, inner, 0, Math.PI * 2, true);
+ctx.clip("evenodd");
+
 ctx.globalCompositeOperation = "source-over";
 ctx.fillStyle = mist;
 ctx.fillRect(0, 0, width, height);
