@@ -935,3 +935,27 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header #wakeLab
   outline: 2px solid #d6dde9;
   outline-offset: 2px;
 }
+/* --- HARD fix: centre icon + text vertically in case buttons --- */
+.sca-caseBtn{
+  align-items: center !important;
+}
+
+.sca-caseBtn > i,
+.sca-caseBtn > span{
+  display: inline-flex !important;
+  align-items: center !important;
+  align-self: center !important;
+  line-height: 1 !important;
+}
+
+/* Font Awesome sometimes applies vertical-align tricks; neutralise them here */
+.sca-caseBtn > i{
+  vertical-align: middle !important;
+  height: 1em !important;
+}
+
+/* If FA is using SVG icons, this forces them to centre too */
+.sca-caseBtn svg{
+  display: block !important;
+  height: 1em !important;
+}
