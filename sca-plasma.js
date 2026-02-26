@@ -3,12 +3,15 @@
    - WebGL fragment shader (electric / professional)
    - Anchors to #sca-ring + masks around .sca-avatar
    - Listens to window "vp:ui" events with d.state = idle|listening|thinking|talking
-   - NEW: per-mode overall alpha (see-throughness) + NEW palette (blue core + cyan/green + purple accents)
 */
 
 (() => {
   const $ = (id) => document.getElementById(id);
   const clamp01 = (x) => Math.max(0, Math.min(1, Number(x || 0)));
+
+  // NEW: transition easing helpers (fixes the “hyperactive for half a second” jump)
+  const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+  const mix = (a, b, t) => a + (b - a) * t;
 
   const STATE = {
     mode: "idle",
@@ -20,15 +23,20 @@
     energy: 0.15,
     energyTarget: 0.15,
 
-    // NEW: smoothed overall alpha multiplier (drives transparency)
-    alpha: 0.12,
-    alphaTarget: 0.12,
+    // you decided to keep alpha constant
+    alpha: 1,
+    alphaTarget: 1,
 
     // optional external glow control from vp:ui
-    userGlow: 0.65
+    userGlow: 0.65,
+
+    // NEW: eased transition state
+    transStart: performance.now(),
+    transDur: 260,     // ms (smooth; talking gets shorter below)
+    fromEnergy: 0.15,
+    toEnergy: 0.15
   };
 
-  // --- Shader (electric plasma + ring turbulence) ---
   const VERT = `
     attribute vec2 a_pos;
     varying vec2 v_uv;
@@ -46,12 +54,11 @@
     uniform float u_time;
     uniform float u_energy;    // 0..1
     uniform float u_glow;      // 0..1
-    uniform float u_alphaMul;  // 0..1 NEW: overall transparency control
+    uniform float u_alphaMul;  // 0..1 overall transparency control (kept at 1)
     uniform vec2  u_center;    // in pixels
     uniform float u_radius;    // in pixels (avatar radius)
     uniform float u_outer;     // in pixels (outer render limit)
 
-    // hash / noise helpers (fast)
     float hash21(vec2 p){
       p = fract(p*vec2(123.34, 345.45));
       p += dot(p, p+34.345);
@@ -68,7 +75,6 @@
       return mix(a,b,u.x) + (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y;
     }
 
-    // fbm
     float fbm(vec2 p){
       float v = 0.0;
       float a = 0.55;
@@ -85,20 +91,17 @@
       vec2 p = frag - u_center;
 
       float r = length(p);
-      float inner = u_radius * 0.93;   // keep your sizing
+      float inner = u_radius * 0.93;   // KEEP your sizing
       float outer = u_outer;
 
-      // donut mask: only draw between inner and outer
       if (r < inner || r > outer) discard;
 
       float band = (r - inner) / max(1.0, (outer - inner)); // 0..1
       float a = atan(p.y, p.x);
 
-      // energy affects speed + turbulence
       float spd  = mix(0.15, 1.35, u_energy);
       float turb = mix(0.65, 1.75, u_energy);
 
-      // swirl field
       vec2 q = vec2(
         cos(a*2.0 + u_time*0.7*spd),
         sin(a*2.0 - u_time*0.6*spd)
@@ -115,7 +118,6 @@
       float wave = sin((band*8.0 - u_time*1.8*spd) + n*4.0);
       float core = smoothstep(0.95, 0.05, band);
 
-      // brightness
       float intensity = 0.55*core + 0.50*(1.0-band);
       intensity += 0.55*n;
       intensity += 0.20*wave;
@@ -125,35 +127,29 @@
       float edgeSoft = smoothstep(0.0, 0.18, band) * smoothstep(1.0, 0.80, band);
       intensity *= edgeSoft;
 
-      // NEW palette: blue base + cyan/green energy + purple accents
-      vec3 blue  = vec3(0.10, 0.55, 1.00); // primary blue (dominant)
-      vec3 cyan  = vec3(0.00, 0.95, 0.95); // cyan highlight
-      vec3 green = vec3(0.10, 1.00, 0.55); // green/cyan energy
-      vec3 purp  = vec3(0.78, 0.25, 1.00); // purple accent (sparingly)
+      // Palette (ONLY CHANGE: soften cyan to ~#d6dde9, slightly brighter)
+      vec3 blue  = vec3(0.10, 0.55, 1.00);
+      vec3 cyan  = vec3(0.86, 0.89, 0.93);  // softer cyan/ice-blue (not neon)
+      vec3 green = vec3(0.10, 1.00, 0.55);
+      vec3 purp  = vec3(0.78, 0.25, 1.00);
 
-      // hue driver: mostly blue; allow cyan/green & purple pockets
       float h = clamp(n*0.90 + 0.12*wave, 0.0, 1.0);
 
-      // base: blue -> cyan
       vec3 col = mix(blue, cyan, smoothstep(0.20, 0.75, h));
 
-      // inject green in hotter regions (mostly when energy is higher)
       float hot = smoothstep(0.55, 0.95, n) * smoothstep(0.20, 1.00, u_energy);
       col = mix(col, green, hot * 0.55);
 
-      // purple accents only on streak peaks (keeps it “not indigo-first”)
       float streak = smoothstep(0.70, 0.98, abs(wave)) * (0.35 + 0.65*n);
       col = mix(col, purp, streak * 0.18);
 
-      // subtle hot streak lift (still blue/cyan leaning)
       col += streak * vec3(0.15, 0.55, 1.00) * mix(0.10, 0.35, u_energy);
 
-      // alpha shaping
       float alpha = intensity;
       alpha *= smoothstep(1.0, 0.0, band);
       alpha *= smoothstep(0.0, 0.18, band);
 
-      // NEW: apply overall transparency multiplier (idle -> see-through, ramps up)
+      // kept at 1 (no alpha mode)
       alpha *= u_alphaMul;
 
       alpha = clamp(alpha, 0.0, 0.95);
@@ -209,6 +205,7 @@
     return { cx, cy, ringRadius, avatarRadius };
   }
 
+  // KEEP your existing energy settings exactly
   function setEnergyForMode(mode) {
     if (mode === "talking") return 1;
     if (mode === "thinking") return 0.55;
@@ -216,12 +213,9 @@
     return 0.08;
   }
 
-  // NEW: overall alpha per mode (transparency ramp)
+  // keep alpha constant (as requested)
   function setAlphaForMode(mode) {
-    if (mode === "talking") return 1.0;
-    if (mode === "thinking") return 1;
-    if (mode === "listening") return 1;
-    return 1; // idle/disconnected very see-through
+    return 1;
   }
 
   function start() {
@@ -269,7 +263,7 @@
     const uTime     = gl.getUniformLocation(prog, "u_time");
     const uEnergy   = gl.getUniformLocation(prog, "u_energy");
     const uGlow     = gl.getUniformLocation(prog, "u_glow");
-    const uAlphaMul = gl.getUniformLocation(prog, "u_alphaMul"); // NEW
+    const uAlphaMul = gl.getUniformLocation(prog, "u_alphaMul");
     const uCenter   = gl.getUniformLocation(prog, "u_center");
     const uRadius   = gl.getUniformLocation(prog, "u_radius");
     const uOuter    = gl.getUniformLocation(prog, "u_outer");
@@ -297,12 +291,14 @@
 
       STATE.t += 1 / 60;
 
-      // smooth energy + alpha (so idle fades gently, talking ramps up)
-      STATE.energy += (STATE.energyTarget - STATE.energy) * 0.08;
+      // NEW: eased transition for ENERGY (prevents brief “hyperactive” burst)
+      const now = performance.now();
+      const tt = clamp01((now - STATE.transStart) / STATE.transDur);
+      const te = easeInOut(tt);
+      const energyGoal = mix(STATE.fromEnergy, STATE.toEnergy, te);
 
-      // slightly snappier alpha on talking, softer otherwise
-      const aLerp = (STATE.mode === "talking") ? 0.12 : 0.07;
-      STATE.alpha += (STATE.alphaTarget - STATE.alpha) * aLerp;
+      // gentle low-pass for stability
+      STATE.energy += (energyGoal - STATE.energy) * 0.06;
 
       const glow = clamp01(STATE.userGlow);
 
@@ -310,7 +306,7 @@
       const cxp = cx * dpr;
       const cyp = cy * dpr;
 
-      // keep your current sizing behaviour
+      // KEEP your current sizing behaviour exactly
       const outer = (ringRadius * 1.3) * dpr;
 
       gl.clearColor(0, 0, 0, 0);
@@ -320,7 +316,7 @@
       gl.uniform1f(uTime, STATE.t);
       gl.uniform1f(uEnergy, clamp01(STATE.energy));
       gl.uniform1f(uGlow, glow);
-      gl.uniform1f(uAlphaMul, clamp01(STATE.alpha)); // NEW
+      gl.uniform1f(uAlphaMul, 1.0); // keep alpha constant
       gl.uniform2f(uCenter, cxp, cyp);
       gl.uniform1f(uRadius, avatarRadius * dpr);
       gl.uniform1f(uOuter, outer);
@@ -331,22 +327,33 @@
 
     window.addEventListener("vp:ui", (e) => {
       const d = e.detail || {};
-      if (d.state) {
-        STATE.mode = d.state;
-        STATE.energyTarget = setEnergyForMode(STATE.mode);
-        STATE.alphaTarget  = setAlphaForMode(STATE.mode);
-      } else if (typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) {
-        STATE.mode = "idle";
-        STATE.energyTarget = setEnergyForMode("idle");
-        STATE.alphaTarget  = setAlphaForMode("idle");
+
+      // compute next mode using your existing rules
+      let nextMode = null;
+      if (d.state) nextMode = d.state;
+      else if (typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) nextMode = "idle";
+
+      // only start a transition when mode actually changes
+      if (nextMode && nextMode !== STATE.mode) {
+        STATE.mode = nextMode;
+
+        // start an eased transition from current energy to the new target
+        STATE.transStart = performance.now();
+        STATE.transDur = (STATE.mode === "talking") ? 180 : 260; // slightly snappier into talking
+
+        STATE.fromEnergy = STATE.energy;
+        STATE.toEnergy = setEnergyForMode(STATE.mode);
+      } else if (nextMode) {
+        // keep target in sync even if same state repeats
+        STATE.toEnergy = setEnergyForMode(STATE.mode);
       }
+
       if (typeof d.glow === "number") STATE.userGlow = clamp01(d.glow);
     });
 
-    // initial
-    STATE.energyTarget = setEnergyForMode(STATE.mode);
-    STATE.alphaTarget  = setAlphaForMode(STATE.mode);
-    STATE.userGlow = STATE.glow;
+    // initial targets
+    STATE.fromEnergy = STATE.energy;
+    STATE.toEnergy = setEnergyForMode(STATE.mode);
 
     if (!STATE.raf) STATE.raf = requestAnimationFrame(frame);
   }
