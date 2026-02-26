@@ -752,6 +752,6 @@ body.sca-botpage #scaBotPageRoot #vpTimer{
 /* ===== Timer: fixed box so the left edge never moves ===== */
 body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
   width: 5ch !important;        /* fixed width for "12:00" */
-  text-align: right !important; /* digits stay on the right inside the box */
+  text-align: left !important; /* digits stay on the right inside the box */
   display: block !important;    /* stable box model in the grid cell */
 }
