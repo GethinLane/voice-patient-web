@@ -401,7 +401,6 @@ function stopCountdown(reason = "") {
   countdownHasStarted = false;
   setCountdownText(""); // ✅ clear (no text labels)
 }
-  }
 
   function startCountdown(seconds = MAX_SESSION_SECONDS) {
     stopCountdown("restart");
