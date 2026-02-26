@@ -785,15 +785,23 @@ body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
 /* ===== Wake toggle: compact + header right + mobile only ===== */
 
 /* Hide on desktop, show on small screens only */
-@media (min-width: 721px){
+@media (min-width: 1025px){
   body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header{
     display: none !important;
   }
 }
-@media (max-width: 720px){
+@media (max-width: 1024px){
   body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header{
     display: inline-flex !important;
   }
+}
+
+/* allow JS to unhide it cleanly */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header[hidden]{
+  display: none !important;
+}
+body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header.is-available{
+  display: inline-flex !important;
 }
 
 /* Header placement */
