@@ -605,11 +605,18 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
 body.sca-botpage #scaBotPageRoot .sca-mainMeta{
   margin-top: 6px !important;
 }
-/* Put the state badge top-left on the patient card, and hide "Patient" label */
+/* Patient card header: badge left, wake toggle right */
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header{
-  justify-content: flex-start !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important; /* ✅ pushes right-side content */
   gap: 10px !important;
   margin-bottom: 16px !important;
+}
+body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header{
+  margin-left: auto !important;
+  display: flex;
+  align-items: center;
 }
 
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-title{
