@@ -80,7 +80,7 @@
       vec2 p = frag - u_center;
 
       float r = length(p);
-      float inner = u_radius * 0.985;     // just outside avatar edge
+      float inner = u_radius * 0.90;     // just outside avatar edge
       float outer = u_outer;              // overall visual bound
 
       // donut mask: only draw between inner and outer
