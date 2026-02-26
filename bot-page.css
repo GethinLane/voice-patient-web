@@ -684,18 +684,18 @@ body.sca-botpage #scaBotPageRoot .sca-mainTop{
   gap: 14px;
 }
 
-/* Name + Age (left) and Timer (right) as one block */
+/* Name+Age left, Timer right (centered to the combined height) */
 body.sca-botpage #scaBotPageRoot .sca-mainIdentity{
   display: grid;
-  grid-template-columns: 1fr max-content; /* ✅ left takes rest, timer only as wide as text */
-  grid-template-rows: auto auto;
+  grid-template-columns: 1fr max-content; /* left takes space, timer only as wide as text */
+  grid-template-rows: auto auto;          /* name row, age row */
   column-gap: 18px;
   row-gap: 8px;
-  align-items: center;
-  min-width: 0; /* helps long names wrap instead of pushing timer off */
+  align-items: start;                     /* keep name/age snug at top */
+  min-width: 0;
 }
 
-/* Grid placement */
+/* Grid placement for name/age */
 body.sca-botpage #scaBotPageRoot .sca-mainIdentity #sca-mainName{
   grid-column: 1;
   grid-row: 1;
@@ -705,16 +705,26 @@ body.sca-botpage #scaBotPageRoot .sca-mainIdentity #sca-mainName{
 body.sca-botpage #scaBotPageRoot .sca-mainIdentity .sca-mainAge{
   grid-column: 1;
   grid-row: 2;
-  margin-top: 0 !important; /* override your existing margin-top */
+  margin-top: 0 !important; /* kills your earlier margin-top */
   min-width: 0;
+}
+
+/* Timer sits on the right and is vertically centered across name+age */
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
+  grid-column: 2;
+  grid-row: 1 / span 2;      /* spans name+age height */
+  align-self: center;        /* ✅ vertical center of the combined block */
+  justify-self: end;         /* ✅ hug right edge */
+  width: max-content;
+  white-space: nowrap;
 }
 /* =======================
    TIMER (single final rule)
    ======================= */
 body.sca-botpage #scaBotPageRoot #vpTimer{
   /* size */
-  font-size: clamp(30px, 3.6vw, 46px) !important;
-  font-weight: 700 !important;
+  font-size: clamp(42px, 4.2vw, 64px) !important;
+  font-weight: 400 !important;
   line-height: 1 !important;
 
   /* clock look */
