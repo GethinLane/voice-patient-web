@@ -238,7 +238,7 @@ const mist = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
 const tBlue  = (bluePeak  - inner) / (outer - inner);
 
 mist.addColorStop(0.00, "rgba(255,255,255,0)");
-mist.addColorStop(Math.max(0, Math.min(1, tBlue)), "rgba(131,155,235,0.8)");
+mist.addColorStop(Math.max(0, Math.min(1, tBlue)), "rgba(157,196,253,0.8)");
 mist.addColorStop(1.00, "rgba(255,255,255,0)");
 
 // clip so it can never look square
