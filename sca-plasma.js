@@ -1,8 +1,8 @@
 /* sca-plasma.js
-   - Adds "pressure pump" without moving edges
-   - Removes manic transition by NOT changing frequencies/speeds with energy
-   - Palette: darker vibrant blue + soft-but-visible icy cyan
-   - Keeps your sizing + energy mapping unchanged
+   Stable base energy + voice-like outer pulses in talking
+   - Base energy stays around 0.6; states are subtle
+   - Talking adds outer-band erratic pulses (voice/wave feel)
+   - Keeps your sizing + palette + general look
 */
 
 (() => {
@@ -15,11 +15,13 @@
     t: 0,
     raf: null,
 
-    energy: 0.15,
-    energyTarget: 0.15,
+    // base energy is stable; only small shifts by state
+    energy: 0.50,
+    energyTarget: 0.50,
 
-    alpha: 1,
-    alphaTarget: 1,
+    // talking pulse (0..1)
+    talkPulse: 0.0,
+    talkPulseTarget: 0.0,
 
     userGlow: 0.65
   };
@@ -39,12 +41,12 @@
 
     uniform vec2  u_res;
     uniform float u_time;
-    uniform float u_energy;    // 0..1
-    uniform float u_glow;      // 0..1
-    uniform float u_alphaMul;  // kept at 1
-    uniform vec2  u_center;    // in pixels
-    uniform float u_radius;    // in pixels (avatar radius)
-    uniform float u_outer;     // in pixels (outer render limit)
+    uniform float u_energy;    // stable base energy
+    uniform float u_talk;      // NEW: talking pulse 0..1
+    uniform float u_glow;
+    uniform vec2  u_center;
+    uniform float u_radius;
+    uniform float u_outer;
 
     float hash21(vec2 p){
       p = fract(p*vec2(123.34, 345.45));
@@ -61,7 +63,6 @@
       vec2 u = f*f*(3.0-2.0*f);
       return mix(a,b,u.x) + (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y;
     }
-
     float fbm(vec2 p){
       float v = 0.0;
       float a = 0.55;
@@ -78,19 +79,17 @@
       vec2 p = frag - u_center;
 
       float r = length(p);
-      float inner = u_radius * 0.9;   // KEEP your sizing
+      float inner = u_radius * 0.9; // keep your sizing
       float outer = u_outer;
       if (r < inner || r > outer) discard;
 
       float band = (r - inner) / max(1.0, (outer - inner)); // 0..1
       float a = atan(p.y, p.x);
 
-      // IMPORTANT: ease energy so transitions feel natural
-      float e = smoothstep(0.0, 1.0, clamp(u_energy, 0.0, 1.0)); // 0..1
-
-      // KEY CHANGE: keep speed stable; energy changes amplitude/intensity only
-      float spd  = 0.85; // constant feel (no manic ramp)
-      float turb = mix(0.80, 1.45, e); // mild turbulence change only
+      // stable feel: constant speed; slight turbulence from base energy only
+      float e = smoothstep(0.0, 1.0, clamp(u_energy, 0.0, 1.0));
+      float spd  = 0.85;
+      float turb = mix(0.85, 1.35, e);
 
       vec2 q = vec2(
         cos(a*2.0 + u_time*0.7*spd),
@@ -108,27 +107,29 @@
       float wave = sin((band*8.0 - u_time*1.8*spd) + n*4.0);
       float core = smoothstep(0.95, 0.05, band);
 
-      // NEW: pressure pump — amplitude-only (NO frequency changing with energy)
-      float pumpAmt = smoothstep(0.35, 1.00, e); // quiet until energy is clearly high (talking)
-      float pump = sin(u_time * 6.2 + band * 12.0 + n * 3.0 + a * 0.8);
-      float pumpEnvelope = (1.0 - band);
-      float pumpSignal = pump * pumpEnvelope * pumpAmt;
-
       float intensity = 0.55*core + 0.50*(1.0-band);
       intensity += 0.55*n;
       intensity += 0.20*wave;
 
-      // Pump contribution (bouncy feel)
-      intensity += 0.18 * pumpSignal;
+      // --- NEW: voice-like outer pulses (talking only) ---
+      // Concentrate pulses near the OUTER edge (band -> 1)
+      float outerMask = smoothstep(0.55, 1.0, band);
+      // “erratic” but smooth: combine a few sines + noise
+      float jitter = 0.55*sin(u_time*10.0 + n*6.0) + 0.35*sin(u_time*16.0 + a*1.5) + 0.25*sin(u_time*23.0);
+      float burst = smoothstep(0.15, 0.95, abs(jitter));
+      float pulse = (0.35 + 0.65*burst) * u_talk;
 
-      // Glow/energy scaling: energy affects "how much", not "how fast"
+      // Apply pulse as a brightness “wave” on the outer region
+      intensity += 0.35 * pulse * outerMask;
+
+      // Keep overall scaling sane
       intensity *= mix(0.55, 1.10, u_glow);
-      intensity *= mix(0.85, 1.25, e);
+      intensity *= mix(0.95, 1.18, e);
 
       float edgeSoft = smoothstep(0.0, 0.18, band) * smoothstep(1.0, 0.80, band);
       intensity *= edgeSoft;
 
-      // Palette: darker vibrant blue + soft-but-visible icy cyan
+      // Palette (unchanged from your nice version)
       vec3 blue  = vec3(0.05, 0.40, 1.00);
       vec3 cyan  = vec3(0.74, 0.86, 0.98);
       vec3 green = vec3(0.10, 1.00, 0.55);
@@ -147,7 +148,6 @@
       float alpha = intensity;
       alpha *= smoothstep(1.0, 0.0, band);
       alpha *= smoothstep(0.0, 0.18, band);
-      alpha *= u_alphaMul; // kept at 1
       alpha = clamp(alpha, 0.0, 0.95);
 
       gl_FragColor = vec4(col * alpha, alpha);
@@ -165,7 +165,6 @@
     }
     return s;
   }
-
   function link(gl, vs, fs) {
     const p = gl.createProgram();
     gl.attachShader(p, vs);
@@ -202,12 +201,12 @@
     return { cx, cy, ringRadius, avatarRadius };
   }
 
-  // KEEP your existing energy settings exactly
-  function setEnergyForMode(mode) {
-    if (mode === "talking") return 1;
-    if (mode === "thinking") return 0.6;
-    if (mode === "listening") return 0.4;
-    return 0.3;
+  // Your new desired mapping (stable base ~0.6)
+  function baseEnergyForMode(mode) {
+    if (mode === "talking") return 0.60;
+    if (mode === "thinking") return 0.50;
+    if (mode === "listening") return 0.45;
+    return 0.35; // idle, still alive
   }
 
   function start() {
@@ -218,10 +217,7 @@
       canvas.getContext("webgl", { alpha: true, antialias: true, premultipliedAlpha: true }) ||
       canvas.getContext("experimental-webgl", { alpha: true, antialias: true, premultipliedAlpha: true });
 
-    if (!gl) {
-      console.warn("WebGL not available; plasma visualizer disabled.");
-      return;
-    }
+    if (!gl) return;
 
     const vs = compile(gl, gl.VERTEX_SHADER, VERT);
     const fs = compile(gl, gl.FRAGMENT_SHADER, FRAG);
@@ -229,21 +225,13 @@
 
     const prog = link(gl, vs, fs);
     if (!prog) return;
-
     gl.useProgram(prog);
 
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(
       gl.ARRAY_BUFFER,
-      new Float32Array([
-        -1, -1,
-         1, -1,
-        -1,  1,
-        -1,  1,
-         1, -1,
-         1,  1
-      ]),
+      new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]),
       gl.STATIC_DRAW
     );
 
@@ -251,14 +239,14 @@
     gl.enableVertexAttribArray(aPos);
     gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
-    const uRes      = gl.getUniformLocation(prog, "u_res");
-    const uTime     = gl.getUniformLocation(prog, "u_time");
-    const uEnergy   = gl.getUniformLocation(prog, "u_energy");
-    const uGlow     = gl.getUniformLocation(prog, "u_glow");
-    const uAlphaMul = gl.getUniformLocation(prog, "u_alphaMul");
-    const uCenter   = gl.getUniformLocation(prog, "u_center");
-    const uRadius   = gl.getUniformLocation(prog, "u_radius");
-    const uOuter    = gl.getUniformLocation(prog, "u_outer");
+    const uRes    = gl.getUniformLocation(prog, "u_res");
+    const uTime   = gl.getUniformLocation(prog, "u_time");
+    const uEnergy = gl.getUniformLocation(prog, "u_energy");
+    const uTalk   = gl.getUniformLocation(prog, "u_talk");
+    const uGlow   = gl.getUniformLocation(prog, "u_glow");
+    const uCenter = gl.getUniformLocation(prog, "u_center");
+    const uRadius = gl.getUniformLocation(prog, "u_radius");
+    const uOuter  = gl.getUniformLocation(prog, "u_outer");
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -267,10 +255,7 @@
 
     function frame(ts) {
       const canvas = $("sca-orb-canvas");
-      if (!canvas) {
-        STATE.raf = null;
-        return;
-      }
+      if (!canvas) { STATE.raf = null; return; }
 
       const dpr = Math.max(1, window.devicePixelRatio || 1);
       const cssW = canvas.clientWidth || 500;
@@ -278,8 +263,7 @@
       const w = Math.max(2, Math.round(cssW * dpr));
       const h = Math.max(2, Math.round(cssH * dpr));
       if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
+        canvas.width = w; canvas.height = h;
       }
       gl.viewport(0, 0, w, h);
 
@@ -289,13 +273,16 @@
       dt = Math.min(0.033, Math.max(0, dt));
       STATE.t += dt;
 
-      // smooth energy (keep your behaviour)
-      STATE.energy += (STATE.energyTarget - STATE.energy) * 0.08;
+      // Smooth base energy gently
+      STATE.energy += (STATE.energyTarget - STATE.energy) * 0.06;
+
+      // Smooth talking pulse target (fast up, faster down)
+      const pulseLerp = (STATE.mode === "talking") ? 0.18 : 0.12;
+      STATE.talkPulse += (STATE.talkPulseTarget - STATE.talkPulse) * pulseLerp;
 
       const glow = clamp01(STATE.userGlow);
       const { cx, cy, ringRadius, avatarRadius } = getOrbGeometry(canvas);
 
-      // (your sizing unchanged)
       const cxp = Math.round(cx * dpr);
       const cyp = Math.round(cy * dpr);
       const outer = Math.round((ringRadius * 1.6) * dpr);
@@ -306,8 +293,8 @@
       gl.uniform2f(uRes, w, h);
       gl.uniform1f(uTime, STATE.t);
       gl.uniform1f(uEnergy, clamp01(STATE.energy));
+      gl.uniform1f(uTalk, clamp01(STATE.talkPulse));
       gl.uniform1f(uGlow, glow);
-      gl.uniform1f(uAlphaMul, 1.0);
       gl.uniform2f(uCenter, cxp, cyp);
       gl.uniform1f(uRadius, avatarRadius * dpr);
       gl.uniform1f(uOuter, outer);
@@ -320,16 +307,22 @@
       const d = e.detail || {};
       if (d.state) {
         STATE.mode = d.state;
-        STATE.energyTarget = setEnergyForMode(STATE.mode);
       } else if (typeof d.status === "string" && /not connected|disconnected/i.test(d.status)) {
         STATE.mode = "idle";
-        STATE.energyTarget = setEnergyForMode("idle");
       }
+
+      // base energy stays around 0.6, only subtle shifts
+      STATE.energyTarget = baseEnergyForMode(STATE.mode);
+
+      // pulse only when talking
+      STATE.talkPulseTarget = (STATE.mode === "talking") ? 1.0 : 0.0;
+
       if (typeof d.glow === "number") STATE.userGlow = clamp01(d.glow);
     });
 
-    STATE.energyTarget = setEnergyForMode(STATE.mode);
-    STATE.userGlow = STATE.glow;
+    // initial
+    STATE.energyTarget = baseEnergyForMode(STATE.mode);
+    STATE.talkPulseTarget = 0.0;
 
     if (!STATE.raf) STATE.raf = requestAnimationFrame(frame);
   }
