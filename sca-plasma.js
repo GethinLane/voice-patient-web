@@ -219,9 +219,9 @@
   // NEW: overall alpha per mode (transparency ramp)
   function setAlphaForMode(mode) {
     if (mode === "talking") return 1.0;
-    if (mode === "thinking") return 0.70;
-    if (mode === "listening") return 0.55;
-    return 0.32; // idle/disconnected very see-through
+    if (mode === "thinking") return 0.9;
+    if (mode === "listening") return 0.8;
+    return 0.7; // idle/disconnected very see-through
   }
 
   function start() {
