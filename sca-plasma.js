@@ -298,7 +298,7 @@
       const cyp = (cy) * dpr;
 
       // Outer band limit: slightly inside ring to avoid clipping
-      const outer = (ringRadius * 1.2) * dpr;
+      const outer = (ringRadius * 1.4) * dpr;
 
       // clear (transparent)
       gl.clearColor(0, 0, 0, 0);
