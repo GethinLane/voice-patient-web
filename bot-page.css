@@ -634,11 +634,8 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card #sca-badge{
 }
 /* --- Timer: top-right in patient card header --- */
 body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header{
-  display: flex;
-  align-items: center;
-  width: 100%;
-  justify-content: space-between !important; /* badge left, timer right */
-  gap: 10px;
+  justify-content: flex-start !important;
+  gap: 10px !important;
 }
 /* --- Timer: text-only (no pill) --- */
 body.sca-botpage #scaBotPageRoot #vpTimer{
@@ -691,4 +688,35 @@ body.sca-botpage #scaBotPageRoot #gradingBtn:disabled{
 body.sca-botpage #scaBotPageRoot #gradingBtn.is-ready{
   background: #d6dde9;
   color: #253551;
+}
+
+/* --- Name + timer row --- */
+body.sca-botpage #scaBotPageRoot .sca-mainTop{
+  display: flex;
+  align-items: baseline;          /* looks nicer with big name text */
+  justify-content: space-between; /* name left, timer right */
+  gap: 14px;
+}
+
+/* --- Timer styling (numbers only) --- */
+body.sca-botpage #scaBotPageRoot #vpTimer{
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Optional: on small screens, keep it tidy */
+@media (max-width: 720px){
+  body.sca-botpage #scaBotPageRoot #vpTimer{
+    font-size: 18px;
+  }
 }
