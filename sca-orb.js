@@ -230,9 +230,9 @@ if (avatarRect) {
 // ---- BLUE HALO ONLY (no white mist) ----
 const edge = avatarRadius;
 
-const inner = edge * 0.84;
+const inner = edge * 0.9;
 const bluePeak = edge * 1.0;
-const outer = edge * 1.15;
+const outer = edge * 1.1;
 
 const mist = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
 const tBlue  = (bluePeak  - inner) / (outer - inner);
