@@ -963,3 +963,60 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header #wakeLab
   line-height: 1 !important;
   vertical-align: middle !important;
 }
+/* --- Case buttons: stable alignment with FA Kit (SVG) --- */
+.sca-caseLinks{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.sca-caseBtn{
+  height:44px;
+  padding:0 12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+
+  border:1px solid #d6dde9;
+  border-radius:8px;
+  background: transparent;
+
+  color:#253551;
+  text-decoration:none;
+  font-weight:600;
+  white-space:nowrap;
+  line-height:1;
+
+  flex: 0 0 auto; /* prevents shrink + wrap */
+}
+
+/* If kit hasn't swapped yet (still <i>) */
+.sca-caseBtn > i{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  line-height:1;
+}
+
+/* After kit swaps to SVG */
+.sca-caseBtn svg{
+  display:block;          /* removes baseline weirdness */
+  height:1.1em;           /* size similar to fa-xl */
+  width:1.1em;
+}
+
+/* keep text tight */
+.sca-caseBtn span{
+  display:inline-block;
+  line-height:1;
+  white-space:nowrap;
+}
+
+.sca-caseBtn:hover{
+  background: rgba(214,221,233,0.25);
+  transform: translateY(-1px);
+}
+.sca-caseBtn:active{ transform: translateY(0); }
