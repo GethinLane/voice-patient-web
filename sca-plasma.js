@@ -1,12 +1,8 @@
 /* sca-plasma.js
-   Standalone “plasma core” orb for #sca-orb-canvas (NO deps, NO build step)
-   - WebGL fragment shader (electric / professional)
-   - Anchors to #sca-ring + masks around .sca-avatar
-   - Listens to window "vp:ui" events with d.state = idle|listening|thinking|talking
-   - Uses rAF timestamp + clamped dt (prevents brief “berserk” after frame hitches)
-   - Rounds center/outer to device pixels (reduces layout jitter)
+   - Adds "pressure pump" without moving edges
+   - Removes manic transition by NOT changing frequencies/speeds with energy
    - Palette: darker vibrant blue + soft-but-visible icy cyan
-   - NEW: “pressure pump” during talking (reads like bouncing without moving inner/outer edges)
+   - Keeps your sizing + energy mapping unchanged
 */
 
 (() => {
@@ -19,19 +15,15 @@
     t: 0,
     raf: null,
 
-    // smoothed energy per mode (drives intensity, motion)
     energy: 0.15,
     energyTarget: 0.15,
 
-    // keep alpha constant
     alpha: 1,
     alphaTarget: 1,
 
-    // optional external glow control from vp:ui
     userGlow: 0.65
   };
 
-  // --- Shader (electric plasma + ring turbulence) ---
   const VERT = `
     attribute vec2 a_pos;
     varying vec2 v_uv;
@@ -86,16 +78,19 @@
       vec2 p = frag - u_center;
 
       float r = length(p);
-      float inner = u_radius * 0.93;   // KEEP sizing
+      float inner = u_radius * 0.93;   // KEEP your sizing
       float outer = u_outer;
-
       if (r < inner || r > outer) discard;
 
       float band = (r - inner) / max(1.0, (outer - inner)); // 0..1
       float a = atan(p.y, p.x);
 
-      float spd  = mix(0.15, 1.35, u_energy);
-      float turb = mix(0.65, 1.75, u_energy);
+      // IMPORTANT: ease energy so transitions feel natural
+      float e = smoothstep(0.0, 1.0, clamp(u_energy, 0.0, 1.0)); // 0..1
+
+      // KEY CHANGE: keep speed stable; energy changes amplitude/intensity only
+      float spd  = 0.85; // constant feel (no manic ramp)
+      float turb = mix(0.80, 1.45, e); // mild turbulence change only
 
       vec2 q = vec2(
         cos(a*2.0 + u_time*0.7*spd),
@@ -113,21 +108,22 @@
       float wave = sin((band*8.0 - u_time*1.8*spd) + n*4.0);
       float core = smoothstep(0.95, 0.05, band);
 
-      // --- NEW: “pressure pump” (bouncy feel without moving edges) ---
-      float pumpAmt = smoothstep(0.20, 1.00, u_energy); // mostly off in idle, strong in talking
-      float pump = sin(u_time * (5.5 + 2.0*u_energy) + band * 12.0 + n * 3.0 + a * 0.8);
-      float pumpEnvelope = (1.0 - band);                // stronger nearer inner edge
+      // NEW: pressure pump — amplitude-only (NO frequency changing with energy)
+      float pumpAmt = smoothstep(0.35, 1.00, e); // quiet until energy is clearly high (talking)
+      float pump = sin(u_time * 6.2 + band * 12.0 + n * 3.0 + a * 0.8);
+      float pumpEnvelope = (1.0 - band);
       float pumpSignal = pump * pumpEnvelope * pumpAmt;
 
       float intensity = 0.55*core + 0.50*(1.0-band);
       intensity += 0.55*n;
       intensity += 0.20*wave;
 
-      // NEW: adds the “pumping/bouncing” sensation
+      // Pump contribution (bouncy feel)
       intensity += 0.18 * pumpSignal;
 
+      // Glow/energy scaling: energy affects "how much", not "how fast"
       intensity *= mix(0.55, 1.10, u_glow);
-      intensity *= mix(0.80, 1.35, u_energy);
+      intensity *= mix(0.85, 1.25, e);
 
       float edgeSoft = smoothstep(0.0, 0.18, band) * smoothstep(1.0, 0.80, band);
       intensity *= edgeSoft;
@@ -141,19 +137,16 @@
       float h = clamp(n*0.90 + 0.12*wave, 0.0, 1.0);
 
       vec3 col = mix(blue, cyan, smoothstep(0.20, 0.75, h));
-
-      float hot = smoothstep(0.55, 0.95, n) * smoothstep(0.20, 1.00, u_energy);
+      float hot = smoothstep(0.55, 0.95, n) * smoothstep(0.20, 1.00, e);
       col = mix(col, green, hot * 0.55);
 
       float streak = smoothstep(0.70, 0.98, abs(wave)) * (0.35 + 0.65*n);
       col = mix(col, purp, streak * 0.18);
-
-      col += streak * vec3(0.15, 0.55, 1.00) * mix(0.10, 0.35, u_energy);
+      col += streak * vec3(0.15, 0.55, 1.00) * mix(0.10, 0.35, e);
 
       float alpha = intensity;
       alpha *= smoothstep(1.0, 0.0, band);
       alpha *= smoothstep(0.0, 0.18, band);
-
       alpha *= u_alphaMul; // kept at 1
       alpha = clamp(alpha, 0.0, 0.95);
 
@@ -209,7 +202,7 @@
     return { cx, cy, ringRadius, avatarRadius };
   }
 
-  // KEEP energy settings exactly
+  // KEEP your existing energy settings exactly
   function setEnergyForMode(mode) {
     if (mode === "talking") return 1;
     if (mode === "thinking") return 0.55;
@@ -270,7 +263,6 @@
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    // Proper delta-time from requestAnimationFrame timestamp
     let lastTS = null;
 
     function frame(ts) {
@@ -294,20 +286,18 @@
       if (lastTS == null) lastTS = ts;
       let dt = (ts - lastTS) / 1000;
       lastTS = ts;
-      dt = Math.min(0.033, Math.max(0, dt)); // clamp dt to avoid “bursts” after hitches
-
+      dt = Math.min(0.033, Math.max(0, dt));
       STATE.t += dt;
 
-      // KEEP original energy smoothing unchanged
+      // smooth energy (keep your behaviour)
       STATE.energy += (STATE.energyTarget - STATE.energy) * 0.08;
 
       const glow = clamp01(STATE.userGlow);
       const { cx, cy, ringRadius, avatarRadius } = getOrbGeometry(canvas);
 
-      // Round to device pixels (reduces jitter)
+      // (your sizing unchanged)
       const cxp = Math.round(cx * dpr);
       const cyp = Math.round(cy * dpr);
-
       const outer = Math.round((ringRadius * 1.3) * dpr);
 
       gl.clearColor(0, 0, 0, 0);
@@ -338,7 +328,6 @@
       if (typeof d.glow === "number") STATE.userGlow = clamp01(d.glow);
     });
 
-    // initial
     STATE.energyTarget = setEnergyForMode(STATE.mode);
     STATE.userGlow = STATE.glow;
 
