@@ -723,7 +723,7 @@ body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
    ======================= */
 body.sca-botpage #scaBotPageRoot #vpTimer{
   /* size */
-  font-size: clamp(42px, 4.2vw, 64px) !important;
+  font-size: clamp(52px, 4.2vw, 64px) !important;
   font-weight: 400 !important;
   line-height: 1 !important;
 
@@ -746,6 +746,12 @@ body.sca-botpage #scaBotPageRoot #vpTimer{
 /* smaller on mobile */
 @media (max-width: 720px){
   body.sca-botpage #scaBotPageRoot #vpTimer{
-    font-size: 22px !important;
+    font-size: 32px !important;
   }
+}
+/* ===== Timer: fixed box so the left edge never moves ===== */
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
+  width: 5ch !important;        /* fixed width for "12:00" */
+  text-align: right !important; /* digits stay on the right inside the box */
+  display: block !important;    /* stable box model in the grid cell */
 }
