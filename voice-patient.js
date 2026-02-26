@@ -394,15 +394,13 @@ async function fetchJson(url, options) {
     return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
   }
 
-  function stopCountdown(reason = "") {
-    if (countdownTimer) clearInterval(countdownTimer);
-    countdownTimer = null;
-    countdownEndsAt = null;
-    countdownHasStarted = false;
-    if (DEBUG_UI) {
-      if (reason) setCountdownText(`Timer stopped (${reason})`);
-      else setCountdownText("");
-    }
+function stopCountdown(reason = "") {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = null;
+  countdownEndsAt = null;
+  countdownHasStarted = false;
+  setCountdownText(""); // ✅ clear (no text labels)
+}
   }
 
   function startCountdown(seconds = MAX_SESSION_SECONDS) {
@@ -413,7 +411,7 @@ async function fetchJson(url, options) {
       const remainingMs = countdownEndsAt - Date.now();
       const remainingSec = Math.ceil(remainingMs / 1000);
 
-      setCountdownText(`Time left: ${formatMMSS(remainingSec)}`);
+      setCountdownText(formatMMSS(remainingSec));
 
         // ✅ emit remaining seconds (NO colour logic here)
   uiEmit({ timerRemainingSec: remainingSec });
