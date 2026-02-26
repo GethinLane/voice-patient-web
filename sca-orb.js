@@ -230,15 +230,15 @@ if (avatarRect) {
 // ---- BLUE HALO ONLY (no white mist) ----
 const edge = avatarRadius;
 
-const inner = edge * 0.9;
+const inner = edge * 1.0;
 const bluePeak = edge * 1.0;
-const outer = edge * 1.1;
+const outer = edge * 1.15;
 
 const mist = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
 const tBlue  = (bluePeak  - inner) / (outer - inner);
 
 mist.addColorStop(0.00, "rgba(255,255,255,0)");
-mist.addColorStop(Math.max(0, Math.min(1, tBlue)), "rgba(255,255,255,1)");
+mist.addColorStop(Math.max(0, Math.min(1, tBlue)), "rgba(142,174,228,1)");
 mist.addColorStop(1.00, "rgba(255,255,255,0)");
 
 // clip so it can never look square
