@@ -868,91 +868,70 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header #wakeLab
 }
 
 /* CSS for the Video and Written Case Links */
-  .sca-caseLinks{
-    display:flex;
-    justify-content:flex-end;
-    gap:12px;
-    align-items:center;
-    margin-bottom:12px;
-  }
+  /* ==============================
+   Case links (top right buttons)
+   ============================== */
 
-  .sca-caseBtn{
-    height:44px;
-    padding:0 12px;                 /* room for text */
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    gap:10px;
-
-    background: transparent;        /* or #fff if you want */
-    border: 1px solid #d6dde9;
-    border-radius: 8px;
-
-    color:#253551;
-    text-decoration:none;
-    font-weight:600;
-    line-height:1;
-    white-space:nowrap;
-
-    transition: transform .08s ease, background-color .12s ease, box-shadow .12s ease;
-  }
-
-  .sca-caseBtn i{
-    font-size: 1.25rem;             /* similar visual weight to fa-xl */
-    line-height:1;
-    display:inline-block;
-  }
-
-  /* Fix “looks off-center” for the video glyph */
-  .sca-videoIcon{
-    transform: translateY(0.5px);
-  }
-
-  .sca-caseBtn:hover{
-    background: rgba(214,221,233,0.25);
-    transform: translateY(-1px);
-  }
-
-  .sca-caseBtn:active{
-    transform: translateY(0px);
-  }
-
-  .sca-caseBtn:focus-visible{
-    outline: 2px solid #d6dde9;
-    outline-offset: 2px;
-  }
-/* --- FIX: centre FA icons vertically inside the case buttons --- */
-.sca-caseBtn{
-  align-items: center;   /* keep */
-  line-height: 1;        /* keep */
-}
-
-.sca-caseBtn i{
-  display: flex;         /* ✅ kills baseline alignment issues */
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  height: 1em;           /* ✅ locks icon box */
-  margin: 0;
-  padding: 0;
-}
-
-/* remove the nudge (it can cause “top aligned” perception) */
-.sca-videoIcon{
-  transform: none;
-}
-/* --- Case link buttons: keep icon + text on one line --- */
 .sca-caseLinks{
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
   flex-wrap: nowrap;
 }
 
 .sca-caseBtn{
+  height: 44px;
   display: inline-flex;
-  flex-wrap: nowrap;      /* ✅ don’t allow wrapping */
-  white-space: nowrap;    /* ✅ don’t wrap text */
-  min-width: max-content; /* ✅ don’t shrink narrower than contents */
+  align-items: center;
+  justify-content: center;
+
+  /* force a single row */
+  flex-direction: row;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+
+  padding: 0 12px;
+  gap: 10px;
+
+  border: 1px solid #d6dde9;
+  border-radius: 8px;
+  background: transparent;
+
+  color: #253551;
+  text-decoration: none;
+  font-weight: 600;
+  line-height: 1;
+
+  /* critical: don't allow shrinking that causes wrap */
+  flex: 0 0 auto;
+}
+
+.sca-caseBtn i{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 1.25rem;
 }
 
 .sca-caseBtn span{
-  white-space: nowrap;    /* belt + braces */
+  display: inline-block;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.sca-caseBtn:hover{
+  background: rgba(214,221,233,0.25);
+  transform: translateY(-1px);
+}
+
+.sca-caseBtn:active{
+  transform: translateY(0);
+}
+
+.sca-caseBtn:focus-visible{
+  outline: 2px solid #d6dde9;
+  outline-offset: 2px;
 }
