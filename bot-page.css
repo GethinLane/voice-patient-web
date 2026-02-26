@@ -941,3 +941,18 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header #wakeLab
 .sca-videoIcon{
   transform: none;
 }
+/* --- Case link buttons: keep icon + text on one line --- */
+.sca-caseLinks{
+  flex-wrap: nowrap;
+}
+
+.sca-caseBtn{
+  display: inline-flex;
+  flex-wrap: nowrap;      /* ✅ don’t allow wrapping */
+  white-space: nowrap;    /* ✅ don’t wrap text */
+  min-width: max-content; /* ✅ don’t shrink narrower than contents */
+}
+
+.sca-caseBtn span{
+  white-space: nowrap;    /* belt + braces */
+}
