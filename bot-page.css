@@ -637,6 +637,20 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header{
   justify-content: flex-start !important;
   gap: 10px !important;
 }
+/* --- Timer: text-only (no pill) --- */
+body.sca-botpage #scaBotPageRoot #vpTimer{
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+
+  font-size: 20px;     /* adjust if you want a touch bigger */
+  font-weight: 600;    /* not overly bold */
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
 
 /* 12:00 → 7:00 */
 body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--safe{ color: #0c6a3b; }
@@ -676,6 +690,29 @@ body.sca-botpage #scaBotPageRoot #gradingBtn.is-ready{
   color: #253551;
 }
 
+/* --- Name + timer row --- */
+body.sca-botpage #scaBotPageRoot .sca-mainTop{
+  display: flex;
+  align-items: baseline;          /* looks nicer with big name text */
+  justify-content: space-between; /* name left, timer right */
+  gap: 14px;
+}
+
+/* --- Timer styling (numbers only) --- */
+body.sca-botpage #scaBotPageRoot #vpTimer{
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 /* Optional: on small screens, keep it tidy */
 @media (max-width: 720px){
@@ -708,15 +745,7 @@ body.sca-botpage #scaBotPageRoot .sca-mainIdentity .sca-mainAge{
   min-width: 0;
 }
 
-
-
-/* define name size on the parent so timer can use it too */
-
-body.sca-botpage #scaBotPageRoot .sca-mainIdentity{
-  --name-size: clamp(30px, 3.6vw, 46px);
-}
-  
-/* ===== FINAL TIMER (only one) ===== */
+/* Timer spans both rows, but only takes as much width as the text needs */
 body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
   grid-column: 2;
   grid-row: 1 / span 2;
@@ -725,64 +754,35 @@ body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
   align-items: center;
   justify-content: flex-end;
 
-  width: max-content;
-  justify-self: end;
+  width: max-content;        /* ✅ never stretches */
+  justify-self: end;         /* ✅ hugs the right side */
   white-space: nowrap;
 
-  background: transparent !important;
-  border: 0 !important;
-  padding: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-
-  /* name size + ~30% */
-  font-size: calc(var(--name-size) * 1.3);
-  font-weight: 500;
+  /* Bigger timer */
+  font-size: clamp(34px, 3vw, 48px);
+  font-weight: 900;
   line-height: 1;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
-}
-/* ===== FORCE Identity layout + Timer position (bulletproof) ===== */
-/* Works whether sca-botpage is on <body> or on #scaBotPageRoot */
-body.sca-botpage #scaBotPageRoot .sca-mainIdentity,
-#scaBotPageRoot.sca-botpage .sca-mainIdentity{
-  --name-size: clamp(30px, 3.6vw, 46px);
-  display: grid !important;
-  grid-template-columns: 1fr max-content !important; /* timer column only as wide as text */
-  grid-template-rows: auto auto !important;
-  column-gap: 18px !important;
-  row-gap: 8px !important;
-  align-items: center !important;
-  min-width: 0;
-}
 
-@media (max-width: 720px){
-  body.sca-botpage #scaBotPageRoot .sca-mainIdentity,
-  #scaBotPageRoot.sca-botpage .sca-mainIdentity{
-    --name-size: clamp(26px, 9vw, 36px);
-  }
-}
-
-body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer,
-#scaBotPageRoot.sca-botpage .sca-mainIdentity #vpTimer{
-  grid-column: 2 !important;
-  grid-row: 1 / span 2 !important;
-  justify-self: end !important;
-
-  display: flex !important;
-  align-items: center !important;
-  justify-content: flex-end !important;
-
-  width: max-content !important;
-  white-space: nowrap !important;
-
+  /* Text-only look */
   background: transparent !important;
   border: 0 !important;
   padding: 0 !important;
+}
+body.sca-botpage #scaBotPageRoot .sca-mainName{
+  --name-size: clamp(30px, 3.6vw, 46px);
+  font-size: var(--name-size);
+}
 
-  font-size: calc(var(--name-size) * 1.3) !important;
-  font-weight: 500 !important;
-  line-height: 1 !important;
-  letter-spacing: 0.02em !important;
-  font-variant-numeric: tabular-nums !important;
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
+  /* ...keep your grid placement styles... */
+
+  font-size: calc(var(--name-size) * 1.3); /* ✅ name size + 30% */
+  font-weight: 500;                        /* slightly thinner */
+  line-height: 1;                          /* crisp digits */
+
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
