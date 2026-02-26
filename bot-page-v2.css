@@ -866,77 +866,28 @@ body.sca-botpage #scaPlanStandalone .sca-planUnderline{
     padding: 9px 14px;
   }
 }
-/* IDEA 4: Mini-cards per section */
+/* ==========================================
+   Remove outer shell card; let blue card fill
+   ========================================== */
+
+/* Kill the outer white card look */
+body.sca-botpage #scaInfoCardRoot.sca-cardShell{
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  padding: 0 !important;          /* important: no inner gutter */
+  border-radius: 0 !important;    /* optional */
+}
+
+/* Ensure the inner blue card takes the full space */
 body.sca-botpage #scaInfoCardRoot .sca-infoCard{
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  overflow: visible;
+  width: 100%;
+  margin: 0 !important;
+  border-radius: 22px;            /* keep (or set to 0 if you want square) */
 }
 
-body.sca-botpage #scaInfoCardRoot .sca-infoHeader{
-  background: transparent;
-  border: 0;
-  padding: 0 0 12px;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-infoHeaderTitle{
-  font-size: 18px;
-  font-weight: 950;
-  letter-spacing: -0.01em;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-accordion{
-  gap: 12px;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-accItem{
-  background: rgba(255,255,255,.70);
-  border: 1px solid rgba(37,53,81,.10);
-  border-radius: 18px;
-  box-shadow: 0 10px 26px rgba(17,24,39,.06);
-  overflow: hidden;
-  transition: transform .12s ease, box-shadow .12s ease;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-accItem:hover{
-  transform: translateY(-1px);
-  box-shadow: 0 14px 36px rgba(17,24,39,.08);
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-accItem + .sca-accItem{
-  border-top: 0; /* remove old divider rule */
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-accHeader{
-  padding: 16px 16px;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-accTitle{
-  font-size: 17px;
-  font-weight: 900;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-accChevron{
-  color: rgba(37,53,81,.55);
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-accBody{
-  padding: 0 16px 16px;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-accContent{
-  background: rgba(37,53,81,.03);
-  border: 1px solid rgba(37,53,81,.08);
-  border-radius: 14px;
-  padding: 12px 14px;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-cleanList{
-  color: rgba(37,53,81,.75);
-  font-weight: 520;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
-  margin: 8px 0;
+/* If your outer wrapper was creating extra spacing */
+body.sca-botpage #scaInfoCardRoot .sca-right{
+  margin: 0 !important;
 }
