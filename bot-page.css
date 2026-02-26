@@ -720,3 +720,53 @@ body.sca-botpage #scaBotPageRoot #vpTimer{
     font-size: 18px;
   }
 }
+/* Name + Age (left) and Timer (right) as one block */
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity{
+  display: grid;
+  grid-template-columns: 1fr max-content; /* ✅ left takes rest, timer only as wide as text */
+  grid-template-rows: auto auto;
+  column-gap: 18px;
+  row-gap: 8px;
+  align-items: center;
+  min-width: 0; /* helps long names wrap instead of pushing timer off */
+}
+
+/* Grid placement */
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity #sca-mainName{
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity .sca-mainAge{
+  grid-column: 1;
+  grid-row: 2;
+  margin-top: 0 !important; /* override your existing margin-top */
+  min-width: 0;
+}
+
+/* Timer spans both rows, but only takes as much width as the text needs */
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
+  grid-column: 2;
+  grid-row: 1 / span 2;
+
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  width: max-content;        /* ✅ never stretches */
+  justify-self: end;         /* ✅ hugs the right side */
+  white-space: nowrap;
+
+  /* Bigger timer */
+  font-size: clamp(34px, 3vw, 48px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+
+  /* Text-only look */
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
