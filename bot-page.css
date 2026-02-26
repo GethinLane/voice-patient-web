@@ -1,8 +1,4 @@
-/* bot-page.css — cleaned for your current HTML (sca-mainIdentity + vpTimer next to name/age)
-   - Removes duplicate/conflicting timer + header rules
-   - Timer size = name size * 1.3, thinner weight
-   - Timer column only as wide as the text (max-content)
-*/
+/* bot-page.css — FULL, with duplicates removed + NEW timer rules for sca-mainIdentity */
 
 /* ---------------- Page shell ---------------- */
 body.sca-botpage{
@@ -88,147 +84,34 @@ body.sca-botpage #scaBotPageRoot .sca-controls *{
   pointer-events: auto;
 }
 
-/* ---------------- Patient card + orb sizing ---------------- */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header{
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-badge{
-  font-size: 14px;
-  font-weight: 800;
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(0,0,0,.12);
-}
-
-/* Idle badge */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-badge-idle{
-  background: #d6dde9;
-  color: #253551;
-  border-color: rgba(37,53,81,.18);
-  opacity: .85;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-badge-thinking{ background:#eef4ff; color:#1c4fb8; border-color: rgba(28,79,184,.25); }
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-badge-listening{ background:#eaf8f0; color:#0c6a3b; border-color: rgba(12,106,59,.25); }
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-badge-talking{ background:#fff1f3; color:#b0123a; border-color: rgba(176,18,58,.25); }
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 10px 0 6px;
-  margin-bottom: 22px;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-  --orb-bleed: 24px;
-  width: 304px;
-  height: 304px;
-  border-radius: 50%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  position: relative;
-  overflow: visible;
-  background: transparent;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-orbCanvas{
-  position: absolute;
-  inset: calc(var(--orb-bleed) * -1);
-  width: calc(100% + (var(--orb-bleed) * 2));
-  height: calc(100% + (var(--orb-bleed) * 2));
-  z-index: 5;
-  opacity: 1;
-  filter: none;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-  width: 304px;
-  height: 304px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: #fff;
-  position: relative;
-  z-index: 1;
-  border: 0;
-}
-
-body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar img{
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-/* Desktop orb + avatar ~30% bigger */
-@media (min-width: 981px){
-  body.sca-botpage #scaBotPageRoot{
-    padding-top: 40px;
-    padding-bottom: 40px;
-  }
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-    width: 395px;
-    height: 395px;
-    --orb-bleed: 30px;
-  }
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-    width: 395px;
-    height: 395px;
-  }
-}
-
-@media (max-width: 720px){
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-    --orb-bleed: 16px;
-    width: min(90vw, 256px);
-    height: min(90vw, 256px);
-  }
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-    width: min(90vw, 256px);
-    height: min(90vw, 256px);
-  }
-}
-
-@media (max-width: 420px){
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
-    width: min(92vw, 224px);
-    height: min(92vw, 224px);
-  }
-  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
-    width: min(92vw, 224px);
-    height: min(92vw, 224px);
-  }
-}
-
-/* Image load state */
-#sca-avatar-img{ display: none; }
-#sca-avatar-img.is-loaded{ display: block; }
-#sca-avatar-img{
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  border: 0;
-  outline: 0;
-}
-
-/* ---------------- Main meta (Name/Age/Timer) ---------------- */
+/* ---------------- Main meta ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-mainMeta{
   padding: 0 6px 0;
-  margin-top: 6px;
+  margin-top: 6px !important; /* keep your breathing room */
 }
 
-/* Identity block: name+age left, timer right */
+/* Keep original name styling (IMPORTANT) */
+body.sca-botpage #scaBotPageRoot .sca-mainName{
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  color: var(--sca-ink);
+  margin-top: 2px;
+}
+
+/* Keep original age styling */
+body.sca-botpage #scaBotPageRoot .sca-mainAge{
+  color: var(--sca-muted);
+  font-weight: 650;
+  font-size: 18px;
+}
+
+/* ---------------- NEW: identity block layout (name+age left, timer right) ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-mainIdentity{
-  --name-size: clamp(30px, 3.6vw, 46px);   /* ✅ shared variable for name + timer */
+  /* ✅ define name size once, so timer can reference it */
+  --name-size: clamp(30px, 3.6vw, 46px);
+
   display: grid;
-  grid-template-columns: 1fr max-content;  /* ✅ timer only as wide as its text */
+  grid-template-columns: 1fr max-content; /* ✅ name/age gets width; timer only as wide as text */
   grid-template-rows: auto auto;
   column-gap: 18px;
   row-gap: 8px;
@@ -236,34 +119,22 @@ body.sca-botpage #scaBotPageRoot .sca-mainIdentity{
   min-width: 0;
 }
 
-body.sca-botpage #scaBotPageRoot .sca-mainName{
-  font-weight: 850;
-  letter-spacing: -0.02em;
-  color: var(--sca-ink);
+/* Apply the size variable to the name */
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity .sca-mainName{
   font-size: var(--name-size);
-  margin-top: 2px;
   min-width: 0;
 }
 
-body.sca-botpage #scaBotPageRoot .sca-mainAge{
-  color: var(--sca-muted);
-  font-weight: 650;
-  font-size: 18px;
-  margin-top: 0; /* overridden because we're using grid row-gap */
+/* Put age in row 2 and remove the old margin-top behavior */
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity .sca-mainAge{
+  grid-column: 1;
+  grid-row: 2;
+  margin-top: 0 !important;
   min-width: 0;
 }
 
-@media (max-width: 720px){
-  body.sca-botpage #scaBotPageRoot .sca-mainIdentity{
-    --name-size: clamp(26px, 9vw, 36px);
-  }
-  body.sca-botpage #scaBotPageRoot .sca-mainAge{
-    font-size: 16px;
-  }
-}
-
-/* Timer: uses name size * 1.3, slightly thinner */
-body.sca-botpage #scaBotPageRoot #vpTimer{
+/* ✅ FINAL TIMER RULE (ONLY ONE) */
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
   grid-column: 2;
   grid-row: 1 / span 2;
 
@@ -281,17 +152,68 @@ body.sca-botpage #scaBotPageRoot #vpTimer{
   border-radius: 0 !important;
   box-shadow: none !important;
 
-  font-size: calc(var(--name-size) * 1.3); /* ✅ name size + 30% */
-  font-weight: 500;                        /* ✅ thinner */
-  line-height: 1;                          /* crisp digits */
+  /* ✅ name height + ~30% */
+  font-size: calc(var(--name-size) * 1.3);
+  font-weight: 500;   /* thinner */
+  line-height: 1;     /* crisp digits */
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
 }
 
-/* Timer colour states (applied by bot-page.bundle.js) */
+/* Timer colours */
 body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--safe{ color: #0c6a3b; }
 body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--warn{ color: #253551; }
 body.sca-botpage #scaBotPageRoot #vpTimer.vpTimer--danger{ color: #b0123a; }
+
+@media (max-width: 720px){
+  body.sca-botpage #scaBotPageRoot .sca-mainIdentity{
+    --name-size: clamp(26px, 9vw, 36px);
+  }
+  body.sca-botpage #scaBotPageRoot .sca-mainAge{
+    font-size: 16px;
+  }
+}
+
+/* ---------------- Bot update box ---------------- */
+body.sca-botpage #scaBotPageRoot .sca-botUpdate{
+  background: rgba(255,255,255,.62);
+  border: 1px solid var(--sca-border);
+  border-radius: 16px;
+  padding: 14px 14px 10px;
+  margin-bottom: 14px;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-botUpdateHeader{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-botUpdateTitle{
+  font-weight: 800;
+  color: var(--sca-ink);
+}
+
+body.sca-botpage #scaBotPageRoot #status{
+  display: inline;
+  font-weight: 650;
+  color: var(--sca-muted);
+}
+
+body.sca-botpage #scaBotPageRoot .sca-botUpdateList{
+  margin: 0;
+  padding-left: 18px;
+  color: var(--sca-muted);
+  font-weight: 600;
+  list-style: disc;
+  list-style-position: outside;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-botUpdateList li{
+  margin: 6px 0;
+}
 
 /* ---------------- Start/Stop control ---------------- */
 body.sca-botpage #scaBotPageRoot .sca-controls{
@@ -344,7 +266,7 @@ body.sca-botpage #stopBtn{
   display: none !important;
 }
 
-/* Grading button */
+/* --- Grading button (below Start/Stop) --- */
 body.sca-botpage #scaBotPageRoot #gradingBtn{
   width: 100%;
   height: 54px;
@@ -365,47 +287,6 @@ body.sca-botpage #scaBotPageRoot #gradingBtn:disabled{
 body.sca-botpage #scaBotPageRoot #gradingBtn.is-ready{
   background: #d6dde9;
   color: #253551;
-}
-
-/* ---------------- Right column: bot update box ---------------- */
-body.sca-botpage #scaBotPageRoot .sca-botUpdate{
-  background: rgba(255,255,255,.62);
-  border: 1px solid var(--sca-border);
-  border-radius: 16px;
-  padding: 14px 14px 10px;
-  margin-bottom: 14px;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-botUpdateHeader{
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-botUpdateTitle{
-  font-weight: 800;
-  color: var(--sca-ink);
-}
-
-body.sca-botpage #scaBotPageRoot #status{
-  display: inline;
-  font-weight: 650;
-  color: var(--sca-muted);
-}
-
-body.sca-botpage #scaBotPageRoot .sca-botUpdateList{
-  margin: 0;
-  padding-left: 18px;
-  color: var(--sca-muted);
-  font-weight: 600;
-  list-style: disc;
-  list-style-position: outside;
-}
-
-body.sca-botpage #scaBotPageRoot .sca-botUpdateList li{
-  margin: 6px 0;
 }
 
 /* ---------------- Right column: info card + accordion ---------------- */
@@ -520,3 +401,216 @@ body.sca-botpage #scaBotPageRoot .quote-box-medical{
 body.sca-botpage #scaBotPageRoot .quote-box-results{
   border-left: 4px solid rgba(64, 99, 180, .55);
 }
+
+/* ---------------- Patient card + orb sizing (kept from your original) ---------------- */
+
+/* Space under the badge row */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-header{
+  margin-bottom: 16px !important;
+}
+
+/* Space under the orb/avatar block */
+body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatarWrap{
+  margin-bottom: 22px !important;
+}
+
+#sca-patient-card .sca-avatarWrap{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding: 10px 0 6px;
+}
+
+#sca-patient-card .sca-ring{
+  --orb-bleed: 24px;
+  width: 304px;
+  height: 304px;
+  border-radius: 50%;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  position: relative;
+  overflow: visible;
+  background: transparent;
+}
+
+#sca-patient-card .sca-orbCanvas{
+  position: absolute;
+  inset: calc(var(--orb-bleed) * -1);
+  width: calc(100% + (var(--orb-bleed) * 2));
+  height: calc(100% + (var(--orb-bleed) * 2));
+  z-index: 5;
+  opacity: .9;
+  filter: blur(.4px);
+}
+
+#sca-patient-card .sca-avatar{
+  width: 304px;
+  height: 304px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #fff;
+  position: relative;
+  z-index: 1;
+  border: 0;
+}
+
+#sca-patient-card .sca-avatar img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@media (max-width: 720px){
+  #sca-patient-card .sca-ring{
+    --orb-bleed: 16px;
+    width: min(90vw, 256px);
+    height: min(90vw, 256px);
+  }
+  #sca-patient-card .sca-avatar{
+    width: min(90vw, 256px);
+    height: min(90vw, 256px);
+  }
+}
+
+@media (max-width: 420px){
+  #sca-patient-card .sca-ring{
+    width: min(92vw, 224px);
+    height: min(92vw, 224px);
+  }
+  #sca-patient-card .sca-avatar{
+    width: min(92vw, 224px);
+    height: min(92vw, 224px);
+  }
+}
+
+/* === Desktop: make orb + avatar ~30% bigger === */
+@media (min-width: 981px){
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+    width: 395px !important;
+    height: 395px !important;
+  }
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-avatar{
+    width: 395px !important;
+    height: 395px !important;
+  }
+}
+
+/* === Fix orb clipping: increase canvas bleed area on desktop === */
+@media (min-width: 981px){
+  body.sca-botpage #scaBotPageRoot #sca-patient-card .sca-ring{
+    --orb-bleed: 30px !important;
+  }
+}
+
+/* Hide legacy patientDataBox if present */
+body.sca-botpage #patientDataBox[data-sca-hidden="true"]{
+  display: none !important;
+}
+
+/* ---------------- Plan tabs (kept from your original) ---------------- */
+body.sca-botpage #scaBotPageRoot .sca-planBar{
+  margin: 0 6px 12px;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planTabs{
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 0;
+  overflow: visible;
+  border: 1px solid rgba(37,53,81,.18);
+  background: rgba(255,255,255,.70);
+  box-shadow: 0 10px 26px rgba(17,24,39,.08);
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planTabs input{
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planTab{
+  position: relative;
+  padding: 14px 16px 18px;
+  font-weight: 900;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(255,255,255,.70);
+  color: rgba(37,53,81,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planTab + input + label{
+  border-left: 1px solid rgba(37,53,81,.14);
+}
+
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label{
+  background: #d6dde9;
+  color: #253551;
+}
+
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planTabText,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planTabText{
+  color: #253551;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planCostTag{
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+
+  padding: 7px 12px;
+  border-radius: 0 0 12px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: rgba(37,53,81,.70);
+  display: none;
+}
+
+body.sca-botpage #scaBotPageRoot #vpModeStandard:checked + label .sca-planCostTag,
+body.sca-botpage #scaBotPageRoot #vpModePremium:checked + label .sca-planCostTag{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #d6dde9;
+  color: #253551;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planCredits{
+  font-weight: inherit;
+  color: inherit;
+}
+
+body.sca-botpage #scaBotPageRoot .sca-planUnderline{
+  height: 2px;
+  width: 100%;
+  margin-top: 18px;
+  border-radius: 0;
+  background: rgba(37,53,81,.14);
+}
+
+/* OPTIONAL: standalone plan selector */
+body.sca-botpage #scaPlanStandalone .sca-planBar{ margin: 0 6px 12px; }
+body.sca-botpage #scaPlanStandalone .sca-planTabs{ width:100%; display:grid; grid-template-columns:1fr 1fr; border-radius:0; overflow:visible; border:1px solid rgba(37,53,81,.18); background:rgba(255,255,255,.70); box-shadow:0 10px 26px rgba(17,24,39,.08); }
+body.sca-botpage #scaPlanStandalone .sca-planTabs input{ position:absolute; opacity:0; pointer-events:none; }
+body.sca-botpage #scaPlanStandalone .sca-planTab{ position:relative; padding:14px 16px 18px; font-weight:900; font-size:20px; line-height:1; cursor:pointer; user-select:none; background:rgba(255,255,255,.70); color:rgba(37,53,81,.45); display:flex; align-items:center; justify-content:center; border-radius:0; }
+body.sca-botpage #scaPlanStandalone .sca-planTab + input + label{ border-left:1px solid rgba(37,53,81,.14); }
+body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label,
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label{ background:#d6dde9; color:#253551; }
+body.sca-botpage #scaPlanStandalone .sca-planCostTag{ position:absolute; left:50%; bottom:-12px; transform:translateX(-50%); white-space:nowrap; padding:7px 12px; border-radius:0 0 12px 12px; font-size:14px; font-weight:500; border:none; box-shadow:none; background:transparent; color:rgba(37,53,81,.70); display:none; }
+body.sca-botpage #scaPlanStandalone #vpModeStandard:checked + label .sca-planCostTag,
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label .sca-planCostTag{ display:inline-flex; align-items:center; gap:6px; background:#d6dde9; color:#253551; }
+body.sca-botpage #scaPlanStandalone .sca-planUnderline{ height:2px; width:100%; margin-top:18px; border-radius:0; background:rgba(37,53,81,.14); }
