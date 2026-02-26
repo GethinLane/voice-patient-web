@@ -796,14 +796,6 @@ body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
   }
 }
 
-/* allow JS to unhide it cleanly */
-body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header[hidden]{
-  display: none !important;
-}
-body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header.is-available{
-  display: inline-flex !important;
-}
-
 /* Header placement */
 body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header{
   margin-left: auto !important;
