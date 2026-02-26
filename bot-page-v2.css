@@ -207,7 +207,7 @@ body.sca-botpage .sca-cardShell{
 }
 
 #sca-patient-card .sca-ring{
-  --orb-bleed: 24px;
+  --orb-bleed: 60px;
   width: 304px;
   height: 304px;
   border-radius: 50%;
