@@ -263,7 +263,7 @@ body.sca-botpage .sca-cardShell{
 /* Mobile sizing */
 @media (max-width: 720px){
   #sca-patient-card .sca-ring{
-    --orb-bleed: 16px;
+    --orb-bleed: 30px;
     width: min(90vw, 256px);
     height: min(90vw, 256px);
   }
@@ -939,4 +939,16 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList{
 
 body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
   margin: 8px 0;
+}
+#sca-patient-card .sca-ring{
+  background: transparent !important;
+}
+
+#sca-patient-card .sca-orbCanvas{
+  z-index: 1 !important; /* behind */
+}
+
+#sca-patient-card .sca-avatar{
+  z-index: 2 !important; /* above */
+  background: transparent !important; /* remove white fill */
 }
