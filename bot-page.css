@@ -770,3 +770,19 @@ body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
   border: 0 !important;
   padding: 0 !important;
 }
+body.sca-botpage #scaBotPageRoot .sca-mainName{
+  --name-size: clamp(30px, 3.6vw, 46px);
+  font-size: var(--name-size);
+}
+
+body.sca-botpage #scaBotPageRoot .sca-mainIdentity #vpTimer{
+  /* ...keep your grid placement styles... */
+
+  font-size: calc(var(--name-size) * 1.3); /* ✅ name size + 30% */
+  font-weight: 500;                        /* slightly thinner */
+  line-height: 1;                          /* crisp digits */
+
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
