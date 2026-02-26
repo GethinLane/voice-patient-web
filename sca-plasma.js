@@ -3,10 +3,10 @@
    - WebGL fragment shader (electric / professional)
    - Anchors to #sca-ring + masks around .sca-avatar
    - Listens to window "vp:ui" events with d.state = idle|listening|thinking|talking
-   - Keeps your sizing + energy mapping unchanged
-   - FIX: uses rAF timestamp delta-time (no 60fps assumption) + clamps dt to prevent “half-second berserk”
-   - FIX: rounds center/outer to device pixels to reduce layout jitter spikes
-   - UPDATE: darker, more vibrant blue base + slightly more vibrant “soft cyan”
+   - Uses rAF timestamp + clamped dt (prevents brief “berserk” after frame hitches)
+   - Rounds center/outer to device pixels (reduces layout jitter)
+   - Palette: darker vibrant blue + soft-but-visible icy cyan
+   - NEW: “pressure pump” during talking (reads like bouncing without moving inner/outer edges)
 */
 
 (() => {
@@ -23,7 +23,7 @@
     energy: 0.15,
     energyTarget: 0.15,
 
-    // keep alpha constant (you reverted alpha mode)
+    // keep alpha constant
     alpha: 1,
     alphaTarget: 1,
 
@@ -86,7 +86,7 @@
       vec2 p = frag - u_center;
 
       float r = length(p);
-      float inner = u_radius * 0.93;   // KEEP your sizing
+      float inner = u_radius * 0.93;   // KEEP sizing
       float outer = u_outer;
 
       if (r < inner || r > outer) discard;
@@ -113,20 +113,28 @@
       float wave = sin((band*8.0 - u_time*1.8*spd) + n*4.0);
       float core = smoothstep(0.95, 0.05, band);
 
+      // --- NEW: “pressure pump” (bouncy feel without moving edges) ---
+      float pumpAmt = smoothstep(0.20, 1.00, u_energy); // mostly off in idle, strong in talking
+      float pump = sin(u_time * (5.5 + 2.0*u_energy) + band * 12.0 + n * 3.0 + a * 0.8);
+      float pumpEnvelope = (1.0 - band);                // stronger nearer inner edge
+      float pumpSignal = pump * pumpEnvelope * pumpAmt;
+
       float intensity = 0.55*core + 0.50*(1.0-band);
       intensity += 0.55*n;
       intensity += 0.20*wave;
+
+      // NEW: adds the “pumping/bouncing” sensation
+      intensity += 0.18 * pumpSignal;
+
       intensity *= mix(0.55, 1.10, u_glow);
       intensity *= mix(0.80, 1.35, u_energy);
 
       float edgeSoft = smoothstep(0.0, 0.18, band) * smoothstep(1.0, 0.80, band);
       intensity *= edgeSoft;
 
-      // Palette tweaks:
-      // - Blue: darker + more saturated
-      // - Cyan: still “soft ice” but a bit more vibrant than #d6dde9
-      vec3 blue  = vec3(0.05, 0.40, 1.00); // darker, vibrant blue
-      vec3 cyan  = vec3(0.74, 0.86, 0.98); // soft-but-visible icy cyan
+      // Palette: darker vibrant blue + soft-but-visible icy cyan
+      vec3 blue  = vec3(0.05, 0.40, 1.00);
+      vec3 cyan  = vec3(0.74, 0.86, 0.98);
       vec3 green = vec3(0.10, 1.00, 0.55);
       vec3 purp  = vec3(0.78, 0.25, 1.00);
 
@@ -201,7 +209,7 @@
     return { cx, cy, ringRadius, avatarRadius };
   }
 
-  // KEEP your existing energy settings exactly
+  // KEEP energy settings exactly
   function setEnergyForMode(mode) {
     if (mode === "talking") return 1;
     if (mode === "thinking") return 0.55;
@@ -262,7 +270,7 @@
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    // FIX: proper delta-time from requestAnimationFrame timestamp
+    // Proper delta-time from requestAnimationFrame timestamp
     let lastTS = null;
 
     function frame(ts) {
@@ -290,17 +298,16 @@
 
       STATE.t += dt;
 
-      // KEEP your original energy smoothing (unchanged)
+      // KEEP original energy smoothing unchanged
       STATE.energy += (STATE.energyTarget - STATE.energy) * 0.08;
 
       const glow = clamp01(STATE.userGlow);
       const { cx, cy, ringRadius, avatarRadius } = getOrbGeometry(canvas);
 
-      // FIX: round to device pixels to reduce geometry jitter spikes
+      // Round to device pixels (reduces jitter)
       const cxp = Math.round(cx * dpr);
       const cyp = Math.round(cy * dpr);
 
-      // KEEP your sizing exactly
       const outer = Math.round((ringRadius * 1.3) * dpr);
 
       gl.clearColor(0, 0, 0, 0);
