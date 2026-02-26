@@ -23,7 +23,7 @@ body.sca-botpage #scaBotPageRoot{
   --sca-shadow: 0 18px 55px rgba(17, 24, 39, .10);
 
   max-width: 1180px;
-  margin: 28px auto;
+  margin: 0px auto;
   padding: 26px;
   border-radius: 28px;
   background: var(--sca-surface);
