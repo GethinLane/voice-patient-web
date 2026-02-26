@@ -205,9 +205,9 @@
   // KEEP your existing energy settings exactly
   function setEnergyForMode(mode) {
     if (mode === "talking") return 1;
-    if (mode === "thinking") return 0.55;
-    if (mode === "listening") return 0.3;
-    return 0.08;
+    if (mode === "thinking") return 0.6;
+    if (mode === "listening") return 0.4;
+    return 0.3;
   }
 
   function start() {
