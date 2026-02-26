@@ -78,7 +78,7 @@
       vec2 p = frag - u_center;
 
       float r = length(p);
-      float inner = u_radius * 0.95;   // KEEP your sizing
+      float inner = u_radius * 0.92;   // KEEP your sizing
       float outer = u_outer;
       if (r < inner || r > outer) discard;
 
