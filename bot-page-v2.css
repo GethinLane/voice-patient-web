@@ -866,69 +866,62 @@ body.sca-botpage #scaPlanStandalone .sca-planUnderline{
     padding: 9px 14px;
   }
 }
-/* IDEA 2: iOS Settings style */
+/* IDEA 3: Clinical rails */
 body.sca-botpage #scaInfoCardRoot .sca-infoCard{
-  background: #ffffff;
+  background: rgba(255,255,255,.65);
   border: 1px solid rgba(37,53,81,.10);
-  border-radius: 18px;
-  box-shadow: 0 12px 30px rgba(17,24,39,.06);
+  border-radius: 22px;
+  box-shadow: 0 18px 50px rgba(17,24,39,.08);
   overflow: hidden;
 }
 
 body.sca-botpage #scaInfoCardRoot .sca-infoHeader{
-  background: transparent;
+  background: rgba(255,255,255,.55);
   border-bottom: 1px solid rgba(37,53,81,.10);
-  padding: 16px 16px 14px;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-infoHeaderTitle{
-  font-size: 16px;
-  font-weight: 900;
-  color: rgba(37,53,81,.88);
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
-
-body.sca-botpage #scaInfoCardRoot .sca-accItem + .sca-accItem{
-  border-top: 1px solid rgba(37,53,81,.08);
+  padding: 16px 18px;
 }
 
 body.sca-botpage #scaInfoCardRoot .sca-accHeader{
-  padding: 16px;
+  padding: 16px 18px;
+  position: relative;
 }
 
-body.sca-botpage #scaInfoCardRoot .sca-accTitle{
-  font-size: 17px;
-  font-weight: 800;
+body.sca-botpage #scaInfoCardRoot .sca-accHeader::before{
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+  border-radius: 999px;
+  background: rgba(37,53,81,.18); /* default rail */
 }
+
+/* Section-specific rails */
+body.sca-botpage #scaInfoCardRoot .sca-accItem:nth-child(1) .sca-accHeader::before{ background: rgba(12,106,59,.55); }
+body.sca-botpage #scaInfoCardRoot .sca-accItem:nth-child(2) .sca-accHeader::before{ background: rgba(64, 99, 180, .55); }
+body.sca-botpage #scaInfoCardRoot .sca-accItem:nth-child(3) .sca-accHeader::before{ background: rgba(176,18,58,.45); }
+body.sca-botpage #scaInfoCardRoot .sca-accItem:nth-child(4) .sca-accHeader::before{ background: rgba(28,79,184,.45); }
 
 body.sca-botpage #scaInfoCardRoot .sca-accChevron{
-  background: transparent;
-  border: 0;
-  width: auto;
-  height: auto;
-  font-size: 20px;
-  color: rgba(37,53,81,.40);
+  color: rgba(37,53,81,.55);
 }
 
 body.sca-botpage #scaInfoCardRoot .sca-accBody{
-  padding: 0 16px 16px;
+  padding: 0 18px 16px;
 }
 
 body.sca-botpage #scaInfoCardRoot .sca-accContent{
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
+  background: rgba(255,255,255,.72);
+  border: 1px solid rgba(37,53,81,.10);
+  border-radius: 16px;
+  padding: 14px 16px;
 }
 
 body.sca-botpage #scaInfoCardRoot .sca-cleanList{
-  padding-left: 18px;
-  margin-top: 8px;
-  color: rgba(37,53,81,.70);
+  color: rgba(37,53,81,.75);
   font-weight: 520;
 }
-
 body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
-  margin: 10px 0;
+  margin: 8px 0;
 }
