@@ -1001,15 +1001,15 @@ body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn::a
   content:"";
   position: absolute;
   top: -70%;
-  right: 0%;
-  width: 75%;
+  left: -40%;
+  width: 85%;
   height: 240%;
   pointer-events: none;
 
   background: radial-gradient(
     circle at 30% 50%,
-    rgba(79,124,255,0.32) 0%,
-    rgba(124,77,255,0.22) 28%,
+    rgba(79,124,255,0.22) 0%,
+    rgba(124,77,255,0.12) 28%,
     rgba(79,124,255,0.00) 60%
   );
 
