@@ -1019,10 +1019,10 @@ body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn::b
   background: linear-gradient(
     90deg,
     rgba(79,124,255,0.00) 0%,
-    rgba(79,124,255,0.00) 55%,
-    rgba(79,124,255,0.08) 72%,
-    rgba(79,124,255,0.16) 88%,
-    rgba(79,124,255,0.00) 100%
+    rgba(79,124,255,0.00) 12%,
+    rgba(79,124,255,0.08) 45%,
+    rgba(79,124,255,0.08) 70%,
+    rgba(79,124,255,0.16) 100%
   );
 }
 
