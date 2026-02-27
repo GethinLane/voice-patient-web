@@ -996,28 +996,39 @@ body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn{
   overflow: hidden;        /* keeps bloom inside button */
 }
 
-/* Premium: classy subtle left→right shift */
+/* Premium: #253551 base + portal-bloom linear overlay */
 body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn{
-  /* Keep your base navy but add a premium gradient */
-  background: linear-gradient(
-    270deg,
-    #22314f 0%,
-    #253551 40%,
-    #2b4676 70%,
-    #2f4a86 100%
-  ) !important;
+  position: relative;
+  overflow: hidden;
+
+  /* solid base exactly as portal hero */
+  background: #253551 !important;
   color: #fff !important;
 
-  /* subtle premium lift */
+  /* subtle premium lift (keep if you like) */
   box-shadow:
     0 14px 34px rgba(15, 23, 42, 0.22),
     0 10px 24px rgba(79, 124, 255, 0.12);
 }
-body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn{
-  position: relative;
-  overflow: hidden;
+
+/* Linear “bloom” across the button using EXACT portal alphas */
+body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+
+  background: linear-gradient(
+    90deg,
+    rgba(79,124,255,0.00) 0%,
+    rgba(79,124,255,0.08) 22%,
+    rgba(79,124,255,0.16) 50%,
+    rgba(79,124,255,0.08) 78%,
+    rgba(79,124,255,0.00) 100%
+  );
 }
 
+/* Optional: keep your sheen (not portal bloom, but looks “premium”) */
 body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn::after{
   content:"";
   position:absolute;
@@ -1029,5 +1040,5 @@ body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn::a
     rgba(255,255,255,0.05) 35%,
     rgba(255,255,255,0.00) 70%
   );
-  opacity: 0.35; /* keep subtle */
+  opacity: 0.35;
 }
