@@ -1002,10 +1002,9 @@ body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn{
   background: linear-gradient(
     90deg,
     #22314f 0%,
-    #253551 22%,
-    #2d4b82 50%,  /* center lift */
-    #253551 78%,
-    #22314f 100%
+    #253551 40%,
+    #2b4676 70%,
+    #2f4a86 100%
   ) !important;
   color: #fff !important;
 
