@@ -23,7 +23,7 @@
     talkPulse: 0.0,
     talkPulseTarget: 0.0,
 
-    userGlow: 0.15
+    userGlow: 0.1
   };
 
   const VERT = `
