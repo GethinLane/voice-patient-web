@@ -1040,19 +1040,20 @@ body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn::a
   );
   opacity: 0.35;
 }
-/* Premium tab: solid #253551 + portal-blue ramp (right-strong) */
-body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label{
-  position: relative;
+/* Premium tab selected: keep existing layout, just add overlay */
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
+  position: relative;     /* only to anchor pseudo-element */
   overflow: hidden;
   background: #253551 !important;
   color: #ffffff !important;
 }
 
-/* The ramp overlay (EXACT portal bloom alphas) */
-body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label::before{
+/* Overlay behind content */
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab::before{
   content:"";
   position:absolute;
   inset:0;
+  z-index: 0;             /* behind */
   pointer-events:none;
 
   background: linear-gradient(
@@ -1064,8 +1065,9 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label::before{
   );
 }
 
-/* Keep the tab content above the overlay */
-body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label > *{
+/* Only lift the specific text spans above overlay (no layout changes) */
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab .sca-planTabText,
+body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab .sca-planCostTag{
   position: relative;
   z-index: 1;
 }
