@@ -928,3 +928,44 @@ body.sca-botpage #scaBotPageRoot #sca-patient-card .wake-toggle--header #wakeLab
   outline: 2px solid #d6dde9;
   outline-offset: 2px;
 }
+/* Make sure Start can host an overlay */
+#scaBotCardRoot #startBtn{
+  position: relative;
+  overflow: hidden;        /* keeps bloom inside button */
+}
+
+/* Only when Premium is selected: add a colourful bloom on one end */
+body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn::after{
+  content:"";
+  position: absolute;
+  top: -70%;
+  right: -40%;
+  width: 75%;
+  height: 240%;
+  pointer-events: none;
+
+  background: radial-gradient(
+    circle at 30% 50%,
+    rgba(79,124,255,0.32) 0%,
+    rgba(124,77,255,0.22) 28%,
+    rgba(79,124,255,0.00) 60%
+  );
+
+  filter: blur(12px);
+  opacity: 1;
+}
+
+/* Optional: subtle glassy sheen across the button (premium only) */
+body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0.14) 0%,
+    rgba(255,255,255,0.05) 35%,
+    rgba(255,255,255,0.00) 70%
+  );
+  opacity: 0.45;
+}
