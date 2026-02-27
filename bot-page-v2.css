@@ -1000,7 +1000,7 @@ body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn{
 body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn{
   /* Keep your base navy but add a premium gradient */
   background: linear-gradient(
-    90deg,
+    270deg,
     #22314f 0%,
     #253551 40%,
     #2b4676 70%,
