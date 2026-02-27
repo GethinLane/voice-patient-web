@@ -1001,7 +1001,7 @@ body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn::a
   content:"";
   position: absolute;
   top: -70%;
-  right: -40%;
+  right: 0%;
   width: 75%;
   height: 240%;
   pointer-events: none;
