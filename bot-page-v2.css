@@ -952,3 +952,29 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
   z-index: 2 !important; /* above */
   background: transparent !important; /* remove white fill */
 }
+#sca-ring { position: relative; }
+
+#sca-orb-canvas,
+#sca-particles-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+#sca-particles-canvas { z-index: 2; }
+#sca-orb-canvas { z-index: 1; }
+#sca-ring .sca-avatar { position: relative; z-index: 3; }
+
+/* Standard (default) */
+#scaBotCardRoot #startBtn{
+  background: #d6dde9;
+  color: #253551;
+}
+
+/* Premium selected anywhere in the page => Start dark */
+body:has(#scaPlanStandalone #vpModePremium:checked) #scaBotCardRoot #startBtn{
+  background: #253551;
+  color: #fff;
+}
