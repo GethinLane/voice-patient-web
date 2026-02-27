@@ -611,19 +611,19 @@ function stopCountdown(reason = "") {
       // Prioritize bot talking over listening to avoid echo picking up
       if (smoothRemote > remoteTh) {
         state = "talking";
-        glow = 0.16 + Math.min(0.8, smoothRemote * 10);
+        glow = 0.2 + Math.min(0.8, smoothRemote * 10);
         holdUntilMs = now + HOLD_MS;
-      } else if (smoothLocal > localTh) {
-        state = "listening";
-        glow = 0.14 + Math.min(0.7, smoothLocal * 10);
-        holdUntilMs = now + HOLD_MS;
+} else if (smoothLocal > localTh) {
+  state = "listening";
+  glow = 0.2; // ✅ fixed: no mic-driven spikes
+  holdUntilMs = now + HOLD_MS;
       } else if (now < holdUntilMs) {
         // keep last state briefly
         state = uiState;
         glow = lastGlow;
       } else {
         state = "thinking";
-        glow = 0.18;
+        glow = 0.3;
       }
 
       if (state !== uiState) setUiState(state);
