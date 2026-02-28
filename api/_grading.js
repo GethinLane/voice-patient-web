@@ -2,13 +2,10 @@
 import { airtableListAll } from "./_airtable.js";
 
 /**
- * Key changes vs your earlier versions:
- * - We DO NOT match indicators by text (fragile). We score by INDEX.
  * - OpenAI returns compact arrays of numbers (0/1/2) aligned to criteria order.
  * - Narrative is still rich and tied to criteria (we derive hit/work-on lists from scores).
  * - Retry if JSON is truncated or narrative is generic.
  * - NEW: "Criteria to work on" includes PARTIAL (score=1) as well as MISSED (score=0),
- *        and we guarantee at least 2 work-on items per domain.
  */
 
 // -------------------- Airtable indicator loading --------------------
