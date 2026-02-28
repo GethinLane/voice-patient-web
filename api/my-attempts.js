@@ -1,5 +1,5 @@
 // api/my-attempts.js
-import { airtableListAll } from "./_airtable";
+import { airtableListAll } from "./_airtable.js";
 
 function withCors(req, res) {
   const allowed = new Set(["https://www.scarevision.co.uk", "https://www.scarevision.ai"]);
