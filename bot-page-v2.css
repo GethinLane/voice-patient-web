@@ -9,11 +9,6 @@
 /* ---------- Page background ---------- */
 body.sca-botpage{
   font-family: inherit;
-  background:
-    radial-gradient(1100px 700px at 18% 22%, rgba(171, 129, 255, 0.20), rgba(255,255,255,0) 55%),
-    radial-gradient(900px 600px at 60% 18%, rgba(108, 220, 255, 0.16), rgba(255,255,255,0) 60%),
-    radial-gradient(900px 600px at 30% 60%, rgba(255, 160, 210, 0.14), rgba(255,255,255,0) 60%),
-    #f3f5f8;
 }
 
 /* ---------- Shared theme + card shell ---------- */
