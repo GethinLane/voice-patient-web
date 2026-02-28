@@ -3,14 +3,12 @@ import { airtableListAll, airtableUpdate } from "./_airtable.js";
 import { loadCaseMarking, gradeTranscriptWithIndicators } from "./_grading.js";
 
 function cors(req, res) {
-  const origin = req.headers.origin;
+  const origin = String(req.headers?.["origin"] || "");
 
   const allowed = new Set([
+    "https://scarevision.co.uk",
+    "https://scarevision.ai",
     "https://www.scarevision.co.uk",
-    "https://www.scarevision.ai",
-    // optional (if you ever use www on the .co.uk)
-    "https://www.scarevision.co.uk",
-    // optional (if you ever use www on the .ai)
     "https://www.scarevision.ai",
   ]);
 
