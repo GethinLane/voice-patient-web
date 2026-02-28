@@ -7,6 +7,8 @@
 
   const out = document.getElementById("gradingOutput");
   const statusEl = document.getElementById("gradingStatus");
+  const modeBadge = document.getElementById("modeBadge");
+  const caseBadge = document.getElementById("caseBadge");
 
   // Expose state for the PDF button script (browser-side)
   window.__gradingReady = false;
@@ -25,6 +27,55 @@
     out.textContent = t || "";
   }
 
+function setMeta({ mode, caseId } = {}) {
+  const m = String(mode || "").toLowerCase() === "premium" ? "premium" : "standard";
+
+  if (modeBadge) {
+    modeBadge.textContent = m === "premium" ? "Premium attempt" : "Standard attempt";
+    modeBadge.classList.toggle("is-premium", m === "premium");
+  }
+
+  if (caseBadge) {
+    const n = Number(caseId);
+    caseBadge.textContent = Number.isFinite(n) && n > 0 ? `Case ${n}` : "Case";
+  }
+}
+
+// Wrap the premium section (first H2 that starts with "Premium") into a styled card
+function decoratePremiumCard() {
+  if (!out) return;
+
+  const h2s = Array.from(out.querySelectorAll("h2"));
+  const h = h2s.find((el) => /^premium\b/i.test(String(el.textContent || "").trim()));
+  if (!h) return;
+
+  const titleText = String(h.textContent || "").trim();
+
+  const card = document.createElement("div");
+  card.className = "premium-card";
+
+  const title = document.createElement("div");
+  title.className = "premium-card-title";
+  title.innerHTML = `<i class="fa-solid fa-star"></i><span>${titleText}</span>`;
+  card.appendChild(title);
+
+  const body = document.createElement("div");
+  body.className = "premium-card-body";
+
+  // Move everything AFTER the premium H2 into the card body
+  let node = h.nextSibling;
+  while (node) {
+    const next = node.nextSibling;
+    body.appendChild(node);
+    node = next;
+  }
+
+  card.appendChild(body);
+
+  // Replace the H2 with the card
+  h.replaceWith(card);
+}
+  
   function setOutMarkdown(md) {
     if (!out) return;
 
@@ -38,6 +89,7 @@
     const html = window.marked.parse(raw, { gfm: true, breaks: true });
     const clean = window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
     out.innerHTML = clean;
+    decoratePremiumCard();
   }
 
   function publishGrading(text) {
@@ -88,6 +140,7 @@
         } else {
           const gradingText = String(data.gradingText || "");
           const ready = !!data.ready;
+          setMeta({ mode: data.modeUsed, caseId: data.caseId });
 
           if (ready && isMeaningfulText(gradingText)) {
             setStatus("Grading ready");
