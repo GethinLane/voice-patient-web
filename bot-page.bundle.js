@@ -146,14 +146,34 @@
     const img = $("sca-avatar-img");
     if (!img) return;
 
+    const clearState = () => {
+      img.classList.remove("is-loaded", "is-loading");
+      img.classList.add("is-empty");
+    };
+
     if (url) {
-      img.src = url;
-      img.classList.remove("is-empty");
-      img.classList.add("is-loaded");
+      img.classList.remove("is-loaded", "is-empty");
+      img.classList.add("is-loading");
+
+      const probe = new Image();
+      probe.onload = () => {
+        if (img.dataset.pendingAvatarUrl !== url) return;
+        img.src = url;
+        img.classList.remove("is-empty", "is-loading");
+        img.classList.add("is-loaded");
+      };
+      probe.onerror = () => {
+        if (img.dataset.pendingAvatarUrl !== url) return;
+        img.src = "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
+        clearState();
+      };
+
+      img.dataset.pendingAvatarUrl = url;
+      probe.src = url;
     } else {
       img.src = "data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=";
-      img.classList.add("is-empty");
-      img.classList.remove("is-loaded");
+      clearState();
+      delete img.dataset.pendingAvatarUrl;
     }
   }
 

@@ -403,7 +403,7 @@ body.sca-botpage #scaBotPageRoot .quote-box-results{
   height: 304px;
   border-radius: 50%;
   overflow: hidden;
-  background: #fff;
+  background: transparent;
   position: relative;
   z-index: 1;
   border: 0;
@@ -440,16 +440,15 @@ body.sca-botpage #scaBotPageRoot .quote-box-results{
 }
 
 /* Image load state */
-#sca-avatar-img{ display: none; }
-#sca-avatar-img.is-loaded{ display: block; }
 #sca-avatar-img{
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
+  display: none;
   border: 0;
   outline: 0;
 }
+#sca-avatar-img.is-loaded{ display: block; }
 
 /* Hide legacy patientDataBox if present */
 body.sca-botpage #patientDataBox[data-sca-hidden="true"]{
