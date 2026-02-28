@@ -418,12 +418,12 @@ const premiumAddon =
   "- Explanation: assess clarity and jargon-free explanation of the condition/diagnosis, including what you think is going on and why (ONLY if evidenced), plus management and prognosis ONLY if evidenced.\n" +
   "- ICE: comment on whether Ideas, Concerns, Expectations were explored and addressed; if not, what was missed.\n" +
   "- Psychosocial impact: comment on whether psychosocial/functional impact was elicited; if not, what was missed.\n" +
-  "- Empathy: provide examples of good empathy (CLINICIAN quotes) and missed opportunities (PATIENT quote + better response).\n";
+  "- Empathy: provide examples of good empathy (CLINICIAN quotes) and missed opportunities (PATIENT quote + better response).\n" +
   "- HARD LIMITS (must follow):\n" +
   "  - cue_handling.cues: return AT MOST 4 cues. If none, return an empty array.\n" +
   "  - Each paragraph field MUST be exactly ONE paragraph (no blank lines), 150 words max.\n" +
   "  - Keep lists short: what_was_good max 4 bullets, what_to_improve max 4 bullets.\n" +
-  "  - empathy.missed_opportunities: max 4 items.\n" +
+  "  - empathy.missed_opportunities: max 4 items.\n";
 
     const maxOutStandard = Number(process.env.GRADING_MAX_OUTPUT_TOKENS_STANDARD || 5000);
   const maxOutPremium  = Number(process.env.GRADING_MAX_OUTPUT_TOKENS_PREMIUM  || 8000);
