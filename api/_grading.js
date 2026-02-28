@@ -407,23 +407,29 @@ async function callOpenAI({ retryMode = false } = {}) {
 
 const premiumAddon =
   "\n\nPREMIUM CONSULTATION SKILLS FEEDBACK (no scoring):\n" +
-  "- Write in a warm, encouraging COACH voice, speaking directly to the clinician as 'you'.\n" +
-  "- Avoid impersonal phrasing like 'the candidate' / 'the doctor did...'. Use 'you did...' / 'next time try...'.\n" +
-  "- Be specific, kind, and actionable. Aim for: (1) what you did well, (2) what to improve, (3) exactly how to do it next time.\n" +
-  "- Keep it human and supportive (like a great OSCE coach), not clinical or judgmental.\n" +
-  "- DO NOT invent. If not evidenced, say 'not evidenced'.\n\n" +
+  "You are now speaking as a FRIENDLY OSCE COACH (sporty, positive, chatty).\n" +
+  "This section must sound like a real person coaching the clinician.\n" +
+  "Talk directly to 'you'. Use contractions (you're, you'll, let's, that's).\n" +
+  "Start each section with a quick positive opener before any tweaks.\n" +
+  "Make it practical: exactly what to do next time, and optionally one short example line you could say.\n" +
+  "Keep it kind and encouraging even when pointing out misses.\n\n" +
+  "BANNED examiner/report phrases in this premium section:\n" +
+  "- 'however', 'there was no', 'was missing', 'fragmented delivery', 'variably', 'medicolegal', 'candidate', 'the doctor'.\n" +
+  "Use these instead:\n" +
+  "- 'Easy win…', 'Next time try…', 'Let’s tighten…', 'One small tweak…', 'You’ll get more marks if…'.\n\n" +
+  "- DO NOT invent. If not evidenced, say 'not evidenced'.\n" +
   "- Add a consultation_skills object with: cue_handling, explanation_of_condition, ice_management, psychosocial_impact, empathy.\n" +
   "- This premium section is NOT scored. Provide feedback only.\n" +
   "- Cue handling: identify subtle cues in PATIENT lines (quote them exactly) and assess whether/how you responded, and what to do next time.\n" +
-  "- Explanation: assess clarity and jargon-free explanation of the condition/diagnosis, including what you think is going on and why (ONLY if evidenced), plus management and prognosis ONLY if evidenced.\n" +
-  "- ICE: comment on whether Ideas, Concerns, Expectations were explored and addressed; if not, what was missed.\n" +
-  "- Psychosocial impact: comment on whether psychosocial/functional impact was elicited; if not, what was missed.\n" +
-  "- Empathy: provide examples of good empathy (CLINICIAN quotes) and missed opportunities (PATIENT quote + better response).\n" +
+  "- Explanation: assess clarity and jargon-free explanation of the condition/diagnosis (ONLY if evidenced).\n" +
+  "- ICE: comment on whether Ideas, Concerns, Expectations were explored and addressed.\n" +
+  "- Psychosocial impact: comment on whether psychosocial/functional impact was elicited.\n" +
+  "- Empathy: give examples of good empathy (CLINICIAN quotes) and missed opportunities (PATIENT quote + better response).\n" +
   "- HARD LIMITS (must follow):\n" +
-  "  - cue_handling.cues: return AT MOST 4 cues. If none, return an empty array.\n" +
-  "  - Each paragraph field MUST be exactly ONE paragraph (no blank lines), 150 words max.\n" +
-  "  - Keep lists short: what_was_good max 4 bullets, what_to_improve max 4 bullets.\n" +
-  "  - empathy.missed_opportunities: max 4 items.\n";
+  "  - cue_handling.cues: return AT MOST 3 cues. If none, return an empty array.\n" +
+  "  - Each paragraph field MUST be exactly ONE paragraph (no blank lines), 130 words max.\n" +
+  "  - Keep lists short: what_was_good max 3, what_to_improve max 3.\n" +
+  "  - empathy.missed_opportunities: max 3 items.\n";
 
     const maxOutStandard = Number(process.env.GRADING_MAX_OUTPUT_TOKENS_STANDARD || 5000);
   const maxOutPremium  = Number(process.env.GRADING_MAX_OUTPUT_TOKENS_PREMIUM  || 8000);
@@ -438,7 +444,13 @@ const premiumAddon =
       {
         role: "system",
         content:
-          "You are an OSCE examiner. Use the marking criteria as a GUIDE, not a strict word-for-word checklist.\n" +
+          "You have TWO jobs:\n" +
+"(A) OSCE EXAMINER for scoring + DG/CM/RTO/overall narrative.\n" +
+"(B) FRIENDLY OSCE COACH for the PREMIUM consultation_skills add-on.\n\n" +
+"EXAMINER VOICE (A): professional, structured, evidence-based.\n" +
+"COACH VOICE (B): warm, upbeat, personable, chatty, sporty encouragement. Talk to 'you'. Use contractions.\n" +
+"IMPORTANT: The coach voice applies ONLY inside consultation_skills.\n\n" +
+"Use the marking criteria as a GUIDE, not a strict word-for-word checklist.\n" +
           "Be fair: give PARTIAL credit when the intent is present but incomplete.\n" +
           "Do NOT require exact wording.\n\n" +
             "GROUNDING RULES (critical):\n" +
@@ -757,15 +769,16 @@ function renderConsultationSkills(cs) {
   if (!cs) return "";
 
   const lines = [];
-  lines.push("## Premium consultation skills add-on");
-  lines.push("");
+lines.push("## Your SCA Coach Notes (Premium)");
+lines.push("");
+lines.push("You’ve got a solid base — let’s polish a few high-impact moments for next time!");
 
   if (cs.cue_handling) {
     lines.push("### 1) Cue handling");
     if (cs.cue_handling.paragraph) lines.push(cs.cue_handling.paragraph, "");
     const cues = Array.isArray(cs.cue_handling.cues) ? cs.cue_handling.cues : [];
     if (cues.length) {
-      lines.push("**Subtle cues (patient) and how they were handled:**");
+      lines.push("**Subtle patient cues and how they were handled:**");
       for (const c of cues.slice(0, 6)) {
         lines.push(`- Patient cue: "${c.patient_cue_quote}"`);
         if (c.clinician_response_quote) lines.push(`  - Clinician response: "${c.clinician_response_quote}"`);
@@ -777,7 +790,7 @@ function renderConsultationSkills(cs) {
   }
 
   if (cs.explanation_of_condition) {
-    lines.push("### 2) Explanation of the condition / diagnosis");
+    lines.push("### 2) Explanation of the Condition / Diagnosis");
     if (cs.explanation_of_condition.paragraph) lines.push(cs.explanation_of_condition.paragraph, "");
     const q = Array.isArray(cs.explanation_of_condition.clinician_quotes)
       ? cs.explanation_of_condition.clinician_quotes
@@ -797,7 +810,7 @@ function renderConsultationSkills(cs) {
   }
 
   if (cs.psychosocial_impact) {
-    lines.push("### 4) Psychosocial impact");
+    lines.push("### 4) Psychosocial Context / Impact");
     if (cs.psychosocial_impact.paragraph) lines.push(cs.psychosocial_impact.paragraph, "");
     const missed = Array.isArray(cs.psychosocial_impact.what_was_missed)
       ? cs.psychosocial_impact.what_was_missed
