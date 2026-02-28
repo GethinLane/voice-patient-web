@@ -405,16 +405,25 @@ async function callOpenAI({ retryMode = false } = {}) {
     model.startsWith("o4") ||
     model.startsWith("gpt-5");
 
-  const premiumAddon =
-    "\n\nPREMIUM CONSULTATION SKILLS FEEDBACK (no scoring):\n" +
-    "- Add a consultation_skills object with: cue_handling, explanation_of_condition, ice_management, psychosocial_impact, empathy.\n" +
-    "- This premium section is NOT scored. Provide feedback only.\n" +
-    "- Cue handling: identify subtle cues in PATIENT lines (quote them exactly) and assess whether/how the CLINICIAN responded, and what to do next time.\n" +
-    "- Explanation: assess clarity and jargon-free explanation of the condition/diagnosis, including what the doctor thinks is going on and why (ONLY if evidenced), plus management and prognosis ONLY if evidenced.\n" +
-    "- ICE: comment on whether Ideas, Concerns, Expectations were explored and addressed; if not, what was missed.\n" +
-    "- Psychosocial impact: comment on whether psychosocial/functional impact was elicited; if not, what was missed.\n" +
-    "- Empathy: provide examples of good empathy (CLINICIAN quotes) and missed opportunities (PATIENT quote + better response).\n" +
-    "- If not evidenced, say 'not evidenced'. Do NOT invent.\n";
+const premiumAddon =
+  "\n\nPREMIUM CONSULTATION SKILLS FEEDBACK (no scoring):\n" +
+  "- Write in a warm, encouraging COACH voice, speaking directly to the clinician as 'you'.\n" +
+  "- Avoid impersonal phrasing like 'the candidate' / 'the doctor did...'. Use 'you did...' / 'next time try...'.\n" +
+  "- Be specific, kind, and actionable. Aim for: (1) what you did well, (2) what to improve, (3) exactly how to do it next time.\n" +
+  "- Keep it human and supportive (like a great OSCE coach), not clinical or judgmental.\n" +
+  "- DO NOT invent. If not evidenced, say 'not evidenced'.\n\n" +
+  "- Add a consultation_skills object with: cue_handling, explanation_of_condition, ice_management, psychosocial_impact, empathy.\n" +
+  "- This premium section is NOT scored. Provide feedback only.\n" +
+  "- Cue handling: identify subtle cues in PATIENT lines (quote them exactly) and assess whether/how you responded, and what to do next time.\n" +
+  "- Explanation: assess clarity and jargon-free explanation of the condition/diagnosis, including what you think is going on and why (ONLY if evidenced), plus management and prognosis ONLY if evidenced.\n" +
+  "- ICE: comment on whether Ideas, Concerns, Expectations were explored and addressed; if not, what was missed.\n" +
+  "- Psychosocial impact: comment on whether psychosocial/functional impact was elicited; if not, what was missed.\n" +
+  "- Empathy: provide examples of good empathy (CLINICIAN quotes) and missed opportunities (PATIENT quote + better response).\n";
+  "- HARD LIMITS (must follow):\n" +
+  "  - cue_handling.cues: return AT MOST 4 cues. If none, return an empty array.\n" +
+  "  - Each paragraph field MUST be exactly ONE paragraph (no blank lines), 150 words max.\n" +
+  "  - Keep lists short: what_was_good max 4 bullets, what_to_improve max 4 bullets.\n" +
+  "  - empathy.missed_opportunities: max 4 items.\n" +
 
     const maxOutStandard = Number(process.env.GRADING_MAX_OUTPUT_TOKENS_STANDARD || 5000);
   const maxOutPremium  = Number(process.env.GRADING_MAX_OUTPUT_TOKENS_PREMIUM  || 8000);
