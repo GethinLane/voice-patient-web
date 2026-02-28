@@ -218,6 +218,7 @@
       canvas.getContext("experimental-webgl", { alpha: true, antialias: true, premultipliedAlpha: true });
 
     if (!gl) return;
+    canvas.classList.add("is-ready");
 
     const vs = compile(gl, gl.VERTEX_SHADER, VERT);
     const fs = compile(gl, gl.FRAGMENT_SHADER, FRAG);
