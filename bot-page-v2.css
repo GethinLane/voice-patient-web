@@ -1160,3 +1160,9 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
     margin-top: 10px;         /* tweak: 8–24px */
   }
 }
+/* extra sppace above the image / orb only */
+@media (min-width: 1025px){
+  #sca-patient-card .sca-avatarWrap{
+    padding-top: 16px;   /* tweak: 8–30px */
+  }
+}
