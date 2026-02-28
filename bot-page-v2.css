@@ -229,7 +229,7 @@ body.sca-botpage .sca-cardShell{
   height: 304px;
   border-radius: 50%;
   overflow: hidden;
-  background: #fff;
+  background: transparent;
   position: relative;
   z-index: 1;
   border: 0;
@@ -279,15 +279,15 @@ body.sca-botpage .sca-cardShell{
 }
 
 /* Image load state */
-#sca-avatar-img{ display: none; }
-#sca-avatar-img.is-loaded{ display: block; }
 #sca-avatar-img{
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: none;
   border: 0;
   outline: 0;
 }
+#sca-avatar-img.is-loaded{ display: block; }
 
 /* Prevent orb/canvas layers stealing clicks */
 #sca-patient-card .sca-avatarWrap,
