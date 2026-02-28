@@ -169,6 +169,10 @@ export default async function handler(req, res) {
     caseId = Number(f.CaseID || 0);
     const currentText = String(f.GradingText || "");
     const currentStatus = String(f.GradingStatus || "").toLowerCase().trim();
+    const modeUsed =
+  String(f.Mode || "standard").trim().toLowerCase() === "premium"
+    ? "premium"
+    : "standard";
 
 // 2) If already graded, return it (ONLY when text is meaningful)
 if (!force) {
@@ -183,6 +187,7 @@ if (!force) {
       sessionId,
       attemptRecordId,
       caseId,
+      modeUsed,
       gradingText: currentText,
     });
   }
@@ -198,6 +203,7 @@ if (!force) {
       sessionId,
       attemptRecordId,
       caseId,
+      modeUsed,
       gradingText: currentText,
     });
   }
@@ -221,6 +227,7 @@ if (!force) {
           sessionId,
           attemptRecordId,
           caseId,
+          modeUsed,
         });
       }
     }
@@ -265,6 +272,7 @@ if (!force) {
         sessionId,
         attemptRecordId,
         caseId,
+        modeUsed,
         error: msg,
         gradingText: msg,
       });
@@ -438,6 +446,7 @@ try {
       sessionId,
       attemptRecordId,
       caseId,
+      modeUsed,
       gradingText: result.gradingText,
       bands: result.bands,
       credits: creditInfo, // ✅ NEW (optional for frontend display/logging)
