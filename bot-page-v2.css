@@ -1142,3 +1142,21 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
   #sca-patient-card .sca-avatarWrap{ margin-bottom: 0; }
   #scaBotCardRoot .sca-mainMeta{ margin-top: 0; padding: 0; }
 }
+@media (min-width: 1025px){
+
+  /* 1) Push the whole 3-col layout down from the top of the card */
+  #scaBotCardRoot .sca-left{
+    padding-top: 20px;        /* tweak: 10–24px */
+    row-gap: 18px;            /* a touch more breathing room between rows */
+  }
+
+  /* 2) Add space below the orb before the Start button */
+  #sca-patient-card .sca-avatarWrap{
+    padding-bottom: 22px;     /* tweak: 16–40px */
+  }
+
+  /* Optional: if you want a little extra space above the Start button too */
+  #scaBotCardRoot .sca-controls{
+    margin-top: 10px;         /* tweak: 8–24px */
+  }
+}
