@@ -1164,6 +1164,6 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
 @media (min-width: 1025px){
   #sca-patient-card .sca-avatarWrap{
     padding-top: 16px;   /* tweak: 8–30px */
-    padding-bottom: 16px;   /* tweak: 8–30px */
+    padding-bottom: 100px;   /* tweak: 8–30px */
   }
 }
