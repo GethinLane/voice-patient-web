@@ -1150,11 +1150,6 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
     row-gap: 18px;            /* a touch more breathing room between rows */
   }
 
-  /* 2) Add space below the orb before the Start button */
-  #sca-patient-card .sca-avatarWrap{
-    padding-bottom: 22px;     /* tweak: 16–40px */
-  }
-
   /* Optional: if you want a little extra space above the Start button too */
   #scaBotCardRoot .sca-controls{
     margin-top: 10px;         /* tweak: 8–24px */
@@ -1164,6 +1159,22 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
 @media (min-width: 1025px){
   #sca-patient-card .sca-avatarWrap{
     padding-top: 16px;   /* tweak: 8–30px */
-    padding-bottom: 26px;   /* tweak: 8–30px */
+    padding-bottom: 40px;   /* tweak: 8–30px */
   }
 }
+  /* Name: increase line spacing (when it wraps) */
+  #scaBotCardRoot #sca-mainName{
+    line-height: 1.2;        /* try 1.1–1.25 */
+  }
+
+  /* Age: make bigger */
+  #scaBotCardRoot .sca-mainAge{
+    font-size: 24px;          /* was 18px */
+    line-height: 1.25;
+  }
+
+  /* Case: make bigger */
+  #scaBotCardRoot .sca-caseLine{
+    font-size: 22px;          /* was 16px */
+    line-height: 1.25;
+  }
