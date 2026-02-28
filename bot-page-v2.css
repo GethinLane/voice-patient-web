@@ -1045,3 +1045,100 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
   background-size: 100% 100% !important;
   background-position: center !important;
 }
+
+/* =========================================================
+   DESKTOP ONLY: 3-column layout + full-width start button
+   ========================================================= */
+#scaBotCardRoot .sca-caseLine{
+  display: none; /* hidden on mobile */
+}
+
+@media (min-width: 1025px){
+
+  /* Turn the whole left card into a grid */
+  #scaBotCardRoot .sca-left{
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) minmax(360px, 520px) minmax(240px, 1fr);
+    grid-template-rows: auto auto 1fr auto;  /* name/badge, age, bottom row, controls */
+    column-gap: 26px;
+    row-gap: 14px;
+    align-items: start;
+  }
+
+  /* Flatten wrappers so we can place the existing elements directly in the grid */
+  #scaBotCardRoot .sca-mainMeta,
+  #scaBotCardRoot .sca-mainIdentity,
+  #sca-patient-card,
+  #sca-patient-card .sca-header{
+    display: contents;
+  }
+
+  /* CENTER column: orb/avatar only */
+  #sca-patient-card .sca-avatarWrap{
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    margin: 0;
+    padding: 0;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* LEFT column: name, age, case */
+  #scaBotCardRoot #sca-mainName{
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
+    align-self: start;
+  }
+
+  #scaBotCardRoot .sca-mainAge{
+    grid-column: 1;
+    grid-row: 2;
+    margin: 0;
+    align-self: start;
+  }
+
+  #scaBotCardRoot .sca-caseLine{
+    display: block;
+    grid-column: 1;
+    grid-row: 3;
+    align-self: end;
+    font-size: 16px;
+    font-weight: 750;
+    color: var(--sca-muted);
+    padding-top: 10px;
+  }
+  #scaBotCardRoot .sca-caseLine span{
+    color: var(--sca-ink);
+    font-weight: 900;
+  }
+
+  /* RIGHT column: badge top + timer bottom */
+  #sca-patient-card #sca-badge{
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    align-self: start;
+    margin: 0;
+  }
+
+  #scaBotCardRoot #vpTimer{
+    grid-column: 3;
+    grid-row: 3;
+    justify-self: end;
+    align-self: end;
+    margin: 0;
+  }
+
+  /* Full-width controls row (Start button spans all 3 columns) */
+  #scaBotCardRoot .sca-controls{
+    grid-column: 1 / -1;
+    grid-row: 4;
+    margin-top: 8px;
+  }
+
+  /* Remove stacked-layout spacing that no longer makes sense on desktop */
+  #sca-patient-card .sca-header{ margin-bottom: 0; }
+  #sca-patient-card .sca-avatarWrap{ margin-bottom: 0; }
+  #scaBotCardRoot .sca-mainMeta{ margin-top: 0; padding: 0; }
+}
