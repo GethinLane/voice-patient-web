@@ -707,11 +707,18 @@ function enforceConsultationSkillsQuotes(cs) {
   
 n = enforceNarrativeQuotes(n);
 
+const hasClinicianContent = clinicianText.trim().length > 0;
+
 // If the model couldn't provide any valid clinician quotes in any domain, retry once.
+// Skip this retry when there are no clinician utterances in the transcript, because
+// valid quote extraction is impossible and retrying wastes time.
 const bad =
-  (Array.isArray(n.dg?.example_phrases) && n.dg.example_phrases.length === 0) ||
-  (Array.isArray(n.cm?.example_phrases) && n.cm.example_phrases.length === 0) ||
-  (Array.isArray(n.rto?.example_phrases) && n.rto.example_phrases.length === 0);
+  hasClinicianContent &&
+  (
+    (Array.isArray(n.dg?.example_phrases) && n.dg.example_phrases.length === 0) ||
+    (Array.isArray(n.cm?.example_phrases) && n.cm.example_phrases.length === 0) ||
+    (Array.isArray(n.rto?.example_phrases) && n.rto.example_phrases.length === 0)
+  );
 
 if (bad) {
   parsed = await callOpenAI({ retryMode: true });
