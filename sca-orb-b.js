@@ -430,6 +430,7 @@ function drawElectricRing(ctx, cx, cy, avatarRadius) {
 
     const ctx = canvas.getContext("2d");
     if (!ctx) { ORB.animationId = null; return; }
+    canvas.classList.add("is-ready");
 
     ORB.tick += 1;
 

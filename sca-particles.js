@@ -176,6 +176,7 @@
       ORB.animationId = null;
       return;
     }
+    canvas.classList.add("is-ready");
 
     ORB.tick += 1;
 
