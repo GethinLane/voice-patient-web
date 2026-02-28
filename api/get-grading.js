@@ -311,6 +311,7 @@ const model = modeForGrading === "premium" ? premiumModel : standardModel;
       model,
       transcript,
       marking,
+      mode: modeForGrading,
     });
 
     // 8) Save grade
