@@ -1280,3 +1280,12 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
   display: block;
    margin: 0 auto;
 }
+.vp-stripe-wrap {
+  flex: 1;
+  min-width: 0;
+  max-width: 280px;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+}
