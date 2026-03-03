@@ -1036,19 +1036,17 @@ if (!stillCurrent()) return;
 } catch (e) {
       vpIsStarting = false;
   // ✅ Credits gate from /api/start-session
-  if (e?.status === 402) {
+if (e?.status === 402) {
     const available = e?.data?.credits?.available;
     const required  = e?.data?.credits?.required;
     const mode      = e?.data?.credits?.mode || getSelectedMode();
 
-    const msg =
-      `Unable to start: insufficient credits. Please top up before beginning.` +
-      (Number.isFinite(available) && Number.isFinite(required)
-        ? ` (You have ${available}, need ${required} for ${mode}.)`
-        : "");
-
-    setStatus(msg);          // <- this automatically updates your #sca-status via vp:ui
     setUiConnected(false);
+
+    // Fire a UI event — bot-page.bundle.js will show the popup
+    window.dispatchEvent(new CustomEvent("vp:nocredits", {
+      detail: { available, required, mode }
+    }));
     return;
   }
 
