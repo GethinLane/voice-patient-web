@@ -1275,16 +1275,16 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
 }
 #vp-stripe-buttons stripe-buy-button {
   flex: 1;
-  max-width: 280px;
+  max-width: 288px;
   min-width: 220px;
   display: block;
    margin: 0 auto;
 }
 #vp-stripe-buttons stripe-buy-button {
   display: block;
-  width: 310px;
-  min-width: 310px;
-  max-width: 310px;
+  width: 288px;
+  min-width: 288px;
+  max-width: 288px;
   margin: 0 auto;
 }
 
@@ -1293,8 +1293,8 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
   justify-content: center;
   align-items: center;
   flex: 1;
-  min-width: 310px;
-  max-width: 310px;
+  min-width: 288px;
+  max-width: 288px;
   padding: 0;
   margin: 0;
 }
