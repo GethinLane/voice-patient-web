@@ -1194,7 +1194,7 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
 
 #vp-credits-box {
   position: relative;
-  background: #FFFFFF80;
+  background: #FFFFFFCC;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 16px;
   padding: 28px 24px;
@@ -1278,4 +1278,5 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
   max-width: 280px;
   min-width: 220px;
   display: block;
+   margin: 0 auto;
 }
