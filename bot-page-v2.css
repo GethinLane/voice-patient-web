@@ -1173,3 +1173,65 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
     font-size: 22px;          /* was 16px */
     line-height: 1.25;
   }
+
+/* ---- No Credits Popup ---- */
+#vp-credits-modal {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+}
+#vp-credits-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+}
+#vp-credits-box {
+  position: relative;
+  background: #1a1a2e;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 36px 32px;
+  max-width: 500px;
+  width: 90%;
+  text-align: center;
+  z-index: 1;
+  color: #fff;
+}
+#vp-credits-box h2 {
+  margin: 0 0 12px;
+  font-size: 1.4rem;
+}
+#vp-credits-box p {
+  opacity: 0.85;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+.vp-credits-email {
+  opacity: 0.45 !important;
+  font-size: 0.8rem !important;
+}
+#vp-stripe-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 24px;
+  align-items: center;
+}
+#vp-credits-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+#vp-credits-close:hover {
+  opacity: 1;
+}
