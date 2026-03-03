@@ -400,6 +400,79 @@
     populateResults(records);
   }
 
+// ---------------- No Credits Popup ----------------
+  function showNoCreditsPopup({ available, required, mode } = {}) {
+    const existing = document.getElementById("vp-credits-modal");
+    if (existing) existing.remove();
+
+    // Get member email for Stripe customer-email lock
+    const email = (() => {
+      try {
+        const ms = window.MemberSpace;
+        if (ms && typeof ms.getMemberInfo === "function") {
+          const data = ms.getMemberInfo();
+          if (data?.isLoggedIn && data?.memberInfo?.email) {
+            return String(data.memberInfo.email).trim().toLowerCase();
+          }
+        }
+        return window.__msMemberInfo?.email || "";
+      } catch { return ""; }
+    })();
+
+    const infoMsg = (Number.isFinite(available) && Number.isFinite(required))
+      ? `You have <strong>${available}</strong> credit${available !== 1 ? "s" : ""} but need <strong>${required}</strong> to start a <strong>${mode || "standard"}</strong> simulation.`
+      : `You don't have enough credits to start a simulation.`;
+
+    const emailAttr = email ? `customer-email="${email}"` : "";
+
+    const modal = document.createElement("div");
+    modal.id = "vp-credits-modal";
+    modal.innerHTML = `
+      <div id="vp-credits-backdrop"></div>
+      <div id="vp-credits-box">
+        <button id="vp-credits-close">✕</button>
+        <h2>Not Enough Credits</h2>
+        <p>${infoMsg}</p>
+        <p>Please purchase credits below to begin your simulation.</p>
+        ${email ? `<p class="vp-credits-email">Purchasing as: ${email}</p>` : ""}
+        <div id="vp-stripe-buttons">
+          <stripe-buy-button
+            buy-button-id="buy_btn_1T6zHpEEubve4uhuATNUxszY"
+            publishable-key="pk_live_51SyX0sEEubve4uhuixiGaKj6aLjQIEUhXmiz3wt47r6h6AXdcTp7ODXHfiZvqEPDqrT2PDF95IPMxLQujDUW0rle00LcNqXqbz"
+            ${emailAttr}
+          ></stripe-buy-button>
+          <stripe-buy-button
+            buy-button-id="buy_btn_1T6HjtEEubve4uhujxyYdNjc"
+            publishable-key="pk_live_51SyX0sEEubve4uhuixiGaKj6aLjQIEUhXmiz3wt47r6h6AXdcTp7ODXHfiZvqEPDqrT2PDF95IPMxLQujDUW0rle00LcNqXqbz"
+            ${emailAttr}
+          ></stripe-buy-button>
+          <stripe-buy-button
+            buy-button-id="buy_btn_1T6zNKEEubve4uhuVr21e7VI"
+            publishable-key="pk_live_51SyX0sEEubve4uhuixiGaKj6aLjQIEUhXmiz3wt47r6h6AXdcTp7ODXHfiZvqEPDqrT2PDF95IPMxLQujDUW0rle00LcNqXqbz"
+            ${emailAttr}
+          ></stripe-buy-button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Load Stripe script once
+    if (!document.querySelector('script[src*="js.stripe.com/v3/buy-button.js"]')) {
+      const script = document.createElement("script");
+      script.src = "https://js.stripe.com/v3/buy-button.js";
+      script.async = true;
+      document.head.appendChild(script);
+    }
+
+    document.getElementById("vp-credits-backdrop").addEventListener("click", () => modal.remove());
+    document.getElementById("vp-credits-close").addEventListener("click", () => modal.remove());
+  }
+
+  // Listen for the no-credits event fired by voice-patient.js
+  window.addEventListener("vp:nocredits", (e) => {
+    showNoCreditsPopup(e.detail || {});
+  });
+   
   // ---------------- Boot ----------------
 function boot() {
   // Ensure page-scoped CSS activates
