@@ -1198,7 +1198,7 @@ body.sca-botpage #scaPlanStandalone #vpModePremium:checked + label.sca-planTab{
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 16px;
   padding: 28px 24px;
-  max-width: 860px;
+  max-width: 960px;
   width: 95%;
   text-align: center;
   z-index: 1;
