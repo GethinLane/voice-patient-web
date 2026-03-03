@@ -994,8 +994,14 @@ const caseId = urlCase || 1;
 
 if (!credits?.canStart) {
   vpIsStarting = false;
-  setStatus(`Not enough credits for ${mode}. You have ${credits.creditsRemaining}, need ${credits.required}.`);
   setUiConnected(false);
+  window.dispatchEvent(new CustomEvent("vp:nocredits", {
+    detail: {
+      available: credits.creditsRemaining,
+      required: credits.required,
+      mode: mode
+    }
+  }));
   return;
 }
 
