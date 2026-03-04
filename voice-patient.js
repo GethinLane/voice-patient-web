@@ -960,13 +960,9 @@ setGradingBtnState("hidden");
     currentSessionId = null;
     updateMeta();
 
-    try {
-      setUiConnected(true);
-      
-      vpIsStarting = true;
-      setUiState("connecting");
-      emitUi("connecting", 0.15);
-      setStatus(`Starting session (${getCaseLabel()})…`);
+try {
+  vpIsStarting = true;
+  setStatus(`Checking credits…`);
 
 const urlCase = getCaseIdFromUrl();
 const caseId = urlCase || 1;
@@ -1005,7 +1001,11 @@ if (!credits?.canStart) {
   return;
 }
 
-
+      setUiConnected(true);
+      setUiState("connecting");
+      emitUi("connecting", 0.15);
+      setStatus(`Starting session (${getCaseLabel()})…`);
+  
 // Build payload (includes mode + optional agent)
 const payload = { caseId, userId, email, mode };
 
