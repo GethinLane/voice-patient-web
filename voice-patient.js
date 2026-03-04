@@ -476,7 +476,7 @@ function stopCountdown(reason = "") {
     return { userId, email };
   }
 
-  async function ensureIdentity({ timeoutMs = 2500, intervalMs = 150 } = {}) {
+  async function ensureIdentity({ timeoutMs = 1000, intervalMs = 150 } = {}) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       const { userId, email } = getIdentity();
