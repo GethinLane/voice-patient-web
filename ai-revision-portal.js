@@ -288,11 +288,26 @@
   // ============================================================
   // BOOT
   // ============================================================
-  function boot() {
+function boot() {
     showBigSpinner();
     initCreditsHooks();
     initPackCtaLinks();
-    refreshCredits({ visible: true, force: false });
+
+    // Wait up to 1500ms for MemberSpace identity so we can use userId (hits KV instantly)
+    // rather than falling back to slow Airtable on email-only lookup
+    let identityWait = 0;
+    const waitForIdentity = setInterval(() => {
+      identityWait += 100;
+      const hasIdentity = !!(window.__msMemberInfo?.id || getEmailFromMS());
+
+      if (hasIdentity || identityWait >= 1500) {
+        clearInterval(waitForIdentity);
+        if (window.__msMemberInfo?.id) {
+          lastEmail = window.__msMemberInfo.email || getEmailFromMS();
+        }
+        refreshCredits({ visible: true, force: false });
+      }
+    }, 100);
   }
 
   if (document.readyState === "loading") {
