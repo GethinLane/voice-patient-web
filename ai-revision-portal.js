@@ -212,10 +212,15 @@
     pollTimer = setTimeout(doPoll, pollInterval);
   }
 
-  function onReturnToTab() {
-    if (!expectStripeReturn) return;
-    expectStripeReturn = false;
-    startSilentPollAfterReturn();
+function onReturnToTab() {
+    if (expectStripeReturn) {
+      // Returning from Stripe — use aggressive polling
+      expectStripeReturn = false;
+      startSilentPollAfterReturn();
+    } else {
+      // Returning from anywhere else — just do one silent refresh
+      refreshCredits({ visible: false, force: true });
+    }
   }
 
   window.addEventListener("focus", onReturnToTab);
