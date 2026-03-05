@@ -331,31 +331,31 @@ const { patientText } = buildPatientCorpus(Array.isArray(transcript) ? transcrip
 const premiumOutputSchemaHint = {
   consultation_skills: {
     cue_handling: {
-      paragraph: "string (100 words max)",
+      paragraph: "string (140 words max)",
       cues: "array, MAX 3 items: { patient_cue_quote, clinician_response_quote, assessment, what_to_do_next_time }",
     },
     explanation_of_condition: {
-      paragraph: "string (100 words max)",
+      paragraph: "string (140 words max)",
       clinician_quotes: "MAX 3 strings",
       what_was_good: "MAX 3 strings",
       what_to_improve: "MAX 3 strings",
     },
     ice_management: {
-      paragraph: "string (100 words max)",
+      paragraph: "string (140 words max)",
       what_was_explored: "MAX 3 strings",
       what_was_missed: "MAX 3 strings",
       patient_quotes: "MAX 3 strings",
       clinician_quotes: "MAX 3 strings",
     },
     psychosocial_impact: {
-      paragraph: "string (100 words max)",
+      paragraph: "string (140 words max)",
       what_was_elicited: "MAX 3 strings",
       what_was_missed: "MAX 3 strings",
       patient_quotes: "MAX 3 strings",
       clinician_quotes: "MAX 3 strings",
     },
     empathy: {
-      paragraph: "string (100 words max)",
+      paragraph: "string (140 words max)",
       good_empathy_quotes: "MAX 3 strings",
       missed_opportunities: "MAX 2 items: { patient_quote, clinician_quote, better_response }",
     },
