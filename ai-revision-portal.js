@@ -48,6 +48,10 @@
   }
 
   document.addEventListener("MemberSpace.member.info", (e) => setMember(e.detail));
+  document.addEventListener("MemberSpace.ready", (e) => {
+  const mi = e?.detail?.memberInfo || null;
+  if (mi) setMember(mi);
+});
 
   document.addEventListener("DOMContentLoaded", () => {
     if (window.MemberSpace && typeof MemberSpace.getMemberInfo === "function") {
