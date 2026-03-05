@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     }
 
     const creditValue = Number(credits);
-    const kvKey = `credits:${encodeURIComponent(userId)}`;
+    const kvKey = `credits.${userId}`;
     const kvEndpoint = `${kvUrl}/set/${kvKey}/${creditValue}`;
 
     console.log("[sync-credits] Writing to KV key:", kvKey);
