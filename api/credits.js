@@ -138,6 +138,8 @@ export default async function handler(req, res) {
     const premiumCost = parseCreditCost(process.env.PREMIUM_BOT_COST, 1);
     const required = mode === "premium" ? premiumCost : standardCost;
 
+    console.log("[credits] userId:", userId, "email:", email);
+    
     // Try KV first (fast ~10ms)
     let available = null;
     if (userId) {
