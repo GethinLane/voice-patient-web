@@ -50,7 +50,8 @@ async function getCreditsFromKV(userId) {
     const kvToken = process.env.KV_REST_API_TOKEN;
     if (!kvUrl || !kvToken) return null;
 
-    const resp = await fetch(`${kvUrl}/get/credits:${encodeURIComponent(userId)}`, {
+    const key = `credits.${userId}`; // dot instead of colon avoids encoding issues
+    const resp = await fetch(`${kvUrl}/get/${key}`, {
       headers: { Authorization: `Bearer ${kvToken}` },
     });
 
@@ -131,10 +132,10 @@ export default async function handler(req, res) {
           const kvUrl = process.env.KV_REST_API_URL;
           const kvToken = process.env.KV_REST_API_TOKEN;
           if (kvUrl && kvToken) {
-            await fetch(`${kvUrl}/set/credits:${encodeURIComponent(userId)}/${available}`, {
-              method: "GET",
-              headers: { Authorization: `Bearer ${kvToken}` },
-            });
+await fetch(`${kvUrl}/set/credits.${userId}/${available}`, {
+  method: "GET",
+  headers: { Authorization: `Bearer ${kvToken}` },
+});
           }
         } catch {}
       }
