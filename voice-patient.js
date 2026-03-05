@@ -151,6 +151,12 @@ function setGradingBtnState(state) {
     return;
   }
 
+  if (state === "too_short") {
+    btn.disabled = true;
+    btn.textContent = "No Credits Taken: Session too short to grade (minimum 10 turns)";
+    return;
+  }
+
   if (state === "ready") {
     btn.disabled = false;
     btn.classList.add("is-ready");
@@ -872,6 +878,13 @@ waitingSinceMs = 0;
 
       if (!data.found) {
         if (out) out.textContent = "No attempt found yet… (waiting for transcript submit)";
+        return;
+      }
+      if (data.status === "too_short") {
+        if (out) out.textContent = "Session too short to grade. No credits were deducted.";
+        setGradingBtnState("too_short");
+        setStatus("Session too short to grade.");
+        stopGradingPoll("too_short");
         return;
       }
 
