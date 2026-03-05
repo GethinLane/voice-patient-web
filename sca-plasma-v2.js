@@ -162,7 +162,7 @@
       vec3 s_strk = vec3(0.60, 0.72, 0.92);   // soft periwinkle (replaces purple)
 
       // ---- PREMIUM (pm = 1): rich deep navy-blue + purple accents ----
-      vec3 p_blue = vec3(0.07, 0.20, 0.58);   // deep rich navy
+      vec3 p_blue = vec3(0.10, 0.28, 0.72);   // vivid rich navy-blue
       vec3 p_cyan = vec3(0.18, 0.28, 0.68);   // vivid deep blue
       vec3 p_hot  = vec3(0.38, 0.12, 0.72);   // purple only on hot highlights
       vec3 p_strk = vec3(0.58, 0.12, 0.92);   // bright purple streak
