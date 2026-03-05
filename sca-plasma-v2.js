@@ -161,10 +161,10 @@
       vec3 s_hot  = vec3(0.68, 0.78, 0.90);   // silvery highlight (replaces green)
       vec3 s_strk = vec3(0.60, 0.72, 0.92);   // soft periwinkle (replaces purple)
 
-      // ---- PREMIUM (pm = 1): rich deep navy-blue + purple, NO cyan/green ----
-      vec3 p_blue = vec3(0.08, 0.22, 0.62);   // deep rich blue (~#253551 but more vivid)
-      vec3 p_cyan = vec3(0.30, 0.14, 0.68);   // deep violet (replaces cyan)
-      vec3 p_hot  = vec3(0.45, 0.10, 0.82);   // rich purple (replaces green)
+      // ---- PREMIUM (pm = 1): rich deep navy-blue + purple accents ----
+      vec3 p_blue = vec3(0.07, 0.20, 0.58);   // deep rich navy
+      vec3 p_cyan = vec3(0.14, 0.18, 0.52);   // dark steel-blue (NOT violet)
+      vec3 p_hot  = vec3(0.38, 0.12, 0.72);   // purple only on hot highlights
       vec3 p_strk = vec3(0.58, 0.12, 0.92);   // bright purple streak
 
       // Interpolate between palettes
