@@ -169,6 +169,19 @@ export default async function handler(req, res) {
     caseId = Number(f.CaseID || 0);
     const currentText = String(f.GradingText || "");
     const currentStatus = String(f.GradingStatus || "").toLowerCase().trim();
+    // Already marked too short — return immediately
+    if (currentStatus === "too_short") {
+      return res.json({
+        ok: true,
+        found: true,
+        ready: true,
+        status: "too_short",
+        sessionId,
+        attemptRecordId,
+        caseId,
+        gradingText: "Session too short to grade. No credits have been deducted.",
+      });
+    }
     const modeUsed =
   String(f.Mode || "standard").trim().toLowerCase() === "premium"
     ? "premium"
@@ -367,76 +380,8 @@ try {
   completionInfo = { ok: false, error: completionErr?.message || String(completionErr) };
 }
 
-    // ✅ NEW: Deduct credits by mode (NON-FATAL; never breaks grading)
-    // This runs AFTER grade is saved so users never get “empty grading” due to billing issues.
-    stage = "deductcredit";
-    let creditInfo = null;
-
-    try {
-      const linkedUsers = Array.isArray(f.User) ? f.User : [];
-      const userRecordId = linkedUsers?.[0] ? String(linkedUsers[0]) : "";
-
-      if (!userRecordId || !userRecordId.startsWith("rec")) {
-        throw new Error(
-          `Attempt missing linked User record id in {User}. Expected 'rec...'. Got: ${userRecordId || "(none)"}`
-        );
-      }
-
-      // Fetch user record using RECORD_ID() (avoids needing a new airtableGet helper)
-      const userRecs = await airtableListAll({
-        apiKey: usersKey,
-        baseId: usersBase,
-        table: usersTable,
-        params: {
-          filterByFormula: `RECORD_ID()="${escapeFormulaString(userRecordId)}"`,
-          maxRecords: 1,
-        },
-      });
-
-      if (!userRecs?.length) {
-        throw new Error(`Linked user record not found in '${usersTable}' for id=${userRecordId}`);
-      }
-
-      const userFields = userRecs[0].fields || {};
-      const currentCreditsRaw = userFields?.[creditsField];
-      const currentCredits = Number(currentCreditsRaw);
-
-      if (!Number.isFinite(currentCredits)) {
-        throw new Error(
-          `User field '${creditsField}' is not numeric. Got: ${JSON.stringify(currentCreditsRaw)}`
-        );
-      }
-
-      const mode = String(f.Mode || "standard").trim().toLowerCase() === "premium" ? "premium" : "standard";
-      const deduction = mode === "premium" ? premiumCreditCost : standardCreditCost;
-      const nextCredits = Math.max(0, currentCredits - deduction);
-
-      await airtableUpdate({
-        apiKey: usersKey,
-        baseId: usersBase,
-        table: usersTable,
-        recordId: userRecordId,
-        fields: {
-          [creditsField]: nextCredits,
-        },
-      });
-
-      creditInfo = {
-        ok: true,
-        deducted: deduction,
-        mode,
-        userRecordId,
-        field: creditsField,
-        before: currentCredits,
-        after: nextCredits,
-      };
-    } catch (creditErr) {
-      // NON-FATAL: we still return the grade
-      creditInfo = {
-        ok: false,
-        error: creditErr?.message || String(creditErr),
-      };
-    }
+// Credits are now deducted in submit-transcript.js
+    const creditInfo = null;
 
     return res.json({
       ok: true,
