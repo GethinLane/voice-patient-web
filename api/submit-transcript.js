@@ -1,5 +1,5 @@
 // api/submit-transcript.js
-import { airtableListAll, airtableCreate } from "./_airtable.js";
+import { airtableListAll, airtableCreate, airtableUpdate } from "./_airtable.js";
 
 function cors(req, res) {
   const origin = req.headers.origin;
@@ -31,6 +31,16 @@ function normalizeMode(value) {
     .toLowerCase() === "premium"
     ? "premium"
     : "standard";
+}
+
+function parseCreditCost(rawValue, fallback) {
+  const n = Number(String(rawValue ?? "").trim());
+  return Number.isFinite(n) ? Math.max(0, n) : fallback;
+}
+
+function countMeaningfulTurns(transcript) {
+  if (!Array.isArray(transcript)) return 0;
+  return transcript.filter(t => String(t?.text || "").trim().length > 0).length;
 }
 
 function resolveModeFromPayload(body) {
@@ -130,32 +140,81 @@ export default async function handler(req, res) {
 
     const attemptNumber = (attempts?.length || 0) + 1;
 
+const turns = countMeaningfulTurns(transcript);
+    const tooShort = turns < 10;
+
     const attempt = await airtableCreate({
       apiKey: usersKey,
       baseId: usersBase,
       table: attemptsTable,
       fields: {
-        User: [userRecordId], // ✅ link by Airtable record id
+        User: [userRecordId],
         AttemptNumber: attemptNumber,
         CaseID: Number(caseId),
         SessionID: String(sessionId),
         Mode: botMode,
         Transcript: JSON.stringify(transcript),
-
-        // ✅ NEW: mark as queued so it isn't blank if user leaves
-        GradingStatus: "queued",
-
-        // Keep existing behavior
-        GradingText: "",
+        GradingStatus: tooShort ? "too_short" : "queued",
+        GradingText: tooShort ? "Session too short to grade. No credits have been deducted." : "",
       },
     });
 
-    // ✅ NEW: server-side grading kick (does NOT block response; does NOT use force=1)
+    // Too short: no credits, no grading
+    if (tooShort) {
+      return res.json({
+        ok: true,
+        stored: true,
+        tooShort: true,
+        turns,
+        sessionId,
+        caseId: Number(caseId),
+        mode: botMode,
+        userId: userIdStr || null,
+        email: emailStr || null,
+        userRecordId,
+        attemptRecordId: attempt?.id,
+        attemptNumber,
+      });
+    }
+
+    // Deduct credits IMMEDIATELY for valid sessions
+    const creditsField = process.env.AIRTABLE_USERS_CREDITS_FIELD || "CreditsRemaining";
+    const standardCreditCost = parseCreditCost(process.env.STANDARD_BOT_COST, 2);
+    const premiumCreditCost = parseCreditCost(process.env.PREMIUM_BOT_COST, 1);
+
+    let creditInfo = null;
+    try {
+      const userFields = userRecs[0].fields || {};
+      const currentCredits = Number(userFields?.[creditsField]);
+
+      if (!Number.isFinite(currentCredits)) {
+        throw new Error(`User field '${creditsField}' is not numeric.`);
+      }
+
+      const deduction = botMode === "premium" ? premiumCreditCost : standardCreditCost;
+      const nextCredits = Math.max(0, currentCredits - deduction);
+
+      await airtableUpdate({
+        apiKey: usersKey,
+        baseId: usersBase,
+        table: usersTable,
+        recordId: userRecordId,
+        fields: { [creditsField]: nextCredits },
+      });
+
+      creditInfo = { ok: true, deducted: deduction, mode: botMode, before: currentCredits, after: nextCredits };
+    } catch (creditErr) {
+      creditInfo = { ok: false, error: creditErr?.message || String(creditErr) };
+    }
+
+    // Kick grading (fire-and-forget)
     kickGrading(sessionId);
 
     return res.json({
       ok: true,
       stored: true,
+      tooShort: false,
+      turns,
       sessionId,
       caseId: Number(caseId),
       mode: botMode,
@@ -164,8 +223,7 @@ export default async function handler(req, res) {
       userRecordId,
       attemptRecordId: attempt?.id,
       attemptNumber,
-
-      // optional debug flag so you can confirm the kick is live
+      credits: creditInfo,
       gradingKick: true,
     });
   } catch (e) {
