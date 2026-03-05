@@ -48,18 +48,41 @@ async function getCreditsFromKV(userId) {
   try {
     const kvUrl = process.env.KV_REST_API_URL;
     const kvToken = process.env.KV_REST_API_TOKEN;
-    if (!kvUrl || !kvToken) return null;
 
-    const key = `credits.${userId}`; // dot instead of colon avoids encoding issues
-    const resp = await fetch(`${kvUrl}/get/${key}`, {
+    if (!kvUrl || !kvToken) {
+      console.log("[KV] missing env vars — kvUrl:", !!kvUrl, "kvToken:", !!kvToken);
+      return null;
+    }
+
+    const key = `credits.${userId}`;
+    const endpoint = `${kvUrl}/get/${key}`;
+    console.log("[KV] reading key:", key);
+
+    const resp = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${kvToken}` },
     });
 
-    if (!resp.ok) return null;
+    console.log("[KV] response status:", resp.status);
+
+    if (!resp.ok) {
+      console.log("[KV] response not ok:", resp.status);
+      return null;
+    }
+
     const data = await resp.json();
-    if (data?.result == null) return null;
-    return Number(data.result);
-  } catch {
+    console.log("[KV] raw response:", JSON.stringify(data));
+
+    if (data?.result == null) {
+      console.log("[KV] result is null/undefined — key not found in KV");
+      return null;
+    }
+
+    const value = Number(data.result);
+    console.log("[KV] found value:", value);
+    return value;
+
+  } catch (e) {
+    console.log("[KV] exception:", e.message);
     return null;
   }
 }
