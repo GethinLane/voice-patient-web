@@ -7,10 +7,11 @@
   // ============================================================
   // CONFIG
   // ============================================================
-  const API_ORIGIN    = "https://voice-patient-web.vercel.app";
-  const STRIPE_HOSTS  = new Set(["buy.stripe.com"]);
-  const CASE_COUNT    = 355;
-  const RANDOM_BASE   = "https://www.scarevision.ai/ai-patient?case=";
+const API_ORIGIN    = "https://voice-patient-web.vercel.app";
+const STRIPE_HOSTS  = new Set(["buy.stripe.com"]);
+const CASE_COUNT    = 355;
+const RANDOM_BASE   = "https://www.scarevision.ai/ai-patient?case=";
+const EXCLUDED_CASES = new Set([30, 49, 88, 91, 93, 105, 162, 287, 319]);
 
   // ============================================================
   // MEMBERSPACE IDENTITY + STRIPE LINK REWRITING
@@ -273,8 +274,12 @@ function onReturnToTab() {
   // ============================================================
   // RANDOM CASE
   // ============================================================
-  function randomCaseId() {
-    return Math.floor(Math.random() * CASE_COUNT) + 1;
+function randomCaseId() {
+    let id;
+    do {
+      id = Math.floor(Math.random() * CASE_COUNT) + 1;
+    } while (EXCLUDED_CASES.has(id));
+    return id;
   }
 
   document.addEventListener("click", (e) => {
