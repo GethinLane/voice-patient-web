@@ -405,17 +405,17 @@
     const existing = document.getElementById("vp-credits-modal");
     if (existing) existing.remove();
 
-    // Get member email for Stripe customer-email lock
-    const email = (() => {
+// Get MemberSpace UserID for Stripe client_reference_id
+    const userId = (() => {
       try {
         const ms = window.MemberSpace;
         if (ms && typeof ms.getMemberInfo === "function") {
           const data = ms.getMemberInfo();
-          if (data?.isLoggedIn && data?.memberInfo?.email) {
-            return String(data.memberInfo.email).trim().toLowerCase();
+          if (data?.isLoggedIn && data?.memberInfo?.id) {
+            return String(data.memberInfo.id).trim();
           }
         }
-        return window.__msMemberInfo?.email || "";
+        return String(window.__msMemberInfo?.id || "").trim();
       } catch { return ""; }
     })();
 
@@ -423,7 +423,7 @@
       ? `You have <strong>${available}</strong> credit${available !== 1 ? "s" : ""} but need <strong>${required}</strong> to start a <strong>${mode || "standard"}</strong> simulation.`
       : `You don't have enough credits to start a simulation.`;
 
-    const emailAttr = email ? `customer-email="${email}"` : "";
+    const refAttr = userId ? `client-reference-id="${userId}"` : "";
 
     const modal = document.createElement("div");
     modal.id = "vp-credits-modal";
@@ -434,22 +434,21 @@
         <h2>Not Enough Credits</h2>
         <p>${infoMsg}</p>
         <p>Please purchase credits below to begin your simulation.</p>
-        ${email ? `<p class="vp-credits-email">Purchasing as: ${email}</p>` : ""}
         <div id="vp-stripe-buttons">
           <stripe-buy-button
             buy-button-id="buy_btn_1T6zHpEEubve4uhuATNUxszY"
             publishable-key="pk_live_51SyX0sEEubve4uhuixiGaKj6aLjQIEUhXmiz3wt47r6h6AXdcTp7ODXHfiZvqEPDqrT2PDF95IPMxLQujDUW0rle00LcNqXqbz"
-            ${emailAttr}
+            ${refAttr}
           ></stripe-buy-button>
           <stripe-buy-button
             buy-button-id="buy_btn_1T6HjtEEubve4uhujxyYdNjc"
             publishable-key="pk_live_51SyX0sEEubve4uhuixiGaKj6aLjQIEUhXmiz3wt47r6h6AXdcTp7ODXHfiZvqEPDqrT2PDF95IPMxLQujDUW0rle00LcNqXqbz"
-            ${emailAttr}
+            ${refAttr}
           ></stripe-buy-button>
           <stripe-buy-button
             buy-button-id="buy_btn_1T6zNKEEubve4uhuVr21e7VI"
             publishable-key="pk_live_51SyX0sEEubve4uhuixiGaKj6aLjQIEUhXmiz3wt47r6h6AXdcTp7ODXHfiZvqEPDqrT2PDF95IPMxLQujDUW0rle00LcNqXqbz"
-            ${emailAttr}
+            ${refAttr}
           ></stripe-buy-button>
         </div>
       </div>
