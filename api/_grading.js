@@ -327,53 +327,42 @@ const { patientText } = buildPatientCorpus(Array.isArray(transcript) ? transcrip
     application: marking.application,
   };
 
+// ---- PREMIUM schema: tightened limits to save tokens ----
 const premiumOutputSchemaHint = {
   consultation_skills: {
     cue_handling: {
-      paragraph: "string",
-      cues: [
-        {
-          patient_cue_quote: "string",
-          clinician_response_quote: "string",
-          assessment: "string",
-          what_to_do_next_time: "string",
-        },
-      ],
+      paragraph: "string (100 words max)",
+      cues: "array, MAX 3 items: { patient_cue_quote, clinician_response_quote, assessment, what_to_do_next_time }",
     },
     explanation_of_condition: {
-      paragraph: "string",
-      clinician_quotes: ["string"],
-      what_was_good: ["string"],
-      what_to_improve: ["string"],
+      paragraph: "string (100 words max)",
+      clinician_quotes: "MAX 3 strings",
+      what_was_good: "MAX 3 strings",
+      what_to_improve: "MAX 3 strings",
     },
     ice_management: {
-      paragraph: "string",
-      what_was_explored: ["string"],
-      what_was_missed: ["string"],
-      patient_quotes: ["string"],
-      clinician_quotes: ["string"],
+      paragraph: "string (100 words max)",
+      what_was_explored: "MAX 3 strings",
+      what_was_missed: "MAX 3 strings",
+      patient_quotes: "MAX 3 strings",
+      clinician_quotes: "MAX 3 strings",
     },
     psychosocial_impact: {
-      paragraph: "string",
-      what_was_elicited: ["string"],
-      what_was_missed: ["string"],
-      patient_quotes: ["string"],
-      clinician_quotes: ["string"],
+      paragraph: "string (100 words max)",
+      what_was_elicited: "MAX 3 strings",
+      what_was_missed: "MAX 3 strings",
+      patient_quotes: "MAX 3 strings",
+      clinician_quotes: "MAX 3 strings",
     },
     empathy: {
-      paragraph: "string",
-      good_empathy_quotes: ["string"],
-      missed_opportunities: [
-        {
-          patient_quote: "string",
-          clinician_quote: "string",
-          better_response: "string",
-        },
-      ],
+      paragraph: "string (100 words max)",
+      good_empathy_quotes: "MAX 3 strings",
+      missed_opportunities: "MAX 2 items: { patient_quote, clinician_quote, better_response }",
     },
   },
 };
-  
+
+// ---- STANDARD schema: merged example_phrases+evidence_quotes → single quotes field ----
 const outputSchemaHint = {
   dg_pos_scores: ["0|1|2"],
   dg_neg_severity: ["0|1|2"],
@@ -387,9 +376,9 @@ const outputSchemaHint = {
   app_scores: ["0|1|2"],
   
   narrative: {
-    dg: { paragraph: "string", example_phrases: ["string"], evidence_quotes: ["string"] },
-    cm: { paragraph: "string", example_phrases: ["string"], evidence_quotes: ["string"] },
-    rto: { paragraph: "string", example_phrases: ["string"], evidence_quotes: ["string"] },
+    dg: { paragraph: "string", quotes: ["string (2-4 EXACT clinician quotes)"] },
+    cm: { paragraph: "string", quotes: ["string (2-4 EXACT clinician quotes)"] },
+    rto: { paragraph: "string", quotes: ["string (2-4 EXACT clinician quotes)"] },
     overall: { paragraph: "string", priorities_next_time: ["string"] },
   },
 
@@ -397,7 +386,7 @@ const outputSchemaHint = {
 };
 
 
-async function callOpenAI({ retryMode = false } = {}) {
+async function callOpenAI({ retryMode = false, maxOutputOverride = null } = {}) {
   // Reasoning models don't support temperature. (e.g. o1/o3/o4/gpt-5 families)
   const isReasoningModel =
     model.startsWith("o1") ||
@@ -416,7 +405,7 @@ const premiumAddon =
   "BANNED examiner/report phrases in this premium section:\n" +
   "- 'however', 'there was no', 'was missing', 'fragmented delivery', 'variably', 'medicolegal', 'candidate', 'the doctor'.\n" +
   "Use these instead:\n" +
-  "- 'Easy win…', 'Next time try…', 'Let’s tighten…', 'One small tweak…', 'You’ll get more marks if…'.\n\n" +
+  "- 'Easy win…', 'Next time try…', 'Let's tighten…', 'One small tweak…', 'You'll get more marks if…'.\n\n" +
   "- DO NOT invent. If not evidenced, say 'not evidenced'.\n" +
   "- Add a consultation_skills object with: cue_handling, explanation_of_condition, ice_management, psychosocial_impact, empathy.\n" +
   "- This premium section is NOT scored. Provide feedback only.\n" +
@@ -425,17 +414,20 @@ const premiumAddon =
   "- ICE: comment on whether Ideas, Concerns, Expectations were explored and addressed.\n" +
   "- Psychosocial impact: comment on whether psychosocial/functional impact was elicited.\n" +
   "- Empathy: give examples of good empathy (CLINICIAN quotes) and missed opportunities (PATIENT quote + better response).\n" +
-  "- HARD LIMITS (must follow):\n" +
-  "  - cue_handling.cues: return AT MOST 3 cues. If none, return an empty array.\n" +
-  "  - Each paragraph field MUST be exactly ONE paragraph (no blank lines), 130 words max.\n" +
-  "  - Keep lists short: what_was_good max 3, what_to_improve max 3.\n" +
-  "  - empathy.missed_opportunities: max 3 items.\n";
+  "- HARD LIMITS (must follow — keep output compact):\n" +
+  "  - cue_handling.cues: AT MOST 3 cues. If none, return empty array.\n" +
+  "  - Each paragraph field: ONE paragraph, NO blank lines, 100 words max.\n" +
+  "  - All list fields: MAX 3 items each.\n" +
+  "  - empathy.missed_opportunities: MAX 2 items.\n" +
+  "  - empathy.good_empathy_quotes: MAX 3 items.\n";
 
-    const maxOutStandard = Number(process.env.GRADING_MAX_OUTPUT_TOKENS_STANDARD || 5000);
+  const maxOutStandard = Number(process.env.GRADING_MAX_OUTPUT_TOKENS_STANDARD || 5000);
   const maxOutPremium  = Number(process.env.GRADING_MAX_OUTPUT_TOKENS_PREMIUM  || 8000);
 
   const effortStandard = String(process.env.GRADING_REASONING_EFFORT_STANDARD || "low");
-  const effortPremium  = String(process.env.GRADING_REASONING_EFFORT_PREMIUM  || "medium");
+  const effortPremium  = String(process.env.GRADING_REASONING_EFFORT_PREMIUM  || "low");
+
+  const effectiveMaxOut = maxOutputOverride || (isPremium ? maxOutPremium : maxOutStandard);
 
   const payload = {
     model,
@@ -460,7 +452,7 @@ const premiumAddon =
   "- Do NOT mention QRisk, guidelines, complaints procedure, safety-netting, follow-up, tests, or alternative meds unless explicitly stated.\n" +
   "- If there is little/no management discussion in the transcript, you MUST say 'management not evidenced in transcript' and score accordingly.\n" +
   "QUOTE RULES (critical):\n" +
-"- For DG/CM/RTO narrative: example_phrases and evidence_quotes MUST be exact quotes from CLINICIAN lines.\n" +
+"- For DG/CM/RTO narrative: quotes MUST be exact quotes from CLINICIAN lines only.\n" +
 "- For PREMIUM consultation_skills ONLY:\n" +
 "  - patient_cue_quote, patient_quotes, patient_quote MUST be exact quotes from PATIENT lines.\n" +
 "  - clinician_response_quote, clinician_quotes, clinician_quote, good_empathy_quotes MUST be exact quotes from CLINICIAN lines.\n" +
@@ -492,8 +484,7 @@ const premiumAddon =
           "- For EACH domain (DG/CM/RTO) write ONE substantial paragraph (about 100–150 words) that includes BOTH:\n" +
           "  (a) what was done well tied to criteria that scored 2 (clear), AND\n" +
           "  (b) what to improve tied to criteria that scored 0 or 1 (missed/partial).\n" +
-          "- Include 2–4 short example phrases the candidate used (from CLINICIAN lines) per domain.\n" +
-          "- Include evidence_quotes: 2–5 EXACT quotes from the transcript (CLINICIAN lines) that support your claims.\n" +
+          "- Include quotes: 2–4 EXACT quotes from CLINICIAN lines that support your claims.\n" +
           "- If you cannot find evidence for a claim, you must NOT make the claim; say 'not evidenced'.\n" +
           "- Even if the domain is PASS, you MUST still give at least 2 concrete improvement points (growth points).\n" +
           "- Do NOT say 'no improvements needed' or 'no significant omissions'.\n" +
@@ -519,7 +510,7 @@ const premiumAddon =
     text: { format: { type: "json_object" } },
     // Only include temperature when supported
     ...(isReasoningModel ? {} : { temperature: 0.2 }),
-        max_output_tokens: isPremium ? maxOutPremium : maxOutStandard,
+    max_output_tokens: effectiveMaxOut,
   };
 
   const resp = await fetch("https://api.openai.com/v1/responses", {
@@ -536,8 +527,24 @@ const premiumAddon =
 
   console.error("RAW OPENAI RESPONSE:", raw);
 
-
   const data = raw ? JSON.parse(raw) : null;
+
+  // ---- Truncation guard: detect max_output_tokens hit and retry with higher budget ----
+  if (data?.status === "incomplete" && data?.incomplete_details?.reason === "max_output_tokens") {
+    const reasoningUsed = data?.usage?.output_tokens_details?.reasoning_tokens ?? 0;
+    const totalOut = data?.usage?.output_tokens ?? 0;
+    console.error(
+      `Truncated: reasoning=${reasoningUsed}, content=${totalOut - reasoningUsed}, cap=${effectiveMaxOut}`
+    );
+
+    if (!retryMode) {
+      const boosted = Math.max(effectiveMaxOut * 2, reasoningUsed + 6000);
+      console.error(`Retrying with max_output_tokens=${boosted}`);
+      return await callOpenAI({ retryMode: true, maxOutputOverride: boosted });
+    }
+    console.error("Still truncated after retry — attempting partial parse.");
+  }
+
   const outText = collectAllAssistantText(data);
   let parsed = safeJsonParseAny(outText);
 
@@ -646,12 +653,33 @@ const appScores = normalize012Array(parsed.app_scores, marking.application.lengt
   let n = parsed.narrative || {};
 
   // ---- Enforce clinician-only quotes; if model invents, force retry ----
+  // Supports both old split fields (example_phrases/evidence_quotes) and new merged (quotes)
 function enforceNarrativeQuotes(narr) {
   const nn = narr || {};
   for (const key of ["dg", "cm", "rto"]) {
     if (!nn[key]) nn[key] = {};
-    nn[key].example_phrases = cleanQuotesToClinicianOnly(nn[key].example_phrases, clinicianText, 4);
-    nn[key].evidence_quotes = cleanQuotesToClinicianOnly(nn[key].evidence_quotes, clinicianText, 5);
+    // New merged field
+    nn[key].quotes = cleanQuotesToClinicianOnly(nn[key].quotes, clinicianText, 4);
+    // Legacy fields (in case model still returns them) — merge into quotes
+    if (Array.isArray(nn[key].example_phrases) || Array.isArray(nn[key].evidence_quotes)) {
+      const legacy = [
+        ...(nn[key].example_phrases || []),
+        ...(nn[key].evidence_quotes || []),
+      ];
+      const cleaned = cleanQuotesToClinicianOnly(legacy, clinicianText, 4);
+      // Merge: deduplicate with anything already in quotes
+      const existing = new Set(nn[key].quotes);
+      for (const q of cleaned) {
+        if (!existing.has(q)) {
+          nn[key].quotes.push(q);
+          existing.add(q);
+        }
+        if (nn[key].quotes.length >= 4) break;
+      }
+      // Remove legacy fields
+      delete nn[key].example_phrases;
+      delete nn[key].evidence_quotes;
+    }
   }
   return nn;
 }
@@ -666,7 +694,7 @@ function enforceConsultationSkillsQuotes(cs) {
   if (out.cue_handling) {
     const cues = Array.isArray(out.cue_handling.cues) ? out.cue_handling.cues : [];
     out.cue_handling.cues = cues
-      .slice(0, 8)
+      .slice(0, 3)  // hard max 3
       .map((c) => {
         const pq = String(c?.patient_cue_quote || "").trim();
         const cq = String(c?.clinician_response_quote || "").trim();
@@ -683,25 +711,25 @@ function enforceConsultationSkillsQuotes(cs) {
   if (out.explanation_of_condition) {
     out.explanation_of_condition.clinician_quotes = cleanClin(
       out.explanation_of_condition.clinician_quotes,
-      8
+      3  // was 8
     );
   }
 
   if (out.ice_management) {
-    out.ice_management.patient_quotes = cleanPat(out.ice_management.patient_quotes, 8);
-    out.ice_management.clinician_quotes = cleanClin(out.ice_management.clinician_quotes, 8);
+    out.ice_management.patient_quotes = cleanPat(out.ice_management.patient_quotes, 3);   // was 8
+    out.ice_management.clinician_quotes = cleanClin(out.ice_management.clinician_quotes, 3); // was 8
   }
 
   if (out.psychosocial_impact) {
-    out.psychosocial_impact.patient_quotes = cleanPat(out.psychosocial_impact.patient_quotes, 8);
-    out.psychosocial_impact.clinician_quotes = cleanClin(out.psychosocial_impact.clinician_quotes, 8);
+    out.psychosocial_impact.patient_quotes = cleanPat(out.psychosocial_impact.patient_quotes, 3);   // was 8
+    out.psychosocial_impact.clinician_quotes = cleanClin(out.psychosocial_impact.clinician_quotes, 3); // was 8
   }
 
   if (out.empathy) {
-    out.empathy.good_empathy_quotes = cleanClin(out.empathy.good_empathy_quotes, 10);
+    out.empathy.good_empathy_quotes = cleanClin(out.empathy.good_empathy_quotes, 3); // was 10
     const mm = Array.isArray(out.empathy.missed_opportunities) ? out.empathy.missed_opportunities : [];
     out.empathy.missed_opportunities = mm
-      .slice(0, 8)
+      .slice(0, 2)  // was 8
       .map((m) => {
         const pq = String(m?.patient_quote || "").trim();
         const cq = String(m?.clinician_quote || "").trim();
@@ -727,9 +755,9 @@ const hasClinicianContent = clinicianText.trim().length > 0;
 const bad =
   hasClinicianContent &&
   (
-    (Array.isArray(n.dg?.example_phrases) && n.dg.example_phrases.length === 0) ||
-    (Array.isArray(n.cm?.example_phrases) && n.cm.example_phrases.length === 0) ||
-    (Array.isArray(n.rto?.example_phrases) && n.rto.example_phrases.length === 0)
+    (Array.isArray(n.dg?.quotes) && n.dg.quotes.length === 0) ||
+    (Array.isArray(n.cm?.quotes) && n.cm.quotes.length === 0) ||
+    (Array.isArray(n.rto?.quotes) && n.rto.quotes.length === 0)
   );
 
 if (bad) {
@@ -771,7 +799,7 @@ function renderConsultationSkills(cs) {
   const lines = [];
 lines.push("## Your SCA Coach Notes (Premium)");
 lines.push("");
-lines.push("You’ve got a solid base — let’s polish a few high-impact moments for next time!");
+lines.push("You've got a solid base — let's polish a few high-impact moments for next time!");
 
   if (cs.cue_handling) {
     lines.push("### 1) Cue handling");
@@ -779,7 +807,7 @@ lines.push("You’ve got a solid base — let’s polish a few high-impact momen
     const cues = Array.isArray(cs.cue_handling.cues) ? cs.cue_handling.cues : [];
     if (cues.length) {
       lines.push("**Subtle patient cues and how they were handled:**");
-      for (const c of cues.slice(0, 6)) {
+      for (const c of cues.slice(0, 3)) {
         lines.push(`- Patient cue: "${c.patient_cue_quote}"`);
         if (c.clinician_response_quote) lines.push(`  - Clinician response: "${c.clinician_response_quote}"`);
         if (c.assessment) lines.push(`  - Feedback: ${c.assessment}`);
@@ -804,7 +832,7 @@ lines.push("You’ve got a solid base — let’s polish a few high-impact momen
     const missed = Array.isArray(cs.ice_management.what_was_missed) ? cs.ice_management.what_was_missed : [];
     if (missed.length) {
       lines.push("**What was missed / could be improved:**");
-      for (const m of missed.slice(0, 8)) lines.push(`- ${m}`);
+      for (const m of missed.slice(0, 3)) lines.push(`- ${m}`);
       lines.push("");
     }
   }
@@ -817,7 +845,7 @@ lines.push("You’ve got a solid base — let’s polish a few high-impact momen
       : [];
     if (missed.length) {
       lines.push("**What was missed / could be explored:**");
-      for (const m of missed.slice(0, 8)) lines.push(`- ${m}`);
+      for (const m of missed.slice(0, 3)) lines.push(`- ${m}`);
       lines.push("");
     }
   }
@@ -831,7 +859,7 @@ lines.push("You’ve got a solid base — let’s polish a few high-impact momen
     const mm = Array.isArray(cs.empathy.missed_opportunities) ? cs.empathy.missed_opportunities : [];
     if (mm.length) {
       lines.push("**Missed empathy opportunities (with better responses):**");
-      for (const m of mm.slice(0, 6)) {
+      for (const m of mm.slice(0, 2)) {
         lines.push(`- Patient: "${m.patient_quote}"`);
         if (m.clinician_quote) lines.push(`  - What you said: "${m.clinician_quote}"`);
         if (m.better_response) lines.push(`  - Better response: ${m.better_response}`);
@@ -852,8 +880,8 @@ if (isPremium) {
     `## Data Gathering & Diagnosis: **${dgBand}**`,
     "",
     dgP,
-    top((n.dg || {}).example_phrases, 4).length
-      ? `\n**Example phrases:** ${top((n.dg || {}).example_phrases, 4)
+    top((n.dg || {}).quotes, 4).length
+      ? `\n**Example phrases:** ${top((n.dg || {}).quotes, 4)
           .map((p) => `"${p}"`)
           .join(" • ")}`
       : "",
@@ -867,8 +895,8 @@ if (isPremium) {
     `## Clinical Management: **${cmBand}**`,
     "",
     cmP,
-    top((n.cm || {}).example_phrases, 4).length
-      ? `\n**Example phrases:** ${top((n.cm || {}).example_phrases, 4)
+    top((n.cm || {}).quotes, 4).length
+      ? `\n**Example phrases:** ${top((n.cm || {}).quotes, 4)
           .map((p) => `"${p}"`)
           .join(" • ")}`
       : "",
@@ -882,8 +910,8 @@ if (isPremium) {
     `## Relating to Others: **${rtoBand}**`,
     "",
     rtoP,
-    top((n.rto || {}).example_phrases, 4).length
-      ? `\n**Example phrases:** ${top((n.rto || {}).example_phrases, 4)
+    top((n.rto || {}).quotes, 4).length
+      ? `\n**Example phrases:** ${top((n.rto || {}).quotes, 4)
           .map((p) => `"${p}"`)
           .join(" • ")}`
       : "",
