@@ -1037,8 +1037,8 @@ emitUi("connecting", 0.15);
 await mountDailyCustomAudio(data.dailyRoom, data.dailyToken);
 if (!stillCurrent()) return;
 
-      
-      setStatus(`Connected (${getCaseLabel()}). Talk, then press Stop.`);
+setUiConnected(true);   // ← re-enable the Stop button now that vpIsStarting is false
+setStatus(`Connected (${getCaseLabel()}). Talk, then press Stop.`);
 } catch (e) {
       vpIsStarting = false;
   // ✅ Credits gate from /api/start-session
