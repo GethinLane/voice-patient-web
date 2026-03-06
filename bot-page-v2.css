@@ -1433,3 +1433,76 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
 .home-portal .page{
   padding: 0 !important;
 }
+
+/*======================
+Audio Control Styling
+====================*/
+
+.vp-audioControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vp-audioBtn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  transition: transform 0.14s ease, box-shadow 0.22s ease, background 0.25s ease, color 0.25s ease;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+.vp-audioBtn:hover { transform: scale(1.12); }
+.vp-audioBtn:active { transform: scale(0.92); }
+
+.vp-audioBtn--active {
+  background: #22c55e;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.30);
+}
+.vp-audioBtn--active:hover {
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.45);
+}
+
+.vp-audioBtn--muted {
+  background: #ef4444;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.30);
+}
+.vp-audioBtn--muted:hover {
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.45);
+}
+
+.vp-audioBtn--disconnected {
+  background: #1e2030;
+  color: #3e4258;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.vp-audioBtn--disconnected:hover {
+  transform: scale(1.0);
+  box-shadow: none;
+}
+
+/* The small circle-xmark badge sits bottom-right */
+.vp-audioBtn__xbadge {
+  display: none;
+  position: absolute;
+  bottom: -3px;
+  right: -4px;
+  font-size: 13px;
+  color: #ef4444;
+  line-height: 1;
+  pointer-events: none;
+}
+.vp-audioBtn--disconnected .vp-audioBtn__xbadge {
+  display: block;
+}
