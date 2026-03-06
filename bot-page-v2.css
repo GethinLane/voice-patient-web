@@ -1506,3 +1506,55 @@ Audio Control Styling
 .vp-audioBtn--disconnected .vp-audioBtn__xbadge {
   display: block;
 }
+.vp-audioControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vp-audioBtn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  transition: transform 0.14s ease, box-shadow 0.22s ease, background 0.25s ease, color 0.25s ease;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+.vp-audioBtn:hover { transform: scale(1.12); }
+.vp-audioBtn:active { transform: scale(0.92); }
+
+/* Active – subtle green */
+.vp-audioBtn--active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #6ec990;
+}
+.vp-audioBtn--active:hover {
+  background: rgba(34, 197, 94, 0.22);
+}
+
+/* Muted – subtle red */
+.vp-audioBtn--muted {
+  background: rgba(239, 68, 68, 0.12);
+  color: #d47272;
+}
+.vp-audioBtn--muted:hover {
+  background: rgba(239, 68, 68, 0.20);
+}
+
+/* Disconnected – light grey */
+.vp-audioBtn--disconnected {
+  background: rgba(160, 165, 185, 0.10);
+  color: #6b7085;
+  cursor: not-allowed;
+}
+.vp-audioBtn--disconnected:hover {
+  transform: scale(1.0);
+}
