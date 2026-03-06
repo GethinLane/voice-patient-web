@@ -6,8 +6,9 @@
  * Reads:   window.__vpCallObject  (set by voice-patient.js)
  * Listens: vp:ui custom events    (fired by voice-patient.js)
  *
- * BEFORE a call: probes mic via getUserMedia to give real state.
- * DURING a call: syncs with Daily SDK only (no extra streams).
+ * Probes mic via getUserMedia ONCE on page load to get real state.
+ * After that, only re-probes on devicechange (plug/unplug).
+ * During a call, syncs with Daily SDK — no extra streams.
  *
  * Icons (FA Pro):
  *   Mic:     fa-microphone / fa-microphone-slash / fa-microphone-circle-xmark
@@ -46,8 +47,8 @@
     applyBtn("vpSpkBtn", "vpSpkIcon", ss, "spk");
   }
 
-  // Lightweight: just check what devices exist (no permission needed)
-  async function checkSpeakers() {
+  // Lightweight: check what devices exist via enumerateDevices (no permission needed)
+  async function checkDevicesLight() {
     try {
       var devices = await navigator.mediaDevices.enumerateDevices();
       var hadSpk = spkAvailable;
@@ -59,13 +60,15 @@
     } catch (e) {
       console.warn("[vp-audio] enumerateDevices failed:", e);
     }
+    renderAll();
   }
 
-  // Heavy: actually request mic access to verify it works
-  // Only used when NOT in a call
+  // Heavy: request mic access to verify it actually works
+  // Immediately releases the stream — mic is NOT held open
   async function probeMic() {
     try {
       var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Kill the stream immediately so the mic indicator goes away
       stream.getTracks().forEach(function (t) { t.stop(); });
 
       if (!micAvailable) micMuted = false;
@@ -76,7 +79,7 @@
     }
   }
 
-  // Sync mic state from Daily SDK — no new streams, just reads existing state
+  // Sync mic state from Daily SDK — no new streams
   function syncWithDaily() {
     var co = window.__vpCallObject;
     if (!co) return;
@@ -85,7 +88,7 @@
       var local = parts && parts.local;
       if (local) {
         micMuted = !local.audio;
-        micAvailable = true; // if we're in a call, mic was available
+        micAvailable = true;
 
         var track = (local.tracks && local.tracks.audio)
           ? (local.tracks.audio.persistentTrack || local.tracks.audio.track)
@@ -93,26 +96,23 @@
         if (!track || track.readyState === "ended") micAvailable = false;
       }
     } catch (e) {}
-  }
-
-  // Smart check: picks the right strategy based on call state
-  async function smartCheck() {
-    if (inCall) {
-      // During a call: lightweight only
-      syncWithDaily();
-    } else {
-      // Before/after a call: probe mic properly
-      await probeMic();
-    }
-    await checkSpeakers();
     renderAll();
   }
 
   // Expose for console testing
-  window.__vpCheckDevices = smartCheck;
+  window.__vpCheckDevices = async function () {
+    await probeMic();
+    await checkDevicesLight();
+  };
 
+  // Device hot-plug/unplug — re-probe mic fully (only fires on real hardware change)
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-    navigator.mediaDevices.addEventListener("devicechange", function () { smartCheck(); });
+    navigator.mediaDevices.addEventListener("devicechange", async function () {
+      if (!inCall) {
+        await probeMic();
+      }
+      await checkDevicesLight();
+    });
   }
 
   window.__vpToggleMic = function () {
@@ -153,18 +153,28 @@
 
     if (d.state === "idle" || d.state === "error") {
       inCall = false;
-      // Call just ended — re-probe mic properly
-      if (wasInCall) smartCheck();
+      if (wasInCall) {
+        // Call just ended — re-probe mic once
+        probeMic().then(checkDevicesLight);
+      }
     } else if (d.state === "listening" || d.state === "talking" || d.state === "thinking" || d.state === "waiting" || d.state === "connecting") {
       inCall = true;
       syncWithDaily();
-      checkSpeakers().then(renderAll);
+      checkDevicesLight();
     }
   });
 
-  // Boot — probe mic on load
-  smartCheck();
+  // Boot — probe mic once on load, then just check speakers
+  (async function () {
+    await probeMic();
+    await checkDevicesLight();
+  })();
 
-  // Poll every 5s — getUserMedia only runs when not in a call
-  setInterval(function () { smartCheck(); }, 5000);
+  // Lightweight poll every 5s — only checks speakers, does NOT touch the mic
+  setInterval(function () {
+    if (inCall) {
+      syncWithDaily();
+    }
+    checkDevicesLight();
+  }, 5000);
 })();
