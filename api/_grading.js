@@ -331,7 +331,7 @@ const premiumOutputSchemaHint = {
   consultation_skills: {
     cue_handling: {
       paragraph: "string (140 words max)",
-      cues: "array, MAX 3 items: { patient_cue_quote, clinician_response_quote, assessment, what_to_do_next_time }",
+      cues: "array, MAX 3 items: { patient_cue_quote, clinician_response_quote, recognition, assessment, follow_through, what_to_do_next_time }",
     },
     explanation_of_condition: {
       paragraph: "string (140 words max)",
@@ -401,9 +401,14 @@ const premiumAddon =
   "- 'Easy win…', 'Next time try…', 'Let's tighten…', 'One small tweak…', 'You'll get more marks if…'.\n\n" +
   "- DO NOT invent. If not evidenced, say 'not evidenced'.\n" +
   "- Add a consultation_skills object with: cue_handling, explanation_of_condition, ice_management, psychosocial_impact, empathy.\n" +
-  "- This premium section is NOT scored. Provide feedback only.\n" +
-  "- Cue handling: identify subtle cues in PATIENT lines (quote them exactly) and assess whether/how you responded, and what to do next time.\n" +
-  "- Explanation: assess clarity and jargon-free explanation of the condition/diagnosis (ONLY if evidenced).\n" +
+"- This premium section is NOT scored. Provide feedback only.\n" +
+"- Cue handling: identify subtle cues in PATIENT lines (quote them exactly) and assess whether the cue was recognised, whether the immediate response was appropriate for that stage of the consultation, and whether follow-through later in the consultation was needed or evidenced.\n" +
+"- Do NOT assume a cue must be fully addressed in the very next clinician line.\n" +
+"- During data gathering, it is often appropriate to acknowledge or briefly explore a cue and return to it later in explanation or management.\n" +
+"- Only criticise cue handling if the cue was missed, mishandled, dismissed, or never appropriately revisited when follow-through was needed.\n" +
+  "- Good cue handling during history-taking may include noticing a cue, acknowledging it briefly, exploring it to understand context, and returning to it later rather than solving it immediately.\n" +
+"- Do not mark down a clinician merely for not resolving a cue on the spot if their immediate response appropriately recognises or explores it.\n" +
+"- Explanation: assess clarity and jargon-free explanation of the condition/diagnosis (ONLY if evidenced).\n" +
   "- ICE: comment on whether Ideas, Concerns, Expectations were explored and addressed.\n" +
   "- Psychosocial impact: comment on whether psychosocial/functional impact was elicited.\n" +
   "- Empathy: give examples of good empathy (CLINICIAN quotes) and missed opportunities (PATIENT quote + better response).\n" +
@@ -687,12 +692,14 @@ function enforceConsultationSkillsQuotes(cs) {
       .map((c) => {
         const pq = String(c?.patient_cue_quote || "").trim();
         const cq = String(c?.clinician_response_quote || "").trim();
-        return {
-          patient_cue_quote: exactQuoteInPatient(pq, patientText) ? pq : "",
-          clinician_response_quote: exactQuoteInClinician(cq, clinicianText) ? cq : "",
-          assessment: String(c?.assessment || "").trim(),
-          what_to_do_next_time: String(c?.what_to_do_next_time || "").trim(),
-        };
+return {
+  patient_cue_quote: exactQuoteInPatient(pq, patientText) ? pq : "",
+  clinician_response_quote: exactQuoteInClinician(cq, clinicianText) ? cq : "",
+  recognition: String(c?.recognition || "").trim(),
+  assessment: String(c?.assessment || "").trim(),
+  follow_through: String(c?.follow_through || "").trim(),
+  what_to_do_next_time: String(c?.what_to_do_next_time || "").trim(),
+};
       })
       .filter((x) => x.patient_cue_quote);
   }
@@ -795,13 +802,15 @@ lines.push("You've got a solid base — let's polish a few high-impact moments f
     if (cs.cue_handling.paragraph) lines.push(cs.cue_handling.paragraph, "");
     const cues = Array.isArray(cs.cue_handling.cues) ? cs.cue_handling.cues : [];
     if (cues.length) {
-      lines.push("**Subtle patient cues and how they were handled:**");
-      for (const c of cues.slice(0, 3)) {
-        lines.push(`- Patient cue: "${c.patient_cue_quote}"`);
-        if (c.clinician_response_quote) lines.push(`  - Clinician response: "${c.clinician_response_quote}"`);
-        if (c.assessment) lines.push(`  - Feedback: ${c.assessment}`);
-        if (c.what_to_do_next_time) lines.push(`  - Next time: ${c.what_to_do_next_time}`);
-      }
+lines.push("**Subtle patient cues and how they were handled:**");
+for (const c of cues.slice(0, 3)) {
+  lines.push(`- Patient cue: "${c.patient_cue_quote}"`);
+  if (c.clinician_response_quote) lines.push(`  - Immediate response: "${c.clinician_response_quote}"`);
+  if (c.recognition) lines.push(`  - Recognition: ${c.recognition}`);
+  if (c.assessment) lines.push(`  - In-the-moment handling: ${c.assessment}`);
+  if (c.follow_through) lines.push(`  - Follow-through: ${c.follow_through}`);
+  if (c.what_to_do_next_time) lines.push(`  - Next time: ${c.what_to_do_next_time}`);
+}
       lines.push("");
     }
   }
