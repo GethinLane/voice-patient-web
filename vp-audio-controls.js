@@ -6,10 +6,9 @@
  * Reads:   window.__vpCallObject  (set by voice-patient.js)
  * Listens: vp:ui custom events    (fired by voice-patient.js)
  *
- * States:
- *   active       → green, normal icon
- *   muted        → red, slash icon
- *   disconnected → dark, normal icon + fa-circle-xmark badge (shown via CSS)
+ * Icons used (Font Awesome 6):
+ *   Mic:     fa-microphone / fa-microphone-slash / fa-microphone-circle-xmark
+ *   Speaker: fa-volume-high / fa-volume-slash / fa-volume-xmark
  */
 (() => {
   let micAvailable = false;
@@ -18,21 +17,21 @@
   let spkMuted = false;
 
   function applyBtn(id, iconId, state, type) {
-    const btn  = document.getElementById(id);
-    const icon = document.getElementById(iconId);
+    var btn  = document.getElementById(id);
+    var icon = document.getElementById(iconId);
     if (!btn || !icon) return;
 
     btn.classList.remove("vp-audioBtn--active", "vp-audioBtn--muted", "vp-audioBtn--disconnected");
     btn.classList.add("vp-audioBtn--" + state);
 
     if (type === "mic") {
-      icon.className = state === "muted"
-        ? "fa-solid fa-microphone-slash"
-        : "fa-solid fa-microphone";
+      icon.className = state === "active"       ? "fa-solid fa-microphone"
+                     : state === "muted"         ? "fa-solid fa-microphone-slash"
+                     :                             "fa-solid fa-microphone-circle-xmark";
     } else {
-      icon.className = state === "muted"
-        ? "fa-solid fa-volume-xmark"
-        : "fa-solid fa-volume-high";
+      icon.className = state === "active"        ? "fa-solid fa-volume-high"
+                     : state === "muted"          ? "fa-solid fa-volume-slash"
+                     :                              "fa-solid fa-volume-xmark";
     }
   }
 
@@ -43,7 +42,6 @@
     applyBtn("vpSpkBtn", "vpSpkIcon", ss, "spk");
   }
 
-  // ── Device detection ──
   async function checkDevices() {
     try {
       var devices = await navigator.mediaDevices.enumerateDevices();
@@ -68,7 +66,6 @@
     navigator.mediaDevices.addEventListener("devicechange", function () { checkDevices(); });
   }
 
-  // ── Click handlers ──
   window.__vpToggleMic = function () {
     if (!micAvailable) return;
 
@@ -100,7 +97,6 @@
     renderAll();
   };
 
-  // ── Sync mic state from Daily SDK ──
   function syncWithDaily() {
     var co = window.__vpCallObject;
     if (!co) return;
@@ -118,7 +114,6 @@
     renderAll();
   }
 
-  // ── Stay in sync via vp:ui events ──
   window.addEventListener("vp:ui", function (e) {
     var d = e.detail || {};
     if (d.state === "idle") { checkDevices(); return; }
@@ -127,7 +122,6 @@
     }
   });
 
-  // ── Boot ──
   checkDevices();
   setInterval(function () { if (!window.__vpCallObject) checkDevices(); }, 3000);
 })();
