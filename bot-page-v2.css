@@ -1449,7 +1449,7 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
   width: 46px;
   height: 46px;
   border-radius: 999px;
-  border: 0px solid rgba(0, 0, 0, .12);
+  border: 1px solid rgba(0, 0, 0, .12);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1473,21 +1473,21 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
   background: rgba(34, 197, 94, 0.22);
 }
 
-/* Muted – subtle red */
+/* Muted – neutral grey-blue (matches badge idle) */
 .vp-audioBtn--muted {
-  background: rgba(239, 68, 68, 0.12);
-  color: #d47272;
-  border-color: rgba(239, 68, 68, .18);
+  background: #d6dde9;
+  color: #253551;
+  border-color: rgba(37, 53, 81, .18);
 }
 .vp-audioBtn--muted:hover {
-  background: rgba(239, 68, 68, 0.20);
+  background: #c9d2e0;
 }
 
-/* Disconnected – light grey */
+/* Disconnected – red to highlight the problem */
 .vp-audioBtn--disconnected {
-  background: rgba(160, 165, 185, 0.10);
-  color: #6b7085;
-  border-color: rgba(37, 53, 81, .12);
+  background: rgba(176, 18, 58, 0.12);
+  color: #b0123a;
+  border-color: rgba(176, 18, 58, .20);
   cursor: not-allowed;
 }
 .vp-audioBtn--disconnected:hover {
