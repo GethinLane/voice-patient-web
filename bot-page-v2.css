@@ -1441,32 +1441,34 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
 .vp-audioControls {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .vp-audioBtn {
   position: relative;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, .12);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
-  transition: transform 0.14s ease, box-shadow 0.22s ease, background 0.25s ease, color 0.25s ease;
+  font-size: 14px;
+  font-weight: 800;
+  transition: transform 0.14s ease, box-shadow 0.22s ease, background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
   outline: none;
   -webkit-tap-highlight-color: transparent;
   flex-shrink: 0;
 }
-.vp-audioBtn:hover { transform: scale(1.12); }
-.vp-audioBtn:active { transform: scale(0.92); }
+.vp-audioBtn:hover { transform: scale(1.08); }
+.vp-audioBtn:active { transform: scale(0.94); }
 
 /* Active – subtle green */
 .vp-audioBtn--active {
   background: rgba(34, 197, 94, 0.15);
   color: #6ec990;
+  border-color: rgba(34, 197, 94, .20);
 }
 .vp-audioBtn--active:hover {
   background: rgba(34, 197, 94, 0.22);
@@ -1476,6 +1478,7 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
 .vp-audioBtn--muted {
   background: rgba(239, 68, 68, 0.12);
   color: #d47272;
+  border-color: rgba(239, 68, 68, .18);
 }
 .vp-audioBtn--muted:hover {
   background: rgba(239, 68, 68, 0.20);
@@ -1485,27 +1488,21 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
 .vp-audioBtn--disconnected {
   background: rgba(160, 165, 185, 0.10);
   color: #6b7085;
+  border-color: rgba(37, 53, 81, .12);
   cursor: not-allowed;
 }
 .vp-audioBtn--disconnected:hover {
   transform: scale(1.0);
 }
 
-/* ── Mobile / tablet: stack badge + audio vertically ──
-   .sca-header is flex-row by default, so we wrap the badge
-   and audio controls in a column group via flex-wrap. */
+/* ── Mobile / tablet: stack badge + audio vertically ── */
 @media (max-width: 1024px) {
   #sca-patient-card .sca-header {
     flex-wrap: wrap;
   }
 
-  /* Badge takes full width of its side so audio drops below it */
-  #sca-patient-card .sca-badge {
-    /* no change needed, just let wrap do the work */
-  }
-
   #sca-patient-card .vp-audioControls {
-    order: 10; /* push after badge, before wake toggle */
+    order: 10;
     width: 100%;
     justify-content: flex-start;
     margin-top: -4px;
@@ -1519,6 +1516,6 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
     grid-row: 2;
     justify-self: end;
     align-self: start;
-    margin-top: -12px; /* pull up to sit tight under badge */
+    margin-top: -12px;
   }
 }
