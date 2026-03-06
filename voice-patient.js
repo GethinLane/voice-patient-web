@@ -1098,6 +1098,11 @@ async function stopConsultation(auto = false) {
     setUiConnected(false);
     setStatus(auto ? "Time limit reached. Grading in progress…" : "Stopped. Grading in progress…");
 
+    if (currentSessionId) {
+      setGradingBtnState("in_progress"); // ← show button immediately on stop
+      startFiniteGradingPoll();
+    }
+
     if (currentSessionId) startFiniteGradingPoll();
     else {
       const out = document.getElementById("gradingOutput");
