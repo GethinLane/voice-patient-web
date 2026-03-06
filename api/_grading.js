@@ -203,9 +203,8 @@ function w(i) {
   return i < 3 ? 2 : 1; // first 3 heavier
 }
 
-function computeDomainBandFromScores(posScores012, negSev012) {
+function computeDomainBandFromScores(posScores012) {
   const pos = Array.isArray(posScores012) ? posScores012 : [];
-  const neg = Array.isArray(negSev012) ? negSev012 : [];
 
   // Core-weighted: first 6 are "core", remainder light-touch
   const coreN = Math.min(6, pos.length);
@@ -218,15 +217,8 @@ function computeDomainBandFromScores(posScores012, negSev012) {
   const optMax = optional.length * 2 || 1;
   const optGot = optional.reduce((a, v) => a + (Number(v) || 0), 0);
 
-  let ratio = 0.85 * (coreGot / coreMax) + 0.15 * (optGot / optMax);
-
-  // gentle negative penalty
-  const negMax = neg.length * 2 || 1;
-  const negGot = neg.reduce((a, v) => a + (Number(v) || 0), 0);
-  const negPenalty = negGot / negMax;
-
-  ratio = Math.max(0, Math.min(1, ratio - 0.15 * negPenalty));
-  return bandFromRatio(ratio);
+  const ratio = 0.85 * (coreGot / coreMax) + 0.15 * (optGot / optMax);
+  return bandFromRatio(Math.max(0, Math.min(1, ratio)));
 }
 
 // -------------------- Main grading --------------------
@@ -365,14 +357,8 @@ const premiumOutputSchemaHint = {
 // ---- STANDARD schema: merged example_phrases+evidence_quotes → single quotes field ----
 const outputSchemaHint = {
   dg_pos_scores: ["0|1|2"],
-  dg_neg_severity: ["0|1|2"],
-
   cm_pos_scores: ["0|1|2"],
-  cm_neg_severity: ["0|1|2"],
-
   rto_pos_scores: ["0|1|2"],
-  rto_neg_severity: ["0|1|2"],
-
   app_scores: ["0|1|2"],
   
   narrative: {
@@ -462,11 +448,12 @@ const premiumAddon =
 
           
           "Return ONLY valid JSON. No markdown.\n\n" +
-          "SCORING OUTPUT (critical):\n" +
+"SCORING OUTPUT (critical):\n" +
 "- For each POSITIVE criteria list, return an array of scores 0..2 in the SAME ORDER and SAME LENGTH as provided:\n" +
 "  0 = not demonstrated or absent, 1 = partially demonstrated or incomplete, 2 = fully demonstrated as described with clear and specific behaviour.\n" +
-"- For each NEGATIVE criteria list, return severity 0..2 in the SAME ORDER and SAME LENGTH:\n" +
-"  0 = not present, 1 = mild issue, 2 = major issue.\n" +
+"- Do NOT return separate scores for NEGATIVE criteria.\n" +
+"- NEGATIVE criteria are provided only to help identify omissions, opposite behaviours, and areas to improve in the narrative feedback.\n" +
+"- If an opposite/negative behaviour is present, reflect that by lowering the relevant POSITIVE criterion score rather than adding a separate penalty.\n" +
 "- Keep per-criterion output VERY short (numbers only). Do NOT repeat or rewrite the indicator text.\n\n" +
 "IMPORTANT SCORING RULE:\n" +
 "- Score 2 only if the criterion is clearly and substantially demonstrated in the transcript.\n" +
@@ -583,22 +570,14 @@ if (!parsed) {
   }
 // ---- Scores (no hard literal enforcement) ----
 const dgPosScores = normalize012Array(parsed.dg_pos_scores, marking.dg.positive.length);
-const dgNegSev = normalize012Array(parsed.dg_neg_severity, marking.dg.negative.length);
-
 const cmPosScores = normalize012Array(parsed.cm_pos_scores, marking.cm.positive.length);
-const cmNegSev = normalize012Array(parsed.cm_neg_severity, marking.cm.negative.length);
-
 const rtoPosScores = normalize012Array(parsed.rto_pos_scores, marking.rto.positive.length);
-const rtoNegSev = normalize012Array(parsed.rto_neg_severity, marking.rto.negative.length);
-
 const appScores = normalize012Array(parsed.app_scores, marking.application.length);
 
 
-
-
-  const dgBand = computeDomainBandFromScores(dgPosScores, dgNegSev);
-  const cmBand = computeDomainBandFromScores(cmPosScores, cmNegSev);
-  const rtoBand = computeDomainBandFromScores(rtoPosScores, rtoNegSev);
+const dgBand = computeDomainBandFromScores(dgPosScores);
+const cmBand = computeDomainBandFromScores(cmPosScores);
+const rtoBand = computeDomainBandFromScores(rtoPosScores);
   const appBand = bandFromRatio(
     appScores.reduce((a, v) => a + v, 0) / ((appScores.length * 2) || 1)
   );
