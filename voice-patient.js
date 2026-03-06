@@ -19,6 +19,7 @@
   let currentSessionId = null;
   let gradingPollTimer = null;
   let gradingPollTries = 0;
+  let notFoundCount = 0;
   let startRunId = 0;        // increments on each start/stop to cancel in-flight starts
 let stoppingNow = false;   // true while stopConsultation is running
   let dailyConnected = false; // true when local client is joining/joined to a Daily meeting
@@ -877,7 +878,15 @@ waitingSinceMs = 0;
       const data = await fetchJson(url, { method: "GET", cache: "no-store", mode: "cors" });
 
       if (!data.found) {
-        if (out) out.textContent = "No attempt found yet… (waiting for transcript submit)";
+        notFoundCount++;
+        if (notFoundCount >= 5) {
+          stopGradingPoll("no transcript received");
+          setGradingBtnState("too_short");
+          setStatus("No Credits Taken: Session too short to grade.");
+          if (out) out.textContent = "No transcript was received — session was too short to grade.";
+          return;
+        }
+        if (out) out.textContent = "Waiting for transcript…";
         return;
       }
       if (data.status === "too_short") {
@@ -932,6 +941,7 @@ function startFiniteGradingPoll() {
   stopGradingPoll("restart");
   gradingPollTries = 0;
   readyEmptyCount = 0;
+  notFoundCount = 0;
 
   const out = document.getElementById("gradingOutput");
   if (out) out.textContent = "Grading in progress…";
@@ -1111,8 +1121,21 @@ async function stopConsultation(auto = false) {
   // Cancel any in-flight startConsultation() immediately
   startRunId++;
 
-  try {
+try {
+    const hadCountdown = countdownHasStarted;
     stopCountdown(auto ? "auto stop" : "manual stop");
+
+    // If the agent never joined (countdown never started), skip grading entirely
+    if (!hadCountdown && !auto) {
+      await unmountDailyCustomAudio();
+      setUiConnected(false);
+      setGradingBtnState("too_short");
+      setStatus("No Credits Taken: Session too short to grade.");
+      const out = document.getElementById("gradingOutput");
+      if (out) out.textContent = "Session ended before a conversation started.";
+      stoppingNow = false;
+      return;
+    }
 
     // On stop we want UI to return to idle, so do NOT suppress idle emit
     await unmountDailyCustomAudio();
@@ -1123,10 +1146,12 @@ async function stopConsultation(auto = false) {
 if (currentSessionId) {
       setGradingBtnState("in_progress");
       startFiniteGradingPoll();
-    } else {
-      const out = document.getElementById("gradingOutput");
-      if (out) out.textContent = "No sessionId available; cannot fetch grading.";
-    }
+} else {
+  setGradingBtnState("too_short");
+  setStatus("Session ended before it began — no credits taken.");
+  const out = document.getElementById("gradingOutput");
+  if (out) out.textContent = "Session ended before a conversation started.";
+}
     
   } finally {
     // Always release the stop lock even if Daily throws
