@@ -950,7 +950,7 @@ function startFiniteGradingPoll() {
 
     if (gradingPollTries >= GRADING_POLL_MAX_TRIES) {
       if (out) out.textContent =
-        "Still grading… (timed out waiting). Click "Fetch grading now" (with ?vpdebug=1) or refresh.";
+        "Still grading… (timed out waiting). Click 'Fetch grading now' (with ?vpdebug=1) or refresh.";
       stopGradingPoll("timeout");
       setGradingBtnState("in_progress");
       return;
