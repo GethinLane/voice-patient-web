@@ -1449,7 +1449,7 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
   width: 46px;
   height: 46px;
   border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, .12);
+  border: 0px solid rgba(0, 0, 0, .12);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
