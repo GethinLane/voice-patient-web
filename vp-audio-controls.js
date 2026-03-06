@@ -6,7 +6,7 @@
  * Reads:   window.__vpCallObject  (set by voice-patient.js)
  * Listens: vp:ui custom events    (fired by voice-patient.js)
  *
- * Probes mic via getUserMedia ONCE on page load to get real state.
+ * Probes mic via getUserMedia ONCE after page is ready.
  * After that, only re-probes on devicechange (plug/unplug).
  * During a call, syncs with Daily SDK — no extra streams.
  *
@@ -20,6 +20,7 @@
   let micMuted = false;
   let spkMuted = false;
   let inCall = false;
+  let probeRunning = false;
 
   function applyBtn(id, iconId, state, type) {
     var btn  = document.getElementById(id);
@@ -47,7 +48,7 @@
     applyBtn("vpSpkBtn", "vpSpkIcon", ss, "spk");
   }
 
-  // Lightweight: check what devices exist via enumerateDevices (no permission needed)
+  // Lightweight: check what devices exist (no permission needed)
   async function checkDevicesLight() {
     try {
       var devices = await navigator.mediaDevices.enumerateDevices();
@@ -64,11 +65,14 @@
   }
 
   // Heavy: request mic access to verify it actually works
-  // Immediately releases the stream — mic is NOT held open
+  // Immediately releases the stream
+  // Will not run if a call is active or another probe is in flight
   async function probeMic() {
+    if (inCall || probeRunning) return;
+    probeRunning = true;
+
     try {
       var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Kill the stream immediately so the mic indicator goes away
       stream.getTracks().forEach(function (t) { t.stop(); });
 
       if (!micAvailable) micMuted = false;
@@ -76,6 +80,8 @@
     } catch (e) {
       micAvailable = false;
       micMuted = false;
+    } finally {
+      probeRunning = false;
     }
   }
 
@@ -105,7 +111,7 @@
     await checkDevicesLight();
   };
 
-  // Device hot-plug/unplug — re-probe mic fully (only fires on real hardware change)
+  // Device hot-plug/unplug
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
     navigator.mediaDevices.addEventListener("devicechange", async function () {
       if (!inCall) {
@@ -154,7 +160,6 @@
     if (d.state === "idle" || d.state === "error") {
       inCall = false;
       if (wasInCall) {
-        // Call just ended — re-probe mic once
         probeMic().then(checkDevicesLight);
       }
     } else if (d.state === "listening" || d.state === "talking" || d.state === "thinking" || d.state === "waiting" || d.state === "connecting") {
@@ -164,13 +169,21 @@
     }
   });
 
-  // Boot — probe mic once on load, then just check speakers
-  (async function () {
-    await probeMic();
-    await checkDevicesLight();
-  })();
+  // Boot — delay mic probe so voice-patient.js binds first
+  function boot() {
+    setTimeout(async function () {
+      await probeMic();
+      await checkDevicesLight();
+    }, 1500);
+  }
 
-  // Lightweight poll every 5s — only checks speakers, does NOT touch the mic
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+
+  // Lightweight poll every 5s — never touches getUserMedia
   setInterval(function () {
     if (inCall) {
       syncWithDaily();
