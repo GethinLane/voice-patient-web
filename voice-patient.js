@@ -23,6 +23,7 @@
   let startRunId = 0;        // increments on each start/stop to cancel in-flight starts
 let stoppingNow = false;   // true while stopConsultation is running
   let dailyConnected = false; // true when local client is joining/joined to a Daily meeting
+  let botHasSpoken = false;
 
   const GRADING_POLL_INTERVAL_MS = 6000; // every 6s
   const GRADING_POLL_MAX_TRIES = 20;     // 120s max
@@ -564,6 +565,9 @@ function stopCountdown(reason = "") {
 
   function setUiState(next) {
     if (uiState === next) return;
+    if (uiState === "talking" && !botHasSpoken) {
+      botHasSpoken = true;
+    }
     uiState = next;
     updateMeta();
     log("[UI] state", { uiState });
@@ -994,6 +998,7 @@ function startFiniteGradingPoll() {
 
     stopGradingPoll("new session");
     stopCountdown("new session");
+    botHasSpoken = false;
     setCountdownText(""); // ✅ clear timer immediately on Start click
     vpLastGradingText = "";
 vpLastGradingSessionId = null;
@@ -1131,8 +1136,14 @@ try {
     setStatus(auto ? "Time limit reached. Grading in progress…" : "Stopped. Grading in progress…");
 
 if (currentSessionId) {
-      setGradingBtnState("in_progress");
-      startFiniteGradingPoll();
+      if (!botHasSpoken) {
+        setGradingBtnState("too_short");
+        setStatus("No Credits Taken: Session too short to grade.");
+        currentSessionId = null;
+      } else {
+        setGradingBtnState("in_progress");
+        startFiniteGradingPoll();
+      }
 } else {
   setGradingBtnState("too_short");
   setStatus("Session ended before it began — no credits taken.");
