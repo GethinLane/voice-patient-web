@@ -1120,16 +1120,14 @@ async function stopConsultation(auto = false) {
     setUiConnected(false);
     setStatus(auto ? "Time limit reached. Grading in progress…" : "Stopped. Grading in progress…");
 
-    if (currentSessionId) {
-      setGradingBtnState("in_progress"); // ← show button immediately on stop
+if (currentSessionId) {
+      setGradingBtnState("in_progress");
       startFiniteGradingPoll();
-    }
-
-    if (currentSessionId) startFiniteGradingPoll();
-    else {
+    } else {
       const out = document.getElementById("gradingOutput");
       if (out) out.textContent = "No sessionId available; cannot fetch grading.";
     }
+    
   } finally {
     // Always release the stop lock even if Daily throws
     stoppingNow = false;
