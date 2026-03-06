@@ -1518,3 +1518,12 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
     margin-top: -12px;
   }
 }
+@media (min-width: 1025px) {
+  #scaBotCardRoot .vp-audioControls {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    align-self: end;
+    margin-top: 0;
+  }
+}
