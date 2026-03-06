@@ -1446,16 +1446,15 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
 
 .vp-audioBtn {
   position: relative;
-  width: 34px;
-  height: 34px;
+  width: 46px;
+  height: 46px;
   border-radius: 999px;
   border: 1px solid rgba(0, 0, 0, .12);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  font-weight: 800;
+  font-size: 18px;
   transition: transform 0.14s ease, box-shadow 0.22s ease, background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
   outline: none;
   -webkit-tap-highlight-color: transparent;
