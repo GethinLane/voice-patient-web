@@ -6,7 +6,10 @@
  * Reads:   window.__vpCallObject  (set by voice-patient.js)
  * Listens: vp:ui custom events    (fired by voice-patient.js)
  *
- * Icons used (Font Awesome 6):
+ * On load, probes mic access via getUserMedia so the user can
+ * see whether their mic is working BEFORE starting a call.
+ *
+ * Icons (FA Pro):
  *   Mic:     fa-microphone / fa-microphone-slash / fa-microphone-circle-xmark
  *   Speaker: fa-volume-high / fa-volume-slash / fa-volume-xmark
  */
@@ -15,6 +18,7 @@
   let spkAvailable = false;
   let micMuted = false;
   let spkMuted = false;
+  let micProbed = false;
 
   function applyBtn(id, iconId, state, type) {
     var btn  = document.getElementById(id);
@@ -25,13 +29,13 @@
     btn.classList.add("vp-audioBtn--" + state);
 
     if (type === "mic") {
-      icon.className = state === "active"       ? "fa-solid fa-microphone"
-                     : state === "muted"         ? "fa-solid fa-microphone-slash"
-                     :                             "fa-solid fa-microphone-circle-xmark";
+      icon.className = state === "active"        ? "fa-solid fa-microphone"
+                      : state === "muted"         ? "fa-solid fa-microphone-slash"
+                      :                             "fa-solid fa-microphone-circle-xmark";
     } else {
-      icon.className = state === "active"        ? "fa-solid fa-volume-high"
-                     : state === "muted"          ? "fa-solid fa-volume-slash"
-                     :                              "fa-solid fa-volume-xmark";
+      icon.className = state === "active"         ? "fa-solid fa-volume-high"
+                      : state === "muted"          ? "fa-solid fa-volume-slash"
+                      :                              "fa-solid fa-volume-xmark";
     }
   }
 
@@ -61,6 +65,39 @@
       console.warn("[vp-audio] enumerateDevices failed:", e);
     }
   }
+
+  /**
+   * Probe mic access on page load.
+   * Requests a brief getUserMedia stream to:
+   *   1. Trigger the browser permission prompt if not yet granted
+   *   2. Verify the mic actually works (not just listed)
+   * Immediately stops all tracks — no ongoing recording.
+   */
+  async function probeMic() {
+    if (micProbed) return;
+    micProbed = true;
+
+    try {
+      var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Got access — mic is real and working
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      micAvailable = true;
+      renderAll();
+    } catch (e) {
+      // NotAllowedError = user denied permission
+      // NotFoundError = no mic hardware
+      // Any other error = treat as unavailable
+      console.warn("[vp-audio] mic probe failed:", e.name, e.message);
+      micAvailable = false;
+      renderAll();
+    }
+
+    // Now that we have permission, enumerateDevices gives full info
+    await checkDevices();
+  }
+
+  // Expose for testing
+  window.__vpCheckDevices = checkDevices;
 
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
     navigator.mediaDevices.addEventListener("devicechange", function () { checkDevices(); });
@@ -122,6 +159,9 @@
     }
   });
 
-  checkDevices();
-  setInterval(function () { if (!window.__vpCallObject) checkDevices(); }, 3000);
+  // Boot — probe mic on load, check speakers via enumerateDevices
+  probeMic();
+
+  // Poll every 3s
+  setInterval(function () { checkDevices(); }, 3000);
 })();
