@@ -1435,7 +1435,7 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
 }
 
 /*======================
-Audio Control Styling
+  Audio Control Styling
 ====================*/
 
 .vp-audioControls {
@@ -1489,4 +1489,17 @@ Audio Control Styling
 }
 .vp-audioBtn--disconnected:hover {
   transform: scale(1.0);
+}
+
+/* ── Desktop grid placement ──
+   On ≥1025px, .sca-header uses display:contents so all its
+   children become direct grid items. Place audio controls
+   in column 3 row 2, right under the badge. */
+@media (min-width: 1025px) {
+  #scaBotCardRoot .vp-audioControls {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+    align-self: start;
+  }
 }
