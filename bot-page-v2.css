@@ -1491,15 +1491,34 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
   transform: scale(1.0);
 }
 
-/* ── Desktop grid placement ──
-   On ≥1025px, .sca-header uses display:contents so all its
-   children become direct grid items. Place audio controls
-   in column 3 row 2, right under the badge. */
+/* ── Mobile / tablet: stack badge + audio vertically ──
+   .sca-header is flex-row by default, so we wrap the badge
+   and audio controls in a column group via flex-wrap. */
+@media (max-width: 1024px) {
+  #sca-patient-card .sca-header {
+    flex-wrap: wrap;
+  }
+
+  /* Badge takes full width of its side so audio drops below it */
+  #sca-patient-card .sca-badge {
+    /* no change needed, just let wrap do the work */
+  }
+
+  #sca-patient-card .vp-audioControls {
+    order: 10; /* push after badge, before wake toggle */
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: -4px;
+  }
+}
+
+/* ── Desktop: place in grid column 3, snug under badge ── */
 @media (min-width: 1025px) {
   #scaBotCardRoot .vp-audioControls {
     grid-column: 3;
     grid-row: 2;
     justify-self: end;
     align-self: start;
+    margin-top: -12px; /* pull up to sit tight under badge */
   }
 }
