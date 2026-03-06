@@ -928,28 +928,50 @@ if (ready && gradingText) {
     }
   }
 
-  function startFiniteGradingPoll() {
-    stopGradingPoll("restart");
-    gradingPollTries = 0;
-    readyEmptyCount = 0;
+function startFiniteGradingPoll() {
+  stopGradingPoll("restart");
+  gradingPollTries = 0;
+  readyEmptyCount = 0;
 
-    const out = document.getElementById("gradingOutput");
-    if (out) out.textContent = "Grading in progress…";
+  const out = document.getElementById("gradingOutput");
+  if (out) out.textContent = "Grading in progress…";
 
-    gradingPollTimer = setInterval(async () => {
-      gradingPollTries++;
-      updateMeta();
-      await pollGradingOnce(false);
-      if (gradingPollTries >= GRADING_POLL_MAX_TRIES) {
-        if (out) out.textContent =
-          "Still grading… (timed out waiting). Click “Fetch grading now” (with ?vpdebug=1) or refresh.";
-        stopGradingPoll("timeout");
-        setGradingBtnState("in_progress");
-      }
-    }, GRADING_POLL_INTERVAL_MS);
+  // Fast early polls: every 1.5s for first 20s, then settle to 6s
+  let fastPhase = true;
+  const FAST_INTERVAL_MS = 1500;
+  const FAST_PHASE_TRIES = 13; // ~20s of fast polling
 
-    pollGradingOnce(false);
-  }
+  pollGradingOnce(false);
+
+  gradingPollTimer = setInterval(async () => {
+    gradingPollTries++;
+    updateMeta();
+    await pollGradingOnce(false);
+
+    if (gradingPollTries >= GRADING_POLL_MAX_TRIES) {
+      if (out) out.textContent =
+        "Still grading… (timed out waiting). Click "Fetch grading now" (with ?vpdebug=1) or refresh.";
+      stopGradingPoll("timeout");
+      setGradingBtnState("in_progress");
+      return;
+    }
+
+    // Switch from fast to normal polling after FAST_PHASE_TRIES
+    if (fastPhase && gradingPollTries >= FAST_PHASE_TRIES) {
+      fastPhase = false;
+      clearInterval(gradingPollTimer);
+      gradingPollTimer = setInterval(async () => {
+        gradingPollTries++;
+        updateMeta();
+        await pollGradingOnce(false);
+        if (gradingPollTries >= GRADING_POLL_MAX_TRIES) {
+          stopGradingPoll("timeout");
+          setGradingBtnState("in_progress");
+        }
+      }, GRADING_POLL_INTERVAL_MS);
+    }
+  }, FAST_INTERVAL_MS);
+}
 
 
   // ---------- Start/Stop ----------
