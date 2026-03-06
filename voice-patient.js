@@ -879,7 +879,7 @@ waitingSinceMs = 0;
 
       if (!data.found) {
         notFoundCount++;
-        if (notFoundCount >= 5) {
+        if (notFoundCount >= 20) {
           stopGradingPoll("no transcript received");
           setGradingBtnState("too_short");
           setStatus("No Credits Taken: Session too short to grade.");
@@ -1122,20 +1122,7 @@ async function stopConsultation(auto = false) {
   startRunId++;
 
 try {
-    const hadCountdown = countdownHasStarted;
     stopCountdown(auto ? "auto stop" : "manual stop");
-
-    // If the agent never joined (countdown never started), skip grading entirely
-    if (!hadCountdown && !auto) {
-      await unmountDailyCustomAudio();
-      setUiConnected(false);
-      setGradingBtnState("too_short");
-      setStatus("No Credits Taken: Session too short to grade.");
-      const out = document.getElementById("gradingOutput");
-      if (out) out.textContent = "Session ended before a conversation started.";
-      stoppingNow = false;
-      return;
-    }
 
     // On stop we want UI to return to idle, so do NOT suppress idle emit
     await unmountDailyCustomAudio();
