@@ -203,7 +203,7 @@ function w(i) {
   return i < 3 ? 2 : 1; // first 3 heavier
 }
 
-function computeDomainBandFromScores(posScores012) {
+function computeDomainResultFromScores(posScores012) {
   const pos = Array.isArray(posScores012) ? posScores012 : [];
 
   // Core-weighted: first 6 are "core", remainder light-touch
@@ -217,8 +217,15 @@ function computeDomainBandFromScores(posScores012) {
   const optMax = optional.length * 2 || 1;
   const optGot = optional.reduce((a, v) => a + (Number(v) || 0), 0);
 
-  const ratio = 0.85 * (coreGot / coreMax) + 0.15 * (optGot / optMax);
-  return bandFromRatio(Math.max(0, Math.min(1, ratio)));
+  const ratio = Math.max(
+    0,
+    Math.min(1, 0.85 * (coreGot / coreMax) + 0.15 * (optGot / optMax))
+  );
+
+  return {
+    ratio,
+    band: bandFromRatio(ratio),
+  };
 }
 
 // -------------------- Main grading --------------------
@@ -454,6 +461,7 @@ const premiumAddon =
 "- Do NOT return separate scores for NEGATIVE criteria.\n" +
 "- NEGATIVE criteria are provided only to help identify omissions, opposite behaviours, and areas to improve in the narrative feedback.\n" +
 "- If an opposite/negative behaviour is present, reflect that by lowering the relevant POSITIVE criterion score rather than adding a separate penalty.\n" +
+"- Application scores are for shaping the OVERALL paragraph and priorities only, and must NOT be treated as a separate graded domain or used in the overall grade calculation.\n" +
 "- Keep per-criterion output VERY short (numbers only). Do NOT repeat or rewrite the indicator text.\n\n" +
 "IMPORTANT SCORING RULE:\n" +
 "- Score 2 only if the criterion is clearly and substantially demonstrated in the transcript.\n" +
@@ -575,21 +583,23 @@ const rtoPosScores = normalize012Array(parsed.rto_pos_scores, marking.rto.positi
 const appScores = normalize012Array(parsed.app_scores, marking.application.length);
 
 
-const dgBand = computeDomainBandFromScores(dgPosScores);
-const cmBand = computeDomainBandFromScores(cmPosScores);
-const rtoBand = computeDomainBandFromScores(rtoPosScores);
-  const appBand = bandFromRatio(
-    appScores.reduce((a, v) => a + v, 0) / ((appScores.length * 2) || 1)
-  );
+const dgResult = computeDomainResultFromScores(dgPosScores);
+const cmResult = computeDomainResultFromScores(cmPosScores);
+const rtoResult = computeDomainResultFromScores(rtoPosScores);
 
-  const overallIdx = Math.round(
-    (BANDS.indexOf(dgBand) +
-      BANDS.indexOf(cmBand) +
-      BANDS.indexOf(rtoBand) +
-      BANDS.indexOf(appBand)) /
-      4
-  );
-  const overall = BANDS[clampBandIndex(overallIdx)];
+const dgBand = dgResult.band;
+const cmBand = cmResult.band;
+const rtoBand = rtoResult.band;
+
+// Application stays narrative-only: keep appScores available for the model's overall paragraph,
+// but do NOT convert it into a band and do NOT use it in any grading calculation.
+
+const overallRatio =
+  (dgResult.ratio * 0.30) +
+  (rtoResult.ratio * 0.30) +
+  (cmResult.ratio * 0.40);
+
+const overall = bandFromRatio(overallRatio);
 
   // NEW: "work on" includes partial (1) + missed (0) and guarantee >=2 items
   function hitWorkOnFromScores(indicators, scores) {
@@ -912,8 +922,8 @@ if (isPremium) {
     .filter((x) => x !== null && x !== undefined)
     .join("\n");
 
-  return {
-    gradingText,
-    bands: { dgBand, cmBand, rtoBand, appBand, overall },
-  };
+return {
+  gradingText,
+  bands: { dgBand, cmBand, rtoBand, overall },
+};
 }
