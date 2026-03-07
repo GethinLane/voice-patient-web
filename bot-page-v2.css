@@ -1639,3 +1639,81 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
 .sca-included.sca-readingGrid .card-head{
   margin-bottom: 8px !important;
 }
+
+/* ================================
+   Further Reading cards — dark frosted glass in Premium
+   ================================ */
+body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .sca-included-card,
+body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .sca-included-card {
+  background: rgba(37, 53, 81, 0.85) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow:
+    0 12px 40px rgba(100, 60, 220, 0.18),
+    0 4px 16px rgba(15, 23, 42, 0.22) !important;
+  backdrop-filter: blur(16px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease,
+              background 0.2s ease !important;
+}
+
+/* Hover — purple shadow blooms */
+body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .sca-included-card:hover,
+body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .sca-included-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(124, 77, 255, 0.35) !important;
+  box-shadow:
+    0 20px 56px rgba(100, 60, 220, 0.42),
+    0 8px 24px rgba(15, 23, 42, 0.28) !important;
+}
+
+/* Title — white */
+body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .card-title,
+body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .card-title {
+  color: #ffffff !important;
+}
+
+/* Body text — soft white */
+body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .card-body,
+body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .card-body {
+  color: rgba(255, 255, 255, 0.65) !important;
+}
+
+/* Card head divider */
+body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .card-head,
+body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .card-head {
+  border-bottom-color: rgba(255, 255, 255, 0.10) !important;
+}
+
+/* Icon — purple tint */
+body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .card-icon,
+body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .card-icon {
+  background: rgba(124, 77, 255, 0.18) !important;
+  color: #a78bfa !important;
+}
+
+/* Subtle top-left sheen */
+body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .sca-included-card::after,
+body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .sca-included-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 30%,
+    rgba(255, 255, 255, 0.00) 65%
+  );
+}
+body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .sca-included-card,
+body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .sca-included-card {
+  background: rgba(37, 53, 81, 0.85) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow:
+    0 12px 40px rgba(100, 60, 220, 0.18),
+    0 4px 16px rgba(15, 23, 42, 0.22),
+    0 20px 56px rgba(100, 60, 220, 0.12) !important;
+  backdrop-filter: blur(16px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
+}
