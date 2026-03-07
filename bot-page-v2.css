@@ -1717,3 +1717,12 @@ body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .
   backdrop-filter: blur(16px) saturate(140%) !important;
   -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
 }
+body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .card-icon,
+body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .card-icon {
+  background: transparent !important;
+}
+
+body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .card-icon i,
+body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .card-icon i {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
