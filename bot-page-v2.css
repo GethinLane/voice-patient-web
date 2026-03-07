@@ -1726,30 +1726,26 @@ body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGri
 body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .card-icon i {
   color: rgba(255, 255, 255, 0.85) !important;
 }
-/* ================================
-   Bot card shell — purple shadow in Premium
-   ================================ */
+/* Bot card shell */
 body:has(#scaPlanStandalone #vpModePremium:checked) .sca-cardShell,
 body:has(#scaBotCardRoot #vpModePremium:checked) .sca-cardShell {
   box-shadow:
-    0 12px 40px rgba(100, 60, 220, 0.1),
-    0 4px 16px rgba(15, 23, 42, 0.12),
+    0 4px 16px rgba(37, 53, 81, 0.12),
     0 20px 56px rgba(100, 60, 220, 0.06) !important;
 }
 
-/* ================================
-   Info card accordion items — purple shadow in Premium
-   ================================ */
+/* Accordion items */
 body:has(#scaPlanStandalone #vpModePremium:checked) #scaInfoCardRoot .sca-accItem,
 body:has(#scaBotCardRoot #vpModePremium:checked) #scaInfoCardRoot .sca-accItem {
   box-shadow:
-    0 10px 26px rgba(100, 60, 220, 0.08),
-    0 4px 12px rgba(15, 23, 42, 0.04) !important;
+    0 4px 12px rgba(37, 53, 81, 0.08),
+    0 10px 26px rgba(100, 60, 220, 0.08) !important;
 }
 
+/* Accordion items hover */
 body:has(#scaPlanStandalone #vpModePremium:checked) #scaInfoCardRoot .sca-accItem:hover,
 body:has(#scaBotCardRoot #vpModePremium:checked) #scaInfoCardRoot .sca-accItem:hover {
   box-shadow:
-    0 14px 36px rgba(100, 60, 220, 0.18),
-    0 6px 16px rgba(15, 23, 42, 0.06) !important;
+    0 6px 16px rgba(37, 53, 81, 0.10),
+    0 14px 36px rgba(100, 60, 220, 0.18) !important;
 }
