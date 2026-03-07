@@ -1527,3 +1527,115 @@ body.sca-botpage #scaInfoCardRoot .sca-cleanList li{
     margin-top: 0;
   }
 }
+/* ================================
+   Further reading — Grid (not carousel)
+   Keeps the same card styling classes you already use
+   ================================ */
+
+/* Keep this section normal width (NOT full-bleed) */
+.sca-included.sca-readingGrid{
+  width: auto !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Turn the track into a grid */
+.sca-included.sca-readingGrid .wi-track{
+  display: grid !important;
+  grid-template-columns: 1fr;
+  gap: 28px !important;
+
+  overflow: visible !important;
+  padding: 24px 0 0 !important; /* keep your “breathing room” vibe */
+  scroll-snap-type: none !important;
+  scroll-behavior: auto !important;
+}
+
+/* 2-up on desktop */
+@media (min-width: 860px){
+  .sca-included.sca-readingGrid .wi-track{
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Cards should fill their grid cell (override the carousel flex sizing) */
+.sca-included.sca-readingGrid .wi-track .sca-included-card{
+  flex: none !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 260px; /* feels consistent with your existing cards */
+}
+
+/* Hide carousel controls if they exist elsewhere */
+.sca-included.sca-readingGrid .wi-controls{
+  display: none !important;
+}
+/* --- Grid: 2 across on mobile (most phones), 1 across on very small, 4 on large --- */
+.sca-included.sca-readingGrid .wi-track{
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); /* ✅ 2-up on mobile */
+  gap: 14px !important;
+  overflow: visible !important;
+  padding: 16px 0 0 !important;
+}
+
+/* 1 across only on very narrow screens */
+@media (max-width: 360px){
+  .sca-included.sca-readingGrid .wi-track{
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 4 across on large screens */
+@media (min-width: 900px){
+  .sca-included.sca-readingGrid .wi-track{
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Make cards more compact for 2-up on mobile */
+.sca-included.sca-readingGrid .wi-track .sca-included-card{
+  min-height: 170px;                 /* smaller so 2-up doesn't feel chunky */
+  padding: 14px 12px 12px !important;
+}
+
+/* Keep titles from wrapping awkwardly */
+.sca-included.sca-readingGrid .card-title{
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+/* Make cards a bit more compact */
+.sca-included.sca-readingGrid .wi-track .sca-included-card{
+  min-height: 200px;                    /* was 260 */
+  padding: 16px 14px 14px !important;   /* was 22/18 */
+}
+
+/* Smaller icons so 4-up feels balanced */
+.sca-included.sca-readingGrid .card-icon i{
+  font-size: clamp(36px, 3.2vw, 56px) !important;  /* was huge */
+}
+/* Override Home.css padding */
+.home-portal .page{
+  padding: 0 !important;
+}
+.sca-included.sca-readingGrid .card-icon i{
+  font-size: clamp(44px, 6vw, 80px) !important;
+}
+/* Make card text responsive (smaller on mobile, normal on desktop) */
+.sca-included.sca-readingGrid .card-title{
+  font-size: clamp(16px, 3.2vw, 22px) !important;
+  line-height: 1.2 !important;
+}
+
+.sca-included.sca-readingGrid .card-body{
+  font-size: clamp(14px, 2.9vw, 18px) !important;
+  line-height: 1.5 !important;
+}
+
+/* Optional: tighten spacing so 2-up mobile feels less chunky */
+.sca-included.sca-readingGrid .card-head{
+  margin-bottom: 8px !important;
+}
