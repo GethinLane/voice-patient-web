@@ -1708,7 +1708,7 @@ body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .
 }
 body:has(#scaPlanStandalone #vpModePremium:checked) .sca-included.sca-readingGrid .sca-included-card,
 body:has(#scaBotCardRoot #vpModePremium:checked) .sca-included.sca-readingGrid .sca-included-card {
-  background: rgba(37, 53, 81, 0.85) !important;
+  background: rgba(37, 53, 81, 0.92) !important;
   border: 1px solid rgba(255, 255, 255, 0.10) !important;
   box-shadow:
     0 12px 40px rgba(100, 60, 220, 0.18),
