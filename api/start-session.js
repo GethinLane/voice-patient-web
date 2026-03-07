@@ -159,14 +159,17 @@ function isCapacityError(resp, data, rawText) {
 // Optional: allow forcing an agent for testing only
 function pickAgentOrder({ seed, forcedAgent }) {
   const pool = getAgentPool();
-  if (!pool.length) return [];
+  const allowedForcedAgents = new Set(["voice-patient-test"]);
 
-  // If tester forces an agent, try it first, then rest as fallback
-  if (forcedAgent && pool.includes(forcedAgent)) {
-    return [forcedAgent, ...pool.filter(a => a !== forcedAgent)];
+  if (forcedAgent) {
+    if (!allowedForcedAgents.has(forcedAgent)) {
+      throw new Error(`Unsupported forced agent '${forcedAgent}'`);
+    }
+    return [forcedAgent];
   }
 
-  // Otherwise deterministic load-spread
+  if (!pool.length) return [];
+
   const startIdx = fnv1a32(seed) % pool.length;
   return pool.slice(startIdx).concat(pool.slice(0, startIdx));
 }
