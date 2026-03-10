@@ -11,6 +11,38 @@
   const PROXY_BASE_URL =
     window.PROXY_BASE_URL || "https://scarevision-airtable-proxy.vercel.app";
 
+  // ---- MemberSpace: capture member ID + email early ----
+  var msMemberId = null;
+  var msMemberEmail = null;
+
+  function storeMsInfo(data) {
+    var info = data && data.memberInfo ? data.memberInfo : data;
+    if (info && info.id) msMemberId = String(info.id).trim();
+    if (info && info.email) msMemberEmail = info.email;
+  }
+
+  (function() {
+    var getMsReadyPromise = function() {
+      return new Promise(function(resolve) {
+        if (window.MemberSpace && window.MemberSpace.ready) {
+          resolve(window.MemberSpace.getMemberInfo());
+        } else {
+          var handleReady = function(e) {
+            resolve(e.detail);
+            document.removeEventListener('MemberSpace.ready', handleReady);
+          };
+          document.addEventListener('MemberSpace.ready', handleReady);
+        }
+      });
+    };
+
+    getMsReadyPromise().then(storeMsInfo);
+
+    document.addEventListener("MemberSpace.member.info", function(e) {
+      if (e && e.detail) storeMsInfo(e.detail);
+    });
+  })();
+
   const ENABLE_PROFILE_FETCH = false;
   const PROFILE_ENDPOINT = "/api/case-profile?caseId=";
 
@@ -405,25 +437,28 @@
     const existing = document.getElementById("vp-credits-modal");
     if (existing) existing.remove();
 
-// Get MemberSpace UserID for Stripe client_reference_id
-    const userId = (() => {
+// Get MemberSpace UserID + email for Stripe
+    if (!msMemberId) {
       try {
-        const ms = window.MemberSpace;
-        if (ms && typeof ms.getMemberInfo === "function") {
-          const data = ms.getMemberInfo();
-          if (data?.isLoggedIn && data?.memberInfo?.id) {
-            return String(data.memberInfo.id).trim();
-          }
-        }
-        return String(window.__msMemberInfo?.id || "").trim();
-      } catch { return ""; }
-    })();
+        var info = window.MemberSpace?.getMemberInfo?.();
+        if (info) storeMsInfo(info);
+      } catch(e) {}
+    }
+
+    const userId = msMemberId || "";
+    const memberEmail = msMemberEmail || "";
+
+    if (!userId) {
+      alert("We couldn't load your account info. Please purchase credits from the main portal page instead.");
+      return;
+    }
 
     const infoMsg = (Number.isFinite(available) && Number.isFinite(required))
       ? `You have <strong>${available}</strong> credit${available !== 1 ? "s" : ""} but need <strong>${required}</strong> to start a <strong>${mode || "standard"}</strong> simulation.`
       : `You don't have enough credits to start a simulation.`;
 
     const refAttr = userId ? `client-reference-id="${userId}"` : "";
+    const emailAttr = memberEmail ? `customer-email="${memberEmail}"` : "";
 
     const modal = document.createElement("div");
     modal.id = "vp-credits-modal";
@@ -439,16 +474,19 @@
             buy-button-id="buy_btn_1T6zHpEEubve4uhuATNUxszY"
             publishable-key="pk_live_51SyX0sEEubve4uhuixiGaKj6aLjQIEUhXmiz3wt47r6h6AXdcTp7ODXHfiZvqEPDqrT2PDF95IPMxLQujDUW0rle00LcNqXqbz"
             ${refAttr}
+            ${emailAttr}
           ></stripe-buy-button>
           <stripe-buy-button
             buy-button-id="buy_btn_1T6HjtEEubve4uhujxyYdNjc"
             publishable-key="pk_live_51SyX0sEEubve4uhuixiGaKj6aLjQIEUhXmiz3wt47r6h6AXdcTp7ODXHfiZvqEPDqrT2PDF95IPMxLQujDUW0rle00LcNqXqbz"
             ${refAttr}
+            ${emailAttr}
           ></stripe-buy-button>
           <stripe-buy-button
             buy-button-id="buy_btn_1T6zNKEEubve4uhuVr21e7VI"
             publishable-key="pk_live_51SyX0sEEubve4uhuixiGaKj6aLjQIEUhXmiz3wt47r6h6AXdcTp7ODXHfiZvqEPDqrT2PDF95IPMxLQujDUW0rle00LcNqXqbz"
             ${refAttr}
+            ${emailAttr}
           ></stripe-buy-button>
         </div>
       </div>
